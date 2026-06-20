@@ -110,6 +110,7 @@ dependencies {
   implementation(libs.androidx.preference.ktx)
   implementation(libs.retrofit)
   implementation(libs.androidx.biometric)
+  implementation(libs.androidx.security.crypto)
   
   // Librería para leer coordenadas de las fotos
   implementation("androidx.exifinterface:exifinterface:1.3.7")

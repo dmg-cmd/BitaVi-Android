@@ -5,6 +5,8 @@ import android.content.Context
 import android.widget.Toast
 import androidx.preference.PreferenceManager
 import androidx.biometric.BiometricPrompt
+import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKey
 import androidx.core.content.ContextCompat
 import java.util.concurrent.Executor
 import androidx.activity.ComponentActivity
@@ -42,6 +44,10 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModelProvider
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.example.util.BiometricCipherHelper
+import javax.crypto.Cipher
+import android.util.Base64
+import androidx.activity.viewModels
 import com.example.data.db.AppDatabase
 import com.example.data.repository.RouteRepository
 import com.example.ui.RouteViewModel
@@ -62,6 +68,20 @@ class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         // Configuración necesaria para osmdroid ANTES de super.onCreate
         val sharedPrefs = PreferenceManager.getDefaultSharedPreferences(this)
+        
+        // Inicializar EncryptedSharedPreferences para datos sensibles (API Key)
+        val masterKey = MasterKey.Builder(this)
+            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+            .build()
+
+        val encryptedPrefs = EncryptedSharedPreferences.create(
+            this,
+            "secret_shared_prefs",
+            masterKey,
+            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+        )
+
         Configuration.getInstance().load(this, sharedPrefs)
         // User-Agent de un navegador moderno para evitar bloqueos
         Configuration.getInstance().userAgentValue = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
@@ -91,8 +111,20 @@ class MainActivity : FragmentActivity() {
             RouteViewModelFactory(repository)
         )[RouteViewModel::class.java]
 
-        // Cargar API Key guardada al iniciar (con fallback para compatibilidad)
-        val savedKey = sharedPrefs.getString("groq_api_key", sharedPrefs.getString("gemini_api_key", null))
+        // Cargar API Key guardada al iniciar
+        // Primero intentamos desde EncryptedSharedPreferences
+        var savedKey = encryptedPrefs.getString("groq_api_key", null)
+        
+        // Si no está, intentamos migrarla desde SharedPreferences estándar
+        if (savedKey == null) {
+            savedKey = sharedPrefs.getString("groq_api_key", sharedPrefs.getString("gemini_api_key", null))
+            if (savedKey != null) {
+                // Migrar a almacenamiento seguro y eliminar de texto plano
+                encryptedPrefs.edit().putString("groq_api_key", savedKey).apply()
+                sharedPrefs.edit().remove("groq_api_key").remove("gemini_api_key").apply()
+            }
+        }
+
         if (savedKey != null) {
             viewModel.updateGroqApiKey(savedKey)
         }
@@ -134,6 +166,20 @@ fun MainContainer(viewModel: RouteViewModel) {
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val sharedPrefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(context)
+    
+    // Acceso a EncryptedSharedPreferences para guardar la clave
+    val encryptedPrefs = remember {
+        val masterKey = MasterKey.Builder(context)
+            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+            .build()
+        EncryptedSharedPreferences.create(
+            context,
+            "secret_shared_prefs",
+            masterKey,
+            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+        )
+    }
 
     // Diálogos de ajustes
     var showApiKeyDialog by remember { mutableStateOf(false) }
@@ -149,7 +195,39 @@ fun MainContainer(viewModel: RouteViewModel) {
     var tempLat by remember { mutableStateOf(viewModel.defaultLatitude.toString()) }
     var tempLon by remember { mutableStateOf(viewModel.defaultLongitude.toString()) }
 
-    // Función para lanzar Biometría
+    // Función para lanzar Biometría con Cifrado Real (CryptoObject)
+    fun authenticateWithCrypto(
+        cipher: Cipher, 
+        title: String = "Autenticación Requerida",
+        onSuccess: (Cipher) -> Unit
+    ) {
+        val executor = ContextCompat.getMainExecutor(context)
+        val biometricPrompt = BiometricPrompt(context as androidx.fragment.app.FragmentActivity, executor,
+            object : BiometricPrompt.AuthenticationCallback() {
+                override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                    super.onAuthenticationSucceeded(result)
+                    // El result.cryptoObject contiene el Cipher ya autorizado por el hardware
+                    result.cryptoObject?.cipher?.let { authorizedCipher ->
+                        onSuccess(authorizedCipher)
+                    }
+                }
+                override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                    super.onAuthenticationError(errorCode, errString)
+                    Toast.makeText(context, "Error: $errString", Toast.LENGTH_SHORT).show()
+                }
+            })
+
+        val promptInfo = BiometricPrompt.PromptInfo.Builder()
+            .setTitle(title)
+            .setSubtitle("Utilice su huella o rostro para desbloquear la clave")
+            .setNegativeButtonText("Cancelar")
+            .build()
+
+        // Pasamos el CryptoObject para desbloquear la clave del Keystore
+        biometricPrompt.authenticate(promptInfo, BiometricPrompt.CryptoObject(cipher))
+    }
+
+    // Función para lanzar Biometría simple (UI gating)
     fun authenticate(onSuccess: () -> Unit) {
         if (!viewModel.isBiometricEnabled) {
             onSuccess()
@@ -237,7 +315,29 @@ fun MainContainer(viewModel: RouteViewModel) {
                     icon = { Icon(Icons.Default.VpnKey, null) },
                     onClick = { 
                         scope.launch { drawerState.close() }
-                        authenticate {
+                        
+                        // Obtenemos los datos cifrados guardados
+                        val encryptedKey = encryptedPrefs.getString("groq_api_key_v2", null)
+                        val iv = encryptedPrefs.getString("groq_api_key_iv", null)
+
+                        if (encryptedKey != null && iv != null) {
+                            try {
+                                val decryptCipher = BiometricCipherHelper.getDecryptCipher(Base64.decode(iv, Base64.DEFAULT))
+                                authenticateWithCrypto(decryptCipher, "Desbloquear API Key") { authorizedCipher ->
+                                    tempKey = BiometricCipherHelper.decryptText(authorizedCipher, encryptedKey)
+                                    isKeyUnlocked = true
+                                    showApiKeyDialog = true
+                                }
+                            } catch (e: Exception) {
+                                // Si la clave del Keystore fue invalidada (nuevas huellas) o error
+                                Toast.makeText(context, "Error de hardware seguro. Reintroduzca la clave.", Toast.LENGTH_LONG).show()
+                                tempKey = ""
+                                isKeyUnlocked = true
+                                showApiKeyDialog = true
+                            }
+                        } else {
+                            // No hay clave guardada aún con este método
+                            tempKey = ""
                             isKeyUnlocked = true
                             showApiKeyDialog = true
                         }
@@ -437,10 +537,22 @@ fun MainContainer(viewModel: RouteViewModel) {
                     Button(
                         enabled = isKeyUnlocked,
                         onClick = { 
-                            viewModel.updateGroqApiKey(tempKey)
-                            sharedPrefs.edit().putString("groq_api_key", tempKey).apply()
-                            showApiKeyDialog = false 
-                            isKeyUnlocked = false
+                            try {
+                                // Ciframos la nueva clave usando biometría (cifrado hardware)
+                                val encryptCipher = BiometricCipherHelper.getEncryptCipher()
+                                val (iv, encrypted) = BiometricCipherHelper.encryptText(tempKey, encryptCipher)
+                                
+                                encryptedPrefs.edit()
+                                    .putString("groq_api_key_v2", encrypted)
+                                    .putString("groq_api_key_iv", iv)
+                                    .apply()
+                                
+                                viewModel.updateGroqApiKey(tempKey)
+                                showApiKeyDialog = false 
+                                isKeyUnlocked = false
+                            } catch (e: Exception) {
+                                Toast.makeText(context, "Error al cifrar: ${e.message}", Toast.LENGTH_SHORT).show()
+                            }
                         }
                     ) { Text("Guardar") }
                 },
