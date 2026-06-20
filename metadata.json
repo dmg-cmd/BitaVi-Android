@@ -1,0 +1,6 @@
+{
+  "name": "Localizador",
+  "description": "Seguimiento, registro y guardado de rutas GPS en tiempo real con estadísticas y waypoints.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

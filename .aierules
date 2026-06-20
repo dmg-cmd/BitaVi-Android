@@ -1,0 +1,24 @@
+# Reglas de Oro del Proyecto Localizador
+
+## Idioma y Pensamiento
+- El agente debe comunicarse exclusivamente en **Español**.
+- El pensamiento interno (thought) debe ser **estrictamente en Español**.
+
+## Protocolo de Documentación (MANDATORIO)
+Al finalizar cada tarea o antes de cerrar la sesión, el agente DEBE:
+1. **Respaldar archivos clave**: Antes de cambios profundos, copiar la versión actual en `RESPALDO_ANTERIOR/` con prefijo de fecha (ej: `20240614_LocationService.kt`).
+2. **Actualizar `HISTORIAL_CAMBIOS.md`**: Registrar los cambios técnicos realizados.
+3. **Actualizar `DOCUMENTACION.md`**: Reflejar cambios en la funcionalidad para el usuario.
+4. **Actualizar `SUGERENCIAS.md`**: Marcar tareas completadas.
+5. **Actualizar `SUGERENCIAS_COMPLETADAS.md`**: Mover las tareas finalizadas aquí.
+
+## Contexto de Desarrollo
+- Proyecto: Android (Kotlin + Compose + Room).
+- Librería de Mapas: osmdroid (OpenStreetMap).
+- Arquitectura: MVVM.
+- IA: Groq (Llama 3.3) para análisis de rutas.
+
+## Pauta de Estilo
+- Ser conciso pero técnicamente preciso.
+- Siempre desplegar la app en el dispositivo (`deploy`) tras cambios significativos.
+- No borrar historial previo en los archivos de texto; siempre añadir al final o principio según el formato.
