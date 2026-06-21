@@ -1,6 +1,15 @@
 **Historial de Cambios - Proyecto Localizador**
 
-**[Sesión Actual - Fase 3: Social, Proximidad y Estabilidad Extrema]**
+**[Sesión Actual - Corrección de Race Condition en Centrado de Mapa]**
+- **Sincronización de Cámara y GPS**: Se solucionó un conflicto de prioridad donde el overlay de GPS sobreescribía la animación de la cámara al seleccionar un favorito. Se implementó una desactivación explícita de `followLocation` tanto en la inicialización del mapa (si hay un objetivo activo) como inmediatamente antes de iniciar la animación de centrado en `MapScreen.kt`. Esto garantiza que el mapa se desplace suavemente al favorito elegido sin interrupciones del GPS.
+
+**[Sesión Anterior - Corrección de Compatibilidad y Experiencia de Mapa]**
+- **Compatibilidad Avanzada en Importación/Restauración**: Se actualizó el motor de copias de seguridad (`prepareBackupFile` y `restoreFromBackup`) para exportar e importar todos los campos de `SavedLocation`, incluyendo `country` y `city`. Además, el importador ahora parsea dinámicamente archivos con cualquier número de columnas (de 4 a 13+), garantizando que las copias de seguridad de versiones anteriores o intermedias se restauren sin perder información y sin fallos.
+- **Control de Cámara y Retardo de Favoritos**: Se perfeccionó el comportamiento de la cámara del mapa en `MapScreen.kt`. Cuando se visualiza un favorito seleccionado, se bloquea el auto-centrado del GPS mediante la desactivación explícita de `locationOverlay.followLocation` en modo manual o de navegación, y se aumentó el tiempo de asentamiento de la cámara a 10 segundos antes de limpiar el objetivo.
+- **Bloqueo de Auto-Seguimiento en Navegación**: Se actualizó el bloque `update` de `AndroidView` para asegurar que `locationOverlay.disableFollowLocation()` se ejecute siempre que el usuario esté en modo manual o navegando hacia un punto, evitando saltos bruscos de la cámara.
+- **Retorno Manual al GPS**: Se actualizó el botón flotante "Mi ubicación" para que limpie inmediatamente el objetivo manual, reactive el seguimiento GPS (`enableFollowLocation`) y reinicie el temporizador de inactividad manual.
+
+**[Sesión Anterior - Fase 3: Social, Proximidad y Estabilidad Extrema]**
 - **Mapa en WhatsApp**: Implementación de captura dinámica del mapa (Bitmap) que se adjunta automáticamente como primera imagen al compartir el trayecto.
 - **Modo Automático Blindado**: Refinamiento con 3 confirmaciones consecutivas y filtro de velocidad real (>1.5 km/h) para eliminar inicios falsos por ruido de GPS.
 - **Avisos "Cerca de mí"**: Motor de notificaciones de proximidad que alerta al usuario cuando pasa a menos de 100m de un favorito guardado.
@@ -29,7 +38,7 @@
 
 **[Sesión Anterior - Seguridad Biométrica y UX]**
 - **Soporte Biométrico**: Implementación de `androidx.biometric`. Ahora el usuario puede proteger el acceso a la API Key y el borrado masivo de datos mediante Huella Digital o Rostro.
-- **Eliminación del PIN**: Se ha removido el sistema de PIN de 4 dígitos, simplificando la seguridad para que dependa exclusivamente de la biometría del dispositivo (o el método de desbloqueo del sistema).
+- **Elimunación del PIN**: Se ha removido el sistema de PIN de 4 dígitos, simplificando la seguridad para que dependa exclusivamente de la biometría del dispositivo (o el método de desbloqueo del sistema).
 - **Toggle de Seguridad**: Se añadió un interruptor en el menú lateral para activar/desactivar la protección biométrica globalmente.
 - **MainActivity Refactor**: Migración de `ComponentActivity` a `FragmentActivity` para dar soporte a los diálogos biométricos del sistema.
 
@@ -65,7 +74,7 @@
 - **Manual de Instrucciones**: Actualización de `instrucciones_agente.md` con pautas estrictas de idioma (Español) y hoja de ruta paso a paso.
 
 **[Sesión Anterior - Blindaje Multimedia y Restauración Total]**
-- **Respaldo Físico de Fotos**: Se rediseñó el motor de exportación ZIP para incluir físicamente los archivos de imagen. Ahora las fotos viajan dentro del respaldo y se restauran automáticamente en el nuevo dispositivo.  
+- **Respaldo Físico de Fotos**: Se rediseó el motor de exportación ZIP para incluir físicamente los archivos de imagen. Ahora las fotos viajan dentro del respaldo y se restauran automáticamente en el nuevo dispositivo.
 - **Gestión Inteligente de Galería**: Al elegir una foto de la galería (Google Fotos), la app ahora realiza una copia local en su almacenamiento privado. Esto evita que la foto se pierda en la app si el usuario la borra de su carrete personal.  
 - **Corrección de Cámara y Permisos**: Implementación de un flujo de solicitud de permisos explícito para la cámara, eliminando cierres inesperados en Android 13/14. Se optimizó el FileProvider para compartir archivos de imagen de forma segura.  
 - **Control de Mapa y Zoom**: Se implementó un temporizador de 12-15 segundos que suspende el auto-centrado del GPS cuando el usuario interactúa manualmente con el mapa o selecciona un favorito.  

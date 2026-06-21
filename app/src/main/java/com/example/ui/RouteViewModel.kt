@@ -467,7 +467,7 @@ class RouteViewModel(private val repository: RouteRepository) : ViewModel() {
                 if (favs.isNotEmpty()) {
                     zos.putNextEntry(ZipEntry("favoritos.txt"))
                     val content = favs.joinToString("\n") { f ->
-                        "${f.name}|${f.address}|${f.latitude}|${f.longitude}|${f.comment}|${f.author}|${f.photoPath ?: ""}|${f.phoneNumber}|${f.email}|${f.isContact}|${f.color}" 
+                        "${f.name}|${f.address}|${f.latitude}|${f.longitude}|${f.comment}|${f.author}|${f.photoPath ?: ""}|${f.phoneNumber}|${f.email}|${f.isContact}|${f.color}|${f.country}|${f.city}" 
                     }
                     zos.write(content.toByteArray())
                     zos.closeEntry()
@@ -569,15 +569,36 @@ class RouteViewModel(private val repository: RouteRepository) : ViewModel() {
                                 lines.filter { it.isNotBlank() }.forEach { line ->
                                     val p = line.split("|")
                                     if (p.size >= 4) {
+                                        val nameVal = p[0]
+                                        val addressVal = p[1]
                                         val lat = p[2].toDoubleOrNull() ?: 0.0
                                         val lon = p[3].toDoubleOrNull() ?: 0.0
+                                        val commentVal = if (p.size > 4) p[4] else ""
+                                        val authorVal = if (p.size > 5) p[5] else ""
+                                        val photoPathVal = if (p.size > 6 && p[6].isNotBlank()) p[6] else null
+                                        val phoneNumberVal = if (p.size > 7) p[7] else ""
+                                        val emailVal = if (p.size > 8) p[8] else ""
+                                        val isContactVal = if (p.size > 9) p[9].toBoolean() else false
+                                        val colorVal = if (p.size > 10) p[10] else "#FFD700"
+                                        
                                         val details = fetchLocationDetails(context, lat, lon)
+                                        val countryVal = if (p.size > 11) p[11] else details.second
+                                        val cityVal = if (p.size > 12) p[12] else details.third
+
                                         repository.addSavedLocation(
-                                            name = p[0], address = p[1], latitude = lat, longitude = lon,
-                                            comment = if(p.size > 4) p[4] else "", author = if(p.size > 5) p[5] else "",
-                                            photoPath = if(p.size > 6) p[6] else null, phoneNumber = if(p.size > 7) p[7] else "",
-                                            email = if(p.size > 8) p[8] else "", isContact = if(p.size > 9) p[9].toBoolean() else false,
-                                            country = details.second, city = details.third, color = if(p.size > 10) p[10] else "#FFD700"
+                                            name = nameVal,
+                                            address = addressVal,
+                                            latitude = lat,
+                                            longitude = lon,
+                                            comment = commentVal,
+                                            author = authorVal,
+                                            photoPath = photoPathVal,
+                                            phoneNumber = phoneNumberVal,
+                                            email = emailVal,
+                                            isContact = isContactVal,
+                                            country = countryVal,
+                                            city = cityVal,
+                                            color = colorVal
                                         )
                                     }
                                 }

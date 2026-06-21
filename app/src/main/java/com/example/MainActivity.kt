@@ -65,6 +65,36 @@ import com.example.ui.theme.MyApplicationTheme
  */
 class MainActivity : FragmentActivity() {
 
+    // Función para lanzar Biometría con Cifrado Real (CryptoObject)
+    fun authenticateWithCrypto(
+        cipher: Cipher,
+        title: String = "Autenticación Requerida",
+        onSuccess: (Cipher) -> Unit
+    ) {
+        val executor = ContextCompat.getMainExecutor(this)
+        val biometricPrompt = BiometricPrompt(this, executor,
+            object : BiometricPrompt.AuthenticationCallback() {
+                override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                    super.onAuthenticationSucceeded(result)
+                    result.cryptoObject?.cipher?.let { authorizedCipher ->
+                        onSuccess(authorizedCipher)
+                    }
+                }
+                override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                    super.onAuthenticationError(errorCode, errString)
+                    Toast.makeText(this@MainActivity, "Error: $errString", Toast.LENGTH_SHORT).show()
+                }
+            })
+
+        val promptInfo = BiometricPrompt.PromptInfo.Builder()
+            .setTitle(title)
+            .setSubtitle("Desbloquee la API Key para activar la IA")
+            .setNegativeButtonText("Cancelar")
+            .build()
+
+        biometricPrompt.authenticate(promptInfo, BiometricPrompt.CryptoObject(cipher))
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         // Configuración necesaria para osmdroid ANTES de super.onCreate
         val sharedPrefs = PreferenceManager.getDefaultSharedPreferences(this)
@@ -111,22 +141,21 @@ class MainActivity : FragmentActivity() {
             RouteViewModelFactory(repository)
         )[RouteViewModel::class.java]
 
-        // Cargar API Key guardada al iniciar
-        // Primero intentamos desde EncryptedSharedPreferences
-        var savedKey = encryptedPrefs.getString("groq_api_key", null)
-        
-        // Si no está, intentamos migrarla desde SharedPreferences estándar
-        if (savedKey == null) {
-            savedKey = sharedPrefs.getString("groq_api_key", sharedPrefs.getString("gemini_api_key", null))
-            if (savedKey != null) {
-                // Migrar a almacenamiento seguro y eliminar de texto plano
-                encryptedPrefs.edit().putString("groq_api_key", savedKey).apply()
-                sharedPrefs.edit().remove("groq_api_key").remove("gemini_api_key").apply()
-            }
-        }
+        // --- CARGA SEGURA DE API KEY (HARDWARE BACKED) ---
+        val encryptedKey = encryptedPrefs.getString("groq_api_key_v2", null)
+        val iv = encryptedPrefs.getString("groq_api_key_iv", null)
 
-        if (savedKey != null) {
-            viewModel.updateGroqApiKey(savedKey)
+        if (encryptedKey != null && iv != null) {
+            try {
+                val decryptCipher = BiometricCipherHelper.getDecryptCipher(Base64.decode(iv, Base64.DEFAULT))
+                authenticateWithCrypto(decryptCipher, "Inicio Seguro") { authorizedCipher ->
+                    val decryptedKey = BiometricCipherHelper.decryptText(authorizedCipher, encryptedKey)
+                    viewModel.updateGroqApiKey(decryptedKey)
+                    Toast.makeText(this, "IA Desbloqueada", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                Toast.makeText(this, "Error de seguridad Keystore: Reconfigure su clave", Toast.LENGTH_LONG).show()
+            }
         }
 
         // Cargar ubicación inicial guardada
@@ -195,37 +224,7 @@ fun MainContainer(viewModel: RouteViewModel) {
     var tempLat by remember { mutableStateOf(viewModel.defaultLatitude.toString()) }
     var tempLon by remember { mutableStateOf(viewModel.defaultLongitude.toString()) }
 
-    // Función para lanzar Biometría con Cifrado Real (CryptoObject)
-    fun authenticateWithCrypto(
-        cipher: Cipher, 
-        title: String = "Autenticación Requerida",
-        onSuccess: (Cipher) -> Unit
-    ) {
-        val executor = ContextCompat.getMainExecutor(context)
-        val biometricPrompt = BiometricPrompt(context as androidx.fragment.app.FragmentActivity, executor,
-            object : BiometricPrompt.AuthenticationCallback() {
-                override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-                    super.onAuthenticationSucceeded(result)
-                    // El result.cryptoObject contiene el Cipher ya autorizado por el hardware
-                    result.cryptoObject?.cipher?.let { authorizedCipher ->
-                        onSuccess(authorizedCipher)
-                    }
-                }
-                override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
-                    super.onAuthenticationError(errorCode, errString)
-                    Toast.makeText(context, "Error: $errString", Toast.LENGTH_SHORT).show()
-                }
-            })
-
-        val promptInfo = BiometricPrompt.PromptInfo.Builder()
-            .setTitle(title)
-            .setSubtitle("Utilice su huella o rostro para desbloquear la clave")
-            .setNegativeButtonText("Cancelar")
-            .build()
-
-        // Pasamos el CryptoObject para desbloquear la clave del Keystore
-        biometricPrompt.authenticate(promptInfo, BiometricPrompt.CryptoObject(cipher))
-    }
+    val mainActivity = context as MainActivity
 
     // Función para lanzar Biometría simple (UI gating)
     fun authenticate(onSuccess: () -> Unit) {
@@ -323,7 +322,7 @@ fun MainContainer(viewModel: RouteViewModel) {
                         if (encryptedKey != null && iv != null) {
                             try {
                                 val decryptCipher = BiometricCipherHelper.getDecryptCipher(Base64.decode(iv, Base64.DEFAULT))
-                                authenticateWithCrypto(decryptCipher, "Desbloquear API Key") { authorizedCipher ->
+                                mainActivity.authenticateWithCrypto(decryptCipher, "Desbloquear API Key") { authorizedCipher ->
                                     tempKey = BiometricCipherHelper.decryptText(authorizedCipher, encryptedKey)
                                     isKeyUnlocked = true
                                     showApiKeyDialog = true

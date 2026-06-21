@@ -130,8 +130,10 @@ fun MapScreen(viewModel: RouteViewModel, modifier: Modifier = Modifier) {
 
     // Centrar en la ubicación predeterminada y pedir permisos
     LaunchedEffect(Unit) {
-        mapView.controller.setZoom(15.0)
-        mapView.controller.setCenter(GeoPoint(viewModel.defaultLatitude, viewModel.defaultLongitude))
+        if (viewModel.mapTargetLocation == null) {
+            mapView.controller.setZoom(15.0)
+            mapView.controller.setCenter(GeoPoint(viewModel.defaultLatitude, viewModel.defaultLongitude))
+        }
         
         val permissions = mutableListOf(
             Manifest.permission.ACCESS_FINE_LOCATION,
@@ -154,20 +156,15 @@ fun MapScreen(viewModel: RouteViewModel, modifier: Modifier = Modifier) {
     LaunchedEffect(latestLocation) {
         latestLocation?.let { loc ->
             // BLOQUEO DE AUTO-CENTRADO
-            // Si el usuario interactuó (lastInteractionTime > 0) 
-            // O si estamos navegando a un punto (mapTargetLocation != null)
-            // NO centramos en el GPS.
             val isManual = lastInteractionTime != 0L
             val isNavigating = viewModel.mapTargetLocation != null
             
-            if (!isManual && !isNavigating) {
+            if (isManual || isNavigating) {
+                locationOverlay.disableFollowLocation()
+            } else {
+                locationOverlay.enableFollowLocation()
                 val currentZoom = if (mapView.zoomLevelDouble < 5.0) 17.0 else mapView.zoomLevelDouble
                 mapView.controller.animateTo(GeoPoint(loc.latitude, loc.longitude), currentZoom, 800L)
-            }
-            
-            // La flecha de dirección sí se actualiza siempre para que sepas dónde miras
-            if (loc.hasBearing() || loc.speed > 0.5) {
-                locationOverlay.enableFollowLocation()
             }
         }
     }
@@ -175,14 +172,17 @@ fun MapScreen(viewModel: RouteViewModel, modifier: Modifier = Modifier) {
     // Efecto para centrar en un favorito seleccionado desde la lista
     LaunchedEffect(viewModel.mapTargetLocation) {
         viewModel.mapTargetLocation?.let { target ->
-            // BLOQUEO ULTRA-FUERTE: Impedimos que el GPS tome el control por 20 segundos
+            // BLOQUEO ULTRA-FUERTE: Impedimos que el GPS tome el control
             lastInteractionTime = System.currentTimeMillis()
+            
+            // Desactivar explícitamente el auto-seguimiento antes de iniciar la animación de cámara
+            locationOverlay.disableFollowLocation()
             
             // Animación al favorito con zoom cercano y mayor duración
             mapView.controller.animateTo(target, 18.0, 1500L)
             
             // NO limpiamos el target inmediatamente. Dejamos que el mapa se asiente.
-            kotlinx.coroutines.delay(3000L)
+            kotlinx.coroutines.delay(10000L) // 10 segundos
             viewModel.clearMapTarget()
         }
     }
@@ -205,7 +205,15 @@ fun MapScreen(viewModel: RouteViewModel, modifier: Modifier = Modifier) {
                     setTileSource(TileSourceFactory.MAPNIK)
                     setMultiTouchControls(true)
                     zoomController.setVisibility(CustomZoomButtonsController.Visibility.NEVER)
-                    controller.setZoom(15.0)
+                    
+                    // Si venimos con un objetivo, centrar inmediatamente en el factory
+                    viewModel.mapTargetLocation?.let { target ->
+                        controller.setZoom(18.0)
+                        controller.setCenter(target)
+                        lastInteractionTime = System.currentTimeMillis()
+                    } ?: run {
+                        controller.setZoom(15.0)
+                    }
                     
                     // Personalizar el icono de ubicación (Flecha Roja para mejor visibilidad)
                     locationOverlay.enableMyLocation()
@@ -214,7 +222,11 @@ fun MapScreen(viewModel: RouteViewModel, modifier: Modifier = Modifier) {
                     // CORRECCIÓN DE ORIENTACIÓN: Habilitamos el seguimiento de orientación (brújula)
                     // para que el icono gire según la dirección del movimiento o del dispositivo.
                     // Nota: Si el usuario toca el mapa, el auto-centrado se gestiona con lastInteractionTime.
-                    locationOverlay.enableFollowLocation()
+                    if (viewModel.mapTargetLocation == null) {
+                        locationOverlay.enableFollowLocation()
+                    } else {
+                        locationOverlay.disableFollowLocation()
+                    }
                     
                     // Cambiamos el color de la flecha de dirección a Rojo para que se vea bien
                     val arrowIcon = ContextCompat.getDrawable(context, org.osmdroid.library.R.drawable.next)
@@ -251,6 +263,12 @@ fun MapScreen(viewModel: RouteViewModel, modifier: Modifier = Modifier) {
             update = { view ->
                 try {
                     view.setUseDataConnection(!viewModel.isOfflineMode)
+                    
+                    val isManual = lastInteractionTime != 0L
+                    val isNavigating = viewModel.mapTargetLocation != null
+                    if (isManual || isNavigating) {
+                        locationOverlay.disableFollowLocation()
+                    }
                     
                     // Actualizar color de la flecha de ubicación según el estado de grabación
                     val personDrawable = ContextCompat.getDrawable(context, org.osmdroid.library.R.drawable.person)!!
@@ -410,7 +428,12 @@ fun MapScreen(viewModel: RouteViewModel, modifier: Modifier = Modifier) {
 
         // Botones flotantes
         FloatingActionButton(
-            onClick = { latestLocation?.let { mapView.controller.animateTo(GeoPoint(it.latitude, it.longitude)) } },
+            onClick = { 
+                lastInteractionTime = 0L
+                viewModel.clearMapTarget()
+                locationOverlay.enableFollowLocation()
+                latestLocation?.let { mapView.controller.animateTo(GeoPoint(it.latitude, it.longitude)) } 
+            },
             modifier = Modifier.align(Alignment.BottomStart).padding(bottom = 32.dp, start = 16.dp),
             containerColor = Color.White
         ) { Icon(Icons.Default.MyLocation, null) }

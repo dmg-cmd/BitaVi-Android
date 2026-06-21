@@ -22,7 +22,8 @@ Localizador Pro es una herramienta avanzada de seguimiento GPS para Android, dis
 
 ### 3. Seguridad y Respaldo
 - **Protección Biométrica:** Actívala en el menú lateral para proteger el acceso a configuraciones críticas y el borrado de datos usando tu huella o rostro. Sustituye al antiguo sistema de PIN para una experiencia más fluida y moderna.
-- **Copia de Seguridad:** Uso de ZIP con fotos integradas.
+- **Copia de Seguridad Pro:** Sistema de respaldo en ZIP con fotos integradas. Totalmente compatible con versiones anteriores; el motor de restauración detecta automáticamente el formato del archivo (de 4 a 13+ columnas de datos) y rellena la información faltante (`country`, `city`, etc.) de forma inteligente.
+- **Control Inteligente de Centrado del Mapa:** Al navegar a un favorito desde la lista, el mapa bloqueará el seguimiento automático del GPS por 10 segundos para permitirte ver el lugar sin saltos de cámara. Se ha implementado un bloqueo de hardware sincronizado para evitar que el GPS interrumpa la animación de aproximación. El botón "Mi ubicación" restablece inmediatamente el seguimiento en tiempo real.
 
 ### 4. Análisis de Datos
 - **IA Narrativa (Groq)**: En el detalle de la ruta, pulsa "Analizar con IA". El sistema enviará tus estadísticas técnicas (Km, Tiempo, Velocidades) y tus marcadores a Llama 3 para generar un resumen profesional y motivador de tu viaje. Requiere una Groq API Key configurada en los ajustes.
@@ -32,10 +33,10 @@ Localizador Pro es una herramienta avanzada de seguimiento GPS para Android, dis
 
 ## Especificaciones Técnicas
 - **Arquitectura:** MVVM (Model-View-ViewModel) con Jetpack Compose.
-- **Base de Datos:** Room (Versión 6), con migraciones para soporte multimedia.
+- **Base de Datos:** Room (Versión 7), con campos para `color`, `country` y `city`.
 - **Motor de IA:** Groq API (Llama 3.3 70B) vía Retrofit.
 - **Mapas:** OpenStreetMap (osmdroid) con caché persistente de 500MB.
-- **Seguridad:** Gestión de permisos dinámicos y almacenamiento privado para archivos multimedia.
+- **Seguridad:** Gestión de permisos dinámicos y almacenamiento privado para archivos multimedia cifrados mediante hardware Keystore (API Key).
 
 ---
-*Documentación actualizada al 13 de Junio de 2024.*
+*Documentación actualizada al 20 de Junio de 2026.*

@@ -193,7 +193,7 @@ fun HistoryScreen(
                                 }
                             },
                             onDelete = { routeToDelete = route },
-                            modifier = Modifier.animateItemPlacement()
+                            modifier = Modifier.animateItem()
                         )
                     }
                 }
