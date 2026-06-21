@@ -1,0 +1,37 @@
+Actúa como un Desarrollador Senior de Android especializado en Kotlin y Jetpack Compose.
+Necesito que corrijas un problema de race condition en el centrado del mapa al seleccionar un favorito en la aplicación. Actualmente, al tocar un favorito el mapa se inicializa y el overlay de GPS (MyLocationNewOverlay) fuerza inmediatamente el centrado de la cámara en las coordenadas actuales del usuario, interrumpiendo o sobreescribiendo la animación de cámara hacia el favorito seleccionado.
+
+Modifica el archivo: app/src/main/java/com/example/ui/screens/MapScreen.kt
+
+Instrucciones exactas:
+
+1. En el bloque `factory = { ... }` de `AndroidView` (alrededor de la línea 212), cambia la llamada simple a `locationOverlay.enableFollowLocation()` por un condicional que solo habilite el seguimiento de ubicación si no hay un objetivo de mapa activo (evitando que el GPS sobreescriba el destino inicial al cargar la pantalla):
+   ```kotlin
+   if (viewModel.mapTargetLocation == null) {
+       locationOverlay.enableFollowLocation()
+   } else {
+       locationOverlay.disableFollowLocation()
+   }
+   ```
+
+2. En el `LaunchedEffect(viewModel.mapTargetLocation)` (alrededor de la línea 171), añade la llamada explícita a `locationOverlay.disableFollowLocation()` inmediatamente después de definir `lastInteractionTime` y antes de iniciar la animación de cámara. Debe quedar así:
+   ```kotlin
+   LaunchedEffect(viewModel.mapTargetLocation) {
+       viewModel.mapTargetLocation?.let { target ->
+           // BLOQUEO ULTRA-FUERTE: Impedimos que el GPS tome el control
+           lastInteractionTime = System.currentTimeMillis()
+           
+           // Desactivar explícitamente el auto-seguimiento antes de iniciar la animación de cámara
+           locationOverlay.disableFollowLocation()
+           
+           // Animación al favorito con zoom cercano y mayor duración
+           mapView.controller.animateTo(target, 18.0, 1500L)
+           
+           // NO limpiamos el target inmediatamente. Dejamos que el mapa se asiente.
+           kotlinx.coroutines.delay(10000L) // 10 segundos
+           viewModel.clearMapTarget()
+       }
+   }
+   ```
+
+Realiza solo estos cambios de forma precisa y mantén toda la lógica existente del mapa.
