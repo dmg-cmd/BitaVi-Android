@@ -59,6 +59,14 @@ fun DetailScreen(
 
     val mapView = remember { MapView(context) }
 
+    DisposableEffect(mapView) {
+        mapView.onResume()
+        onDispose {
+            mapView.onPause()
+            mapView.onDetach()
+        }
+    }
+
     LaunchedEffect(points) {
         if (points.isNotEmpty()) {
             val geoPoints = points.map { GeoPoint(it.latitude, it.longitude) }

@@ -2,6 +2,7 @@ package com.example
 
 import android.os.Bundle
 import android.content.Context
+import android.content.SharedPreferences
 import android.widget.Toast
 import androidx.preference.PreferenceManager
 import androidx.biometric.BiometricPrompt
@@ -65,6 +66,8 @@ import com.example.ui.theme.MyApplicationTheme
  */
 class MainActivity : FragmentActivity() {
 
+    private lateinit var encryptedPrefs: SharedPreferences
+
     // Función para lanzar Biometría con Cifrado Real (CryptoObject)
     fun authenticateWithCrypto(
         cipher: Cipher,
@@ -99,18 +102,35 @@ class MainActivity : FragmentActivity() {
         // Configuración necesaria para osmdroid ANTES de super.onCreate
         val sharedPrefs = PreferenceManager.getDefaultSharedPreferences(this)
         
-        // Inicializar EncryptedSharedPreferences para datos sensibles (API Key)
-        val masterKey = MasterKey.Builder(this)
-            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-            .build()
+        // --- INICIALIZACIÓN ROBUSTA DE ENCRYPTED SHARED PREFERENCES ---
+        val fileName = "secret_shared_prefs"
+        encryptedPrefs = try {
+            val masterKey = MasterKey.Builder(this)
+                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+                .build()
 
-        val encryptedPrefs = EncryptedSharedPreferences.create(
-            this,
-            "secret_shared_prefs",
-            masterKey,
-            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-        )
+            EncryptedSharedPreferences.create(
+                this,
+                fileName,
+                masterKey,
+                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+            )
+        } catch (e: Exception) {
+            // Error de hardware/Keystore (común en Debug al reinstalar o corrupción de alias)
+            // Aplicamos estrategia de autoreparación: borrar y reintentar.
+            deleteSharedPreferences(fileName)
+            val masterKey = MasterKey.Builder(this)
+                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+                .build()
+            EncryptedSharedPreferences.create(
+                this,
+                fileName,
+                masterKey,
+                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+            )
+        }
 
         Configuration.getInstance().load(this, sharedPrefs)
         // User-Agent de un navegador moderno para evitar bloqueos
@@ -177,7 +197,7 @@ class MainActivity : FragmentActivity() {
 
         setContent {
             MyApplicationTheme {
-                MainContainer(viewModel = viewModel)
+                MainContainer(viewModel = viewModel, encryptedPrefs = encryptedPrefs)
             }
         }
     }
@@ -189,27 +209,13 @@ class MainActivity : FragmentActivity() {
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MainContainer(viewModel: RouteViewModel) {
+fun MainContainer(viewModel: RouteViewModel, encryptedPrefs: SharedPreferences) {
     val currentScreen = viewModel.currentScreen
     val context = androidx.compose.ui.platform.LocalContext.current
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val sharedPrefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(context)
     
-    // Acceso a EncryptedSharedPreferences para guardar la clave
-    val encryptedPrefs = remember {
-        val masterKey = MasterKey.Builder(context)
-            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-            .build()
-        EncryptedSharedPreferences.create(
-            context,
-            "secret_shared_prefs",
-            masterKey,
-            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-        )
-    }
-
     // Diálogos de ajustes
     var showApiKeyDialog by remember { mutableStateOf(false) }
     var showLocationDialog by remember { mutableStateOf(false) }

@@ -182,7 +182,10 @@ fun MapScreen(viewModel: RouteViewModel, modifier: Modifier = Modifier) {
 
     DisposableEffect(mapView) {
         mapView.onResume()
-        onDispose { mapView.onPause() }
+        onDispose {
+            mapView.onPause()
+            mapView.onDetach()
+        }
     }
 
     LaunchedEffect(latestLocation) {

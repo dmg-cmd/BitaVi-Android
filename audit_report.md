@@ -1,668 +1,687 @@
-# 🔬 Auditoría Estática Completa — Localizador Pro (Android)
+# 🔬 Auditoría Estática Completa — Localizador Pro Android
 
-> **Fecha:** 2026-06-21  
-> **Auditor:** Ingeniero Principal de Control de Calidad y Rendimiento Android  
-> **Alcance:** 20 archivos fuente Kotlin, manifiestos, Gradle, recursos  
-> **Modo:** Solo lectura — ningún archivo fue modificado  
-
----
-
-## Índice
-
-- [Resumen Ejecutivo](#resumen-ejecutivo)
-- [Hallazgos de Severidad ALTA](#-severidad-alta-17-hallazgos)
-- [Hallazgos de Severidad MEDIA](#-severidad-media-21-hallazgos)
-- [Hallazgos de Severidad BAJA](#-severidad-baja-12-hallazgos)
-- [Análisis de Rendimiento](#-análisis-de-rendimiento)
-- [Análisis de Seguridad](#-análisis-de-seguridad)
-- [Análisis de Arquitectura](#-análisis-de-arquitectura)
-- [Observaciones Adicionales](#-observaciones-adicionales)
+> **Fecha:** 2026-06-22 | **Auditor:** Ingeniero Principal de QA & Rendimiento Android  
+> **Alcance:** 20 archivos fuente Kotlin, configuración Gradle, Manifest  
+> **Regla:** Solo lectura — ningún archivo fue modificado
 
 ---
 
-## Resumen Ejecutivo
+## Índice de Hallazgos por Severidad
 
-| Categoría          | Alta | Media | Baja | Total |
-|--------------------|:----:|:-----:|:----:|:-----:|
-| Bugs Potenciales   |  6   |   5   |  2   |  13   |
-| Rendimiento        |  5   |   7   |  3   |  15   |
-| Arquitectura       |  3   |   5   |  3   |  11   |
-| Seguridad          |  2   |   2   |  1   |   5   |
-| Material / UX      |  1   |   2   |  3   |   6   |
-| **Total**          | **17** | **21** | **12** | **50** |
-
-El proyecto es funcional y demuestra un buen nivel de integración de funcionalidades (GPS, Room, biometría, OSMDroid, Retrofit). Sin embargo, la concentración de lógica en pocos archivos masivos, la ausencia de inyección de dependencias, y varios patrones de manejo incorrecto de contextos y corrutinas generan riesgos concretos de fugas de memoria, ANRs, y pérdida de datos.
+| Severidad | Cantidad | Impacto |
+|-----------|----------|---------|
+| 🔴 **Alta** | 14 | Crashes, pérdida de datos, fugas de memoria, seguridad |
+| 🟡 **Media** | 14 | Rendimiento, mantenibilidad, UX degradada |
+| 🟢 **Baja** | 10 | Código muerto, convenciones, mejoras incrementales |
 
 ---
 
-## 🔴 Severidad ALTA (17 hallazgos)
-
-### A01 — ViewModel con acceso directo a `Context` (Memory Leak)
-
-> [!CAUTION]
-> Riesgo de fuga de memoria por retención de Activity/Context
-
-- **Archivos:** [RouteViewModel.kt](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/ui/RouteViewModel.kt) — múltiples funciones
-- **Detalle:** El ViewModel recibe `Context` como parámetro en **21 funciones** (`toggleAutoMode`, `toggleNearMe`, `toggleBiometric`, `saveSpecificLocation`, `fetchCurrentAddress`, `exportRoutesAsCSV`, `exportRoutesAsGPX`, `importGpxFile`, `createImageFile`, `saveImageToInternalStorage`, `prepareBackupFile`, `restoreFromBackup`, `getContactDetails`, `shareLocation`, `shareCompleteRoute`, `fetchAddressForCoordinates`, `fetchAddressForLocation`, `generateSuggestedRouteName`, `getPhotoLocation`, `refreshLocationDetails`, `updateDefaultLocationPersistently`).
-- **Impacto:** Si se pasa el Activity Context, la Activity no podrá ser recolectada por el GC mientras el ViewModel viva (que sobrevive a recreaciones de Activity). Esto es un **memory leak clásico de Android**.
-- **Sugerencia:** Usar `AndroidViewModel` con `Application` context, o inyectar un `SharedPreferences` wrapper y un `ContentResolver` en el constructor del ViewModel en lugar de pasar Context.
+## 🔴 Severidad ALTA (14 hallazgos)
 
 ---
 
-### A02 — `LocationService` crea instancia propia de `RouteRepository` (Estado inconsistente)
+### A01 — Minificación y ProGuard DESACTIVADOS en Release
 
-> [!CAUTION]
-> Dos instancias de Repository/DAO coexisten sin coordinación
+**Archivo:** [build.gradle.kts](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/build.gradle.kts#L46)
 
-- **Archivo:** [LocationService.kt:101-102](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/location/LocationService.kt#L101-L102)
-- **Detalle:** El Service instancia `AppDatabase.getDatabase()` y crea su propio `RouteRepository`. Aunque `AppDatabase` es un singleton, tener dos instancias de `RouteRepository` sin inyección de dependencias puede causar inconsistencias si en el futuro el Repository adquiere estado interno (caché, buffers).
-- **Sugerencia:** Implementar un contenedor de DI (Hilt/Koin/manual) para compartir una única instancia de Repository.
-
----
-
-### A03 — `CoroutineScope` del Service sin manejo de excepciones global
-
-> [!WARNING]
-> Excepciones no capturadas en `serviceScope` terminan silenciosamente las corrutinas
-
-- **Archivo:** [LocationService.kt:31](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/location/LocationService.kt#L31)
-- **Detalle:** `CoroutineScope(Dispatchers.IO + SupervisorJob())` — Aunque `SupervisorJob` evita la cancelación en cascada, no hay `CoroutineExceptionHandler`. Las excepciones en corrutinas hijas (como DB writes en `processNewLocation`) se pierden silenciosamente.
-- **Impacto:** Puntos GPS pueden dejar de guardarse sin ningún indicador visible.
-- **Sugerencia:** Agregar un `CoroutineExceptionHandler` que al menos registre el error con `Log.e`.
-
----
-
-### A04 — Callback de ubicación ejecuta en `Looper.getMainLooper()` (UI Thread)
-
-> [!CAUTION]
-> Procesamiento GPS en el hilo principal
-
-- **Archivo:** [LocationService.kt:235](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/location/LocationService.kt#L235)
-- **Detalle:** `fusedLocationClient.requestLocationUpdates(locationRequest, locationCallback, Looper.getMainLooper())` — El callback `onLocationResult` ejecuta en el Main Thread. Dentro de él, `processNewLocation()` lee `SharedPreferences` síncronamente (L248-250) y accede a estado mutable.
-- **Impacto:** Con intervalos de 1 segundo y lógica compleja, esto bloquea el UI thread cada tick. Aunque el lanzamiento de la corrutina es en IO, toda la lógica de filtrado y decisiones previa (L244-325) corre en Main.
-- **Sugerencia:** Usar un `HandlerThread` dedicado o un `Looper` secundario para el callback de ubicación.
-
----
-
-### A05 — `SharedPreferences` leídas en cada tick de ubicación
-
-> [!WARNING]
-> Lectura síncrona repetitiva en cada actualización GPS
-
-- **Archivos:** [LocationService.kt:248-250](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/location/LocationService.kt#L248-L250) y [LocationService.kt:462-463](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/location/LocationService.kt#L462-L463)
-- **Detalle:** `PreferenceManager.getDefaultSharedPreferences(applicationContext)` se llama en `processNewLocation()` (cada 1-5 seg) y en `startTimer()` (cada 5 seg). Cada llamada resuelve el path del archivo, potencialmente ejecutando I/O.
-- **Sugerencia:** Cachear la referencia a `SharedPreferences` como propiedad del Service, y usar un `OnSharedPreferenceChangeListener` para invalidar valores cacheados.
-
----
-
-### A06 — `fallbackToDestructiveMigration()` — Pérdida de datos en producción
-
-> [!CAUTION]
-> Los usuarios perderán TODOS sus datos si se cambia el esquema de la base de datos
-
-- **Archivo:** [AppDatabase.kt:35](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/data/db/AppDatabase.kt#L35)
-- **Detalle:** `fallbackToDestructiveMigration()` destruye y recrea la base de datos completa cuando la versión cambia sin migraciones definidas. Ya están en la versión 7 — cada una de estas transiciones pudo haber borrado datos de usuario.
-- **Sugerencia:** Implementar `Migration` objects para transiciones de esquema, o al mínimo usar `fallbackToDestructiveMigrationOnDowngrade()` y definir migraciones para upgrades.
-
----
-
-### A07 — `isMinifyEnabled = false` en Release (Sin ofuscación ni optimización)
-
-> [!WARNING]
-> APK de release sin protección ni optimización de código
-
-- **Archivo:** [app/build.gradle.kts:46](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/build.gradle.kts#L46)
-- **Detalle:** `isMinifyEnabled = false` desactiva R8/ProGuard. El código Kotlin es decompilable trivialmente, exponiendo la lógica de cifrado, endpoints de API, y estructura interna.
-- **Impacto:** Sin shrinking, el APK incluye todas las clases de Moshi, Retrofit, OkHttp, Material Icons Extended (miles de iconos innecesarios), resultando en un APK significativamente más grande.
-- **Sugerencia:** Activar `isMinifyEnabled = true` con reglas ProGuard adecuadas para Room, Moshi, Retrofit.
-
----
-
-### A08 — Proguard Rules vacías (no protegen Room, Moshi, Retrofit)
-
-> [!WARNING]
-> Si se activa R8, la app crasheará sin reglas keep
-
-- **Archivo:** [proguard-rules.pro](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/proguard-rules.pro)
-- **Detalle:** El archivo está prácticamente vacío (solo comentarios de plantilla). Faltan reglas `@Keep` para:
-  - Entidades Room (`Route`, `LocationPoint`, `Waypoint`, `SavedLocation`)
-  - Clases Moshi con `@JsonClass(generateAdapter = true)` (`GroqRequest`, `GroqResponse`, etc.)
-  - Interfaces Retrofit (`GroqApi`)
-- **Sugerencia:** Agregar reglas keep para las data classes y interfaces de serialización/red.
-
----
-
-### A09 — Bloque `catch` vacío en operaciones críticas (Errores silenciosos)
-
-> [!WARNING]
-> Múltiples operaciones de I/O fallan silenciosamente
-
-- **Archivos y líneas:**
-  - [RouteViewModel.kt:229](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/ui/RouteViewModel.kt#L229) — `fetchCurrentAddress`: `catch (e: Exception) { }`
-  - [RouteViewModel.kt:381](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/ui/RouteViewModel.kt#L381) — `saveCsvFile`: `catch (e: Exception) { }`
-  - [RouteViewModel.kt:407](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/ui/RouteViewModel.kt#L407) — `saveGpxFile`: `catch (e: Exception) { }`
-  - [RouteViewModel.kt:436](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/ui/RouteViewModel.kt#L436) — `importGpxFile`: `catch (e: Exception) { }`
-  - [LocationService.kt:413](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/location/LocationService.kt#L413) — `checkProximityToFavorites`: `catch (e: Exception) { }`
-  - [MapScreen.kt:339](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/ui/screens/MapScreen.kt#L339) — Map `update` block: `catch (e: Exception) { }`
-- **Impacto:** Los usuarios no reciben feedback cuando la exportación CSV/GPX falla, cuando la importación se corrompe, o cuando las notificaciones de proximidad fallan.
-- **Sugerencia:** Al mínimo, registrar logs (`Log.e`) y mostrar un Toast al usuario en las operaciones de exportación/importación.
-
----
-
-### A10 — `Retrofit` instanciado en cada llamada a la IA
-
-> [!WARNING]
-> Creación redundante de OkHttpClient y Retrofit por cada análisis
-
-- **Archivo:** [RouteViewModel.kt:335-341](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/ui/RouteViewModel.kt#L335-L341)
-- **Detalle:** `OkHttpClient.Builder()...build()` y `Retrofit.Builder()...build()` se ejecutan cada vez que el usuario solicita un análisis con IA. Cada instancia de OkHttpClient crea su propio pool de conexiones y threads.
-- **Impacto:** Fuga de threads y sockets, consumo de memoria innecesario.
-- **Sugerencia:** Crear una instancia `lazy` singleton de `Retrofit` (idealmente inyectada), reutilizada entre llamadas.
-
----
-
-### A11 — Actualización masiva de overlays del mapa en cada recomposición
-
-> [!CAUTION]
-> Rendimiento de UI degradado por recreación constante de objetos gráficos
-
-- **Archivo:** [MapScreen.kt:263-339](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/ui/screens/MapScreen.kt#L263-L339)
-- **Detalle:** El bloque `update` de `AndroidView` ejecuta en cada recomposición (triggered por `routePoints`, `waypoints`, `savedLocations`, `isTracking`, `latestLocation`). En cada ejecución:
-  1. Elimina TODOS los overlays `Polyline` y `Marker` (L288)
-  2. Recrea la Polyline con sort (L290-297)
-  3. Recrea TODOS los markers de waypoints (L298-316)
-  4. Recrea TODOS los markers de favoritos (L319-337)
-  5. Crea nuevos Drawables y los convierte a Bitmap (L274-286)
-- **Impacto:** Con 100+ favoritos y rutas largas, esto genera miles de objetos por segundo, causando jank visible y presión de GC.
-- **Sugerencia:** Implementar diffing — solo actualizar overlays que cambiaron. Cachear los Bitmaps de los drawables.
-
----
-
-### A12 — `MapView` instanciada con `remember` sin `DisposableEffect` completo
-
-> [!WARNING]
-> MapView no se destruye correctamente en `DetailScreen`
-
-- **Archivo:** [DetailScreen.kt:60](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/ui/screens/DetailScreen.kt#L60)
-- **Detalle:** `val mapView = remember { MapView(context) }` — En `DetailScreen`, el MapView se crea con `remember` pero no hay `DisposableEffect` que invoque `mapView.onDetach()` o `mapView.onPause()/onResume()`. Comparar con `MapScreen.kt:151-153` que sí tiene el `DisposableEffect`.
-- **Impacto:** Fuga del MapView y de su tile cache cuando el usuario navega fuera del detalle.
-- **Sugerencia:** Agregar un `DisposableEffect` equivalente al de `MapScreen`.
-
----
-
-### A13 — Cast inseguro `context as MainActivity` en Composable
-
-> [!WARNING]
-> Crash garantizado si el Composable se usa fuera de la Activity actual
-
-- **Archivo:** [MainActivity.kt:227](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/MainActivity.kt#L227)
-- **Detalle:** `val mainActivity = context as MainActivity` — Este cast lanza `ClassCastException` si el composable se ejecuta en un contexto diferente (preview, test, multi-window). También impide la reutilización del composable.
-- **Sugerencia:** Obtener la Activity con `LocalContext.current.findActivity()` (extensión) o pasar las funciones necesarias como lambdas.
-
----
-
-### A14 — `deleteRoutes` ejecuta deletes secuenciales sin transacción
-
-> [!WARNING]
-> Borrado masivo lento y potencialmente parcial
-
-- **Archivo:** [RouteViewModel.kt:214](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/ui/RouteViewModel.kt#L214)
-- **Detalle:** `routeIds.forEach { repository.deleteRoute(it) }` — Cada delete es una operación DB individual. Si ocurre un error a mitad, se borran parcialmente las rutas.
-- **Sugerencia:** Crear una operación `@Transaction` en el DAO que acepte una lista de IDs: `@Query("DELETE FROM routes WHERE id IN (:ids)")`.
-
----
-
-### A15 — `EncryptedSharedPreferences` instanciado en cada recomposición
-
-> [!WARNING]
-> Inicialización costosa en `remember` sin garantía de estabilidad
-
-- **Archivo:** [MainActivity.kt:200-211](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/MainActivity.kt#L200-L211)
-- **Detalle:** `EncryptedSharedPreferences.create()` dentro de un `remember {}` en un Composable. Esta operación implica acceso al AndroidKeyStore (operación criptográfica costosa). Aunque `remember` cachea el resultado, se re-ejecuta si la composición se recrea.
-- **Sugerencia:** Mover la creación de `EncryptedSharedPreferences` al `onCreate()` de la Activity y pasarlo como parámetro o usar un wrapper inyectado.
-
----
-
-### A16 — `exportSchema = false` en Room Database
-
-> [!WARNING]
-> Imposible generar migraciones automáticas sin esquema exportado
-
-- **Archivo:** [AppDatabase.kt:18](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/data/db/AppDatabase.kt#L18)
-- **Detalle:** Sin exportar el esquema, no se pueden crear migraciones automáticas ni verificar la integridad del esquema en tests.
-- **Sugerencia:** Habilitar `exportSchema = true` y configurar el directorio de esquemas en `build.gradle.kts`.
-
----
-
-### A17 — `org.gradle.parallel` definido dos veces con valores contradictorios
-
-> [!WARNING]
-> Configuración de Gradle inconsistente
-
-- **Archivo:** [gradle.properties:11 y :16](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/gradle.properties#L11-L16)
-- **Detalle:** 
-  - Línea 11: `org.gradle.parallel=false`
-  - Línea 16: `org.gradle.parallel=true`
-  
-  La última definición gana (`true`), pero tener la anterior como `false` con el comentario "Ajuste para máquina de 4GB de RAM" indica intención conflictiva.
-- **Sugerencia:** Eliminar una de las dos líneas para claridad.
-
----
-
-## 🟡 Severidad MEDIA (21 hallazgos)
-
-### M01 — `MainActivity` de 862 líneas (God Activity)
-
-- **Archivo:** [MainActivity.kt](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/MainActivity.kt)
-- **Detalle:** Contiene la Activity, el contenedor de navegación, 5 diálogos modales, la barra de navegación, la configuración de osmdroid, la lógica biométrica, y el drawer completo. Excede ampliamente el principio de responsabilidad única.
-- **Sugerencia:** Extraer: (a) NavHost/Navigator en un archivo separado, (b) cada diálogo en un `@Composable` independiente, (c) la configuración de OSMDroid en un helper.
-
----
-
-### M02 — `RouteViewModel` de 872 líneas (God ViewModel)
-
-- **Archivo:** [RouteViewModel.kt](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/ui/RouteViewModel.kt)
-- **Detalle:** Combina lógica de: navegación, tracking GPS, exportación CSV/GPX, importación GPX, respaldo ZIP, análisis IA, gestión de contactos, manejo de fotos, geocoding, y serialización. Más de 50 funciones públicas.
-- **Sugerencia:** Dividir en: `TrackingViewModel`, `ExportViewModel`, `BackupViewModel`, `AIAnalysisViewModel` o usar UseCases separados.
-
----
-
-### M03 — Navegación manual con `mutableStateOf` en lugar de Navigation Component
-
-- **Archivo:** [RouteViewModel.kt:48-53](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/ui/RouteViewModel.kt#L48-L53) y [RouteViewModel.kt:66](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/ui/RouteViewModel.kt#L66)
-- **Detalle:** La navegación se implementa con `var currentScreen by mutableStateOf<Screen>(Screen.Tracking)`. Aunque `navigation-compose` está en las dependencias (L94 de build.gradle.kts), no se usa. No hay soporte para deep links, back stack, ni animaciones de transición.
-- **Sugerencia:** Migrar a `NavHost` con `composable()` routes para obtener soporte de back button, deep links, y state restoration.
-
----
-
-### M04 — Composables no usan `Modifier` de forma idiomática
-
-- **Archivos:** [MapScreen.kt:345](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/ui/screens/MapScreen.kt#L345), [MapScreen.kt:437](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/ui/screens/MapScreen.kt#L437)
-- **Detalle:** Múltiples Composables encadenan `.padding()` y `.align()` directamente sin pasar el `Modifier` parameter, lo que dificulta la reutilización.
-
----
-
-### M05 — `Toast.makeText` llamado desde background thread (potencial crash)
-
-- **Archivos:**
-  - [RouteViewModel.kt:539](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/ui/RouteViewModel.kt#L539): `Toast.makeText(context, ...)` dentro de `launch(Dispatchers.IO)` — envuelto en `withContext(Dispatchers.Main)` ✅
-  - [MainActivity.kt:288](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/MainActivity.kt#L288): `Toast.makeText(context, "Restaurando datos y fotos...", ...)` — ejecutado en el callback de `onResult` del ActivityResultLauncher, que podría no estar en Main ⚠️
-- **Detalle:** La mayoría están correctamente envueltos en `withContext(Dispatchers.Main)`, pero algunos en callbacks podrían ejecutarse fuera del hilo principal dependiendo del ciclo de vida.
-
----
-
-### M06 — `UserAgentValue` falsifica un navegador Chrome
-
-- **Archivo:** [MainActivity.kt:117](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/MainActivity.kt#L117)
-- **Detalle:** `Configuration.getInstance().userAgentValue = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)..."` — Falsificar el User-Agent de un navegador de escritorio para descargar tiles de OpenStreetMap viola los [términos de uso de OSM](https://operations.osmfoundation.org/policies/tiles/).
-- **Sugerencia:** Usar un User-Agent descriptivo: `"LocalizadorPro/1.0 Android"`.
-
----
-
-### M07 — Formato de respaldo/restauración frágil basado en `|` delimiters
-
-- **Archivos:** [RouteViewModel.kt:468-473](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/ui/RouteViewModel.kt#L468-L473) (backup), [RouteViewModel.kt:568-604](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/ui/RouteViewModel.kt#L568-L604) (restore)
-- **Detalle:** Los datos se serializan como texto separado por `|`. Si algún campo (nombre, dirección, comentario) contiene el carácter `|`, el parsing se corrompe silenciosamente. No hay header ni versión del formato.
-- **Sugerencia:** Usar JSON o CSV con escape apropiado. Agregar un campo de versión para compatibilidad futura.
-
----
-
-### M08 — Restauración de backup escribe directamente archivos de base de datos
-
-- **Archivo:** [RouteViewModel.kt:563-565](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/ui/RouteViewModel.kt#L563-L565)
-- **Detalle:** `if (name.contains("localizador_database"))` — Copia archivos de base de datos directamente al filesystem mientras Room puede tener la DB abierta. Esto puede corromper la base de datos y causar crashes de SQLite.
-- **Sugerencia:** Cerrar la instancia de Room antes de sobrescribir archivos de DB, o usar Room's backup/restore API.
-
----
-
-### M09 — `OnConflictStrategy.REPLACE` en todas las inserciones del DAO
-
-- **Archivo:** [RouteDao.kt:14,44,47,59,70](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/data/db/RouteDao.kt#L14)
-- **Detalle:** Todos los `@Insert` usan `OnConflictStrategy.REPLACE`. Esto significa que si se inserta un registro con el mismo `id`, reemplaza silenciosamente los datos existentes en lugar de fallar.
-- **Impacto:** Puede causar pérdida silenciosa de datos si se duplican IDs (por ejemplo, durante la restauración de backup).
-- **Sugerencia:** Usar `OnConflictStrategy.ABORT` (default) para operaciones donde los duplicados indican un bug, y `IGNORE` para importación.
-
----
-
-### M10 — `deleteAllData()` no borra puntos de ubicación ni waypoints ni fotos
-
-- **Archivo:** [RouteRepository.kt:202-205](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/data/repository/RouteRepository.kt#L202-L205)
-- **Detalle:** Solo borra `routes` y `saved_locations`. Los `location_points` y `waypoints` se borran por CASCADE de la FK. Sin embargo, las fotos físicas en `filesDir/images` NO se borran.
-- **Impacto:** El almacenamiento del dispositivo se llena con fotos huérfanas.
-- **Sugerencia:** Agregar limpieza de `File(context.filesDir, "images")` en la operación de limpieza.
-
----
-
-### M11 — `material-icons-extended` importado completo
-
-- **Archivo:** [app/build.gradle.kts:84](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/build.gradle.kts#L84)
-- **Detalle:** `implementation(libs.androidx.compose.material.icons.extended)` incluye **miles** de iconos de Material. Sin R8/ProGuard activado, todos se incluyen en el APK.
-- **Impacto:** Aumenta el tamaño del APK en ~5-10 MB innecesariamente.
-- **Sugerencia:** Si R8 está desactivado, importar solo los iconos necesarios con `additive` o activar R8 para tree-shaking.
-
----
-
-### M12 — `namespace = "com.example"` — Namespace genérico
-
-- **Archivo:** [app/build.gradle.kts:14](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/build.gradle.kts#L14)
-- **Detalle:** El namespace es `com.example` (genérico de template), mientras que el `applicationId` es `com.aistudio.localizador.vqtspk`. Esta discrepancia puede causar confusiones en imports, R class, y conflictos con otros proyectos de ejemplo.
-- **Sugerencia:** Alinear el namespace al applicationId o a un dominio controlado.
-
----
-
-### M13 — `firebase-bom` incluido pero sin productos Firebase utilizados
-
-- **Archivo:** [app/build.gradle.kts:76](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/build.gradle.kts#L76)
-- **Detalle:** `implementation(platform(libs.firebase.bom))` está presente, pero no hay ninguna librería Firebase individual como dependencia. Esto agrega resolución de dependencias innecesaria.
-- **Sugerencia:** Eliminar `firebase-bom` si no se usa ningún producto Firebase.
-
----
-
-### M14 — `exifinterface` y `mpandroidchart` declarados inline (no en catálogo)
-
-- **Archivo:** [app/build.gradle.kts:116-119](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/build.gradle.kts#L116-L119)
-- **Detalle:** Dos dependencias usan declaración inline en lugar del catálogo de versiones (`libs.versions.toml`). `mpandroidchart:v3.1.0` proviene de JitPack y es una librería antigua (2020) sin mantenimiento activo.
-- **Sugerencia:** Migrar al catálogo de versiones. Evaluar alternativas modernas a MPAndroidChart como `Vico` o charts en Compose Canvas puro (ya hay un `ElevationChart` implementado pero sin usar).
-
----
-
-### M15 — Composable `ElevationChart` definido pero no utilizado
-
-- **Archivo:** [DetailScreen.kt:317-336](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/ui/screens/DetailScreen.kt#L317-L336)
-- **Detalle:** El composable `ElevationChart` basado en Canvas puro está implementado pero no se referencia en ninguna parte (se usa `ProfessionalChart` en su lugar).
-- **Sugerencia:** Eliminar el código muerto o usarlo como alternativa para dispositivos sin la librería MPAndroidChart.
-
----
-
-### M16 — `Geocoder` llamado en el hilo IO sin verificar disponibilidad
-
-- **Archivos:** [RouteViewModel.kt:226-228](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/ui/RouteViewModel.kt#L226-L228), [RouteViewModel.kt:283](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/ui/RouteViewModel.kt#L283)
-- **Detalle:** `Geocoder(context, Locale.getDefault())` puede no estar disponible en dispositivos sin Google Play Services. `Geocoder.isPresent()` nunca se verifica.
-- **Sugerencia:** Verificar `Geocoder.isPresent()` antes de usar, y proporcionar un fallback (por ejemplo, coordenadas formateadas).
-
----
-
-### M17 — `startService()` usado para detener tracking en lugar de `stopService()`
-
-- **Archivo:** [RouteViewModel.kt:200-201](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/ui/RouteViewModel.kt#L200-L201)
-- **Detalle:** Se envía una Intent con `ACTION_STOP` via `context.startService()`. Aunque funciona, es semánticamente confuso y reinicia el Service si ya estaba detenido.
-- **Sugerencia:** Patrón correcto, pero documentar que el servicio se auto-detiene con `stopSelf()` internamente.
-
----
-
-### M18 — `preStartBuffer` es una `mutableListOf` no thread-safe
-
-- **Archivo:** [LocationService.kt:50](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/location/LocationService.kt#L50)
-- **Detalle:** `private val preStartBuffer = mutableListOf<LocationPoint>()` — Accedido desde el callback de ubicación (Main thread) y leído/limpiado desde `startAutoNewRoute` (corrutina IO). No hay sincronización.
-- **Impacto:** `ConcurrentModificationException` potencial.
-- **Sugerencia:** Usar `Collections.synchronizedList()` o `CopyOnWriteArrayList`.
-
----
-
-### M19 — Hardcoded strings en español por todo el código
-
-- **Archivos:** Todos los archivos de UI
-- **Detalle:** Todos los textos de UI están hardcodeados en español directamente en el código Kotlin: `"Autenticación Requerida"`, `"Localizador"`, `"Grabar"`, etc. No usan `stringResource(R.string.xxx)`.
-- **Impacto:** Imposible internacionalizar. Dificulta el testing automatizado.
-- **Sugerencia:** Extraer todos los strings a `res/values/strings.xml`.
-
----
-
-### M20 — `derivedStateOf` con `System.currentTimeMillis()` nunca se recomputa automáticamente
-
-- **Archivo:** [MapScreen.kt:78-80](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/ui/screens/MapScreen.kt#L78-L80)
-- **Detalle:** `val isManualMode by remember { derivedStateOf { System.currentTimeMillis() - lastInteractionTime < 10000L } }` — `derivedStateOf` solo se recomputa cuando sus entradas de estado cambian (`lastInteractionTime`). Pero el valor de `System.currentTimeMillis()` NO es un estado observable, por lo que la comparación temporal no funciona como se espera (no se actualiza automáticamente cada segundo).
-- **Impacto:** `isManualMode` puede quedar en `true` indefinidamente hasta que otro evento de estado lo invalide.
-- **Sugerencia:** En la práctica, el `LaunchedEffect(lastInteractionTime)` en L191-196 maneja el timeout reseteando `lastInteractionTime`, lo que indirectamente recomputa `isManualMode`. Sin embargo, `isManualMode` no se usa directamente — se usa `lastInteractionTime != 0L` en su lugar (L159, L267). Este `derivedStateOf` es código muerto efectivo.
-
----
-
-### M21 — `tileDownloadThreads = 5` innecesariamente alto para mapas
-
-- **Archivo:** [MainActivity.kt:126](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/MainActivity.kt#L126)
-- **Detalle:** Cinco threads de descarga de tiles compiten con el procesamiento GPS y la UI por recursos en un dispositivo de 4 GB RAM.
-- **Sugerencia:** Reducir a 2-3 threads, especialmente para dispositivos de gama baja.
-
----
-
-## 🟢 Severidad BAJA (12 hallazgos)
-
-### B01 — `Greeting` composable sin uso funcional
-
-- **Archivo:** [MainActivity.kt:858-861](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/MainActivity.kt#L858-L861)
-- **Detalle:** Template residual de proyecto nuevo. Ocupa espacio y puede confundir.
-
-### B02 — Scripts `.sh` de ADB en el directorio `app/`
-
-- **Archivos:** `app/new.sh`, `app/new2.sh`, `app/new3.sh`, `app/new4.sh`
-- **Detalle:** Scripts de reinicio de ADB no deberían estar en el directorio del módulo. Contienen rutas hardcodeadas.
-
-### B03 — `.env` contiene placeholders en texto plano
-
-- **Archivo:** [.env](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/.env)
-- **Detalle:** `GEMINI_API_KEY=MY_GEMINI_API_KEY` — No es un secreto real, pero la presencia del archivo en el repositorio puede confundir.
-
-### B04 — `DarkColorScheme` no personalizado
-
-- **Archivo:** [Theme.kt:14-19](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/ui/theme/Theme.kt#L14-L19)
-- **Detalle:** Los colores dark siguen siendo los defaults de Material (`Purple80`, `PurpleGrey80`) mientras que los colores light están completamente personalizados. La experiencia dark mode será visualmente inconsistente.
-
-### B05 — Colores hardcodeados en Composables
-
-- **Archivos:** [MapScreen.kt:294,349](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/ui/screens/MapScreen.kt#L294), [MainActivity.kt:720](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/MainActivity.kt#L720)
-- **Detalle:** `Color(0xFF1B5E20)`, `Color(0xFF21005D)`, `Color(0xFF25D366)` — Colores usados directamente en lugar de referirse al theme del Material Design.
-- **Sugerencia:** Definir colores semánticos en el ColorScheme del Theme.
-
-### B06 — `isCrunchPngs = false` desactiva optimización de PNGs
-
-- **Archivo:** [app/build.gradle.kts:45](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/build.gradle.kts#L45)
-- **Detalle:** Desactiva la compresión de PNGs en release builds, aumentando el tamaño del APK.
-
-### B07 — Duplicación del color picker en 4 pantallas
-
-- **Archivos:** MapScreen (waypoint dialog + save location dialog), SavedLocationsScreen (add dialog + edit dialog)
-- **Detalle:** El componente de selección de color (slider + chips predefinidos) se repite idénticamente en 4 lugares. ~40 líneas por instancia.
-- **Sugerencia:** Extraer un `@Composable ColorPicker(selectedColor, onColorSelected)`.
-
-### B08 — Duplicación del bloque de cámara/galería en 3 pantallas
-
-- **Archivos:** MapScreen (2 veces), SavedLocationsScreen (1 vez)
-- **Detalle:** Los botones de "Cámara" y "Galería" con su lógica de permisos se repiten en 3 lugares.
-- **Sugerencia:** Extraer un `@Composable PhotoCapture(onPhotoSelected)`.
-
-### B09 — `Typography` solo define `bodyLarge`
-
-- **Archivo:** [Type.kt](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/ui/theme/Type.kt)
-- **Detalle:** Solo se personaliza `bodyLarge`. El resto de estilos tipográficos usan defaults, pero se aplican extensivamente por todo el código.
-
-### B10 — `tileFileSystemCacheMaxBytes = 500MB` excesivo
-
-- **Archivo:** [MainActivity.kt:129](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/MainActivity.kt#L129)
-- **Detalle:** 500 MB de caché de tiles es considerable para un dispositivo móvil, especialmente de gama baja.
-
-### B11 — `SavedLocation` usa `import` FQN en DAO
-
-- **Archivo:** [RouteDao.kt:71,74,77,80](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/data/db/RouteDao.kt#L71)
-- **Detalle:** `com.example.data.model.SavedLocation` se referencia con nombre completo en lugar de un import.
-
-### B12 — `biometric` y `security-crypto` usan versiones alpha
-
-- **Archivo:** [libs.versions.toml:43-44](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/gradle/libs.versions.toml#L43-L44)
-- **Detalle:** `biometric = "1.2.0-alpha05"` y `securityCrypto = "1.1.0-alpha06"`. Versiones alpha pueden tener bugs y APIs inestables.
-
----
-
-## ⚡ Análisis de Rendimiento
-
-### Hilo Principal (UI Thread)
-
-| Problema | Ubicación | Impacto |
-|----------|-----------|---------|
-| Callback GPS en Main Looper | LocationService L235 | Bloqueo periódico del UI cada 1-5s |
-| SharedPreferences leídas en cada tick GPS | LocationService L248 | I/O síncrona en Main thread |
-| Conversión de Drawables a Bitmaps en `update` | MapScreen L274-286 | Allocations en cada recomposición |
-| Eliminación y recreación de todos los overlays | MapScreen L288 | O(n) por cada frame en rutas largas |
-| `sortedBy` en cada update de overlay | MapScreen L292 | Ordenamiento O(n log n) repetido |
-
-### Fugas de Memoria (Memory Leaks)
-
-| Patrón | Riesgo | Archivos |
-|--------|--------|----------|
-| ViewModel retiene Activity Context | **ALTO** | RouteViewModel (21 funciones) |
-| MapView sin DisposableEffect | **MEDIO** | DetailScreen L60 |
-| OkHttpClient creado por llamada | **MEDIO** | RouteViewModel L335 |
-| Static MutableStateFlow en companion | **BAJO** | LocationService L83-96 (intencionalmente estático, no leak real) |
-| `preStartBuffer` crece durante 30 min | **BAJO** | LocationService L51 |
-
-### Consumo de Batería y Red
-
-| Factor | Evaluación |
-|--------|-----------|
-| Intervalo GPS mínimo | 1 seg (configurable) — puede ser agresivo para batería |
-| `PRIORITY_HIGH_ACCURACY` siempre | No hay adaptación según velocidad o contexto |
-| 5 threads de descarga de tiles | Alto para dispositivos limitados |
-| Caché de 500 MB en disco | Uso excesivo de almacenamiento |
-| `tileDownloadThreads = 5` | Compite con GPS y UI por recursos |
-| Retrofit sin connection pooling | Conexiones TCP innecesarias a Groq |
-
-### Recomendaciones de Rendimiento Prioritarias
-
-1. **Mover el callback GPS a un thread secundario** para liberar el Main thread
-2. **Cachear SharedPreferences** en el Service como propiedad de instancia
-3. **Implementar diffing en overlays del mapa** — solo actualizar lo que cambió
-4. **Singleton de Retrofit/OkHttp** para la API de Groq
-5. **Agregar `DisposableEffect` al MapView** de DetailScreen
-
----
-
-## 🔒 Análisis de Seguridad
-
-### Puntos Fuertes ✅
-
-- **Cifrado AES/GCM con Android Keystore** para la API Key de Groq
-- **Biometría con `CryptoObject`** — verdadera autenticación vinculada a hardware
-- **`setInvalidatedByBiometricEnrollment(true)`** — protección ante cambios de huellas
-- **`EncryptedSharedPreferences`** para almacenamiento sensible
-- **`FileProvider`** para compartir archivos entre apps
-
-### Vulnerabilidades Detectadas ⚠️
-
-| ID | Vulnerabilidad | Severidad |
-|----|---------------|-----------|
-| S01 | `isMinifyEnabled = false` expone código decompilable | ALTA |
-| S02 | API Key de Groq pasada como string en memoria (`groqApiKey`) | MEDIA |
-| S03 | `android:allowBackup="true"` permite extracción de datos via ADB | MEDIA |
-| S04 | Sin certificate pinning para la API de Groq | BAJA |
-| S05 | User-Agent falsificado puede violar ToS de tile providers | BAJA |
-
-### Nota sobre S02
-
-La API key de Groq se descifra y almacena en `var groqApiKey by mutableStateOf<String?>` — permanece en memoria como texto plano durante toda la sesión. Aunque el almacenamiento es seguro (EncryptedSharedPreferences + Keystore), un dump de memoria del proceso podría extraerla.
-
----
-
-## 🏗️ Análisis de Arquitectura
-
-### Diagrama de Dependencias Actual
-
-```mermaid
-graph TD
-    A["MainActivity<br/>(862 líneas)"] --> B["RouteViewModel<br/>(872 líneas)"]
-    A --> C["MainContainer<br/>(Composable)"]
-    C --> D["MapScreen<br/>(883 líneas)"]
-    C --> E["HistoryScreen<br/>(337 líneas)"]
-    C --> F["SavedLocationsScreen<br/>(724 líneas)"]
-    C --> G["DetailScreen<br/>(353 líneas)"]
-    B --> H["RouteRepository"]
-    B --> I["GroqApi / Retrofit"]
-    H --> J["RouteDao"]
-    J --> K["AppDatabase"]
-    L["LocationService<br/>(639 líneas)"] --> H2["RouteRepository<br/>(otra instancia)"]
-    H2 --> J
-    L -.->|"Static StateFlow"| B
+```kotlin
+isMinifyEnabled = false // Línea 46
 ```
 
-### Problemas Arquitectónicos
+**Impacto:** El APK de producción incluye todo el código sin ofuscar, incluyendo clases de Retrofit/Moshi/OkHttp. Esto resulta en:
+- APK significativamente más grande (>2x estimado)
+- Código fuente completamente legible en descompilación (ingeniería inversa trivial)
+- Sin tree-shaking de dependencias Material Icons Extended (~2400 iconos, >5MB)
+- Sin optimización R8 de clases no utilizadas
 
-1. **Ausencia de Inyección de Dependencias**: Todo se instancia manualmente en `onCreate()`. El Service crea su propia instancia de Repository. No hay inversión de control.
+**Sugerencia:** Activar `isMinifyEnabled = true` y configurar reglas ProGuard para Retrofit, Moshi, Room y OSMDroid.
 
-2. **Acoplamiento ViewModel ↔ View**: El ViewModel conoce `Context`, `Intent`, `Uri`, `Bitmap`, `SharedPreferences`, y `Toast`. Debería ser agnóstico a Android.
+---
 
-3. **Comunicación Service ↔ UI via Static StateFlow**: Funciona, pero es un patrón frágil. Si el Service es destruido y recreado, los StateFlows se reinician. Considerar `ServiceConnection` con `Binder` o un `BroadcastReceiver`.
+### A02 — `fallbackToDestructiveMigration()` destruye datos de usuario silenciosamente
 
-4. **Single-module monolítico**: Todo el código vive en `:app`. Para un proyecto de este tamaño es aceptable, pero dificulta la escalabilidad.
+**Archivo:** [AppDatabase.kt](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/data/db/AppDatabase.kt#L35)
 
-5. **Navigation sin NavHost**: Se pierde soporte de back stack, deep links, state restoration, y animaciones. El `when` block en L803-830 es un reemplazo manual frágil.
-
-### Arquitectura Recomendada
-
-```mermaid
-graph TD
-    subgraph UI["UI Layer"]
-        A["MainActivity"] --> B["NavHost"]
-        B --> C["MapScreen"]
-        B --> D["HistoryScreen"]
-        B --> E["SavedLocationsScreen"]
-        B --> F["DetailScreen"]
-    end
-    
-    subgraph VM["ViewModel Layer"]
-        G["TrackingViewModel"]
-        H["HistoryViewModel"]
-        I["ExportUseCase"]
-        J["AIAnalysisUseCase"]
-    end
-    
-    subgraph Data["Data Layer"]
-        K["RouteRepository<br/>(singleton)"]
-        L["GroqRepository"]
-        M["PreferencesRepository"]
-    end
-    
-    subgraph Service["Service Layer"]
-        N["LocationService"]
-    end
-    
-    C --> G
-    D --> H
-    G --> K
-    H --> K
-    N --> K
-    G --> I
-    F --> J
-    J --> L
+```kotlin
+.fallbackToDestructiveMigration() // Línea 35
 ```
 
----
+**Impacto:** Cada vez que se incrementa la versión de la base de datos (actualmente `version = 7`), todas las rutas, waypoints y favoritos del usuario se eliminan silenciosamente sin aviso. En una app de tracking donde los datos son el valor central, esto es devastador.
 
-## 📋 Observaciones Adicionales
-
-### Archivos en el directorio raíz del proyecto
-
-El proyecto contiene múltiples archivos de documentación, prompts, y respaldos en el directorio raíz que no pertenecen a un proyecto Android estándar:
-
-| Archivo | Observación |
-|---------|-------------|
-| `PROMPT_CORRECCION.txt` | Prompt de IA — no debería estar en el repo |
-| `Prompt Localizador.txt` | Prompt de IA — no debería estar en el repo |
-| `RESPALDO_CHAT.md` | Conversación con IA — no debería estar en el repo |
-| `RESPALDO_ANTERIOR/` | Backup manual — debería usar Git branches |
-| `skill.md`, `skill-anterior.md` | Instrucciones de IA — no debería estar en el repo |
-| `instrucciones_agente.md` | Instrucciones de IA — no debería estar en el repo |
-| `localizador.zip` | ZIP del propio proyecto dentro del proyecto |
-
-**Sugerencia:** Agregar estos archivos al `.gitignore` y eliminarlos del tracking de Git.
-
-### Puntos Positivos del Código
-
-1. **Buen uso de `StateFlow`** para comunicar estado reactivo entre el Service y la UI
-2. **Filtros de GPS sólidos** — drift detection, sanity checks de velocidad, modo avión
-3. **Patrón Repository** implementado correctamente con separación DAO/Repository
-4. **Foreign Keys con CASCADE** en Room — limpieza automática de datos huérfanos
-5. **Buffer de pre-grabación** — solución creativa para capturar movimiento antes del inicio
-6. **Cifrado biométrico real** con CryptoObject — no es solo "gating" de UI
-7. **Diseño de UI Material 3** bien aplicado con color scheme personalizado
+**Sugerencia:** Implementar migraciones explícitas con `addMigrations(MIGRATION_7_8)` para preservar datos entre versiones. Mantener `fallbackToDestructiveMigration()` solo en builds de desarrollo.
 
 ---
 
-> **Fin del Reporte.** Todos los hallazgos son sugerencias documentales. Ningún archivo del workspace fue modificado.
+### A03 — ViewModel God Object: RouteViewModel con 885 líneas
+
+**Archivo:** [RouteViewModel.kt](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/ui/RouteViewModel.kt) — 885 líneas, 44KB
+
+**Impacto:** Este ViewModel viola el principio de responsabilidad única al manejar simultáneamente:
+- Navegación de pantallas
+- Estado de tracking GPS
+- Análisis con IA (Groq)
+- Backup/Restore ZIP
+- Importación/Exportación GPX y CSV
+- Gestión de contactos
+- Geocodificación
+- Manejo de fotos/cámara
+- Preferencias de usuario
+- Compartir rutas
+
+**Consecuencias:**
+- Recomposiciones innecesarias en Compose: cualquier cambio de estado dispara recomposiciones en todas las pantallas
+- Dificultad extrema para testing unitario
+- `mutableStateOf` expuestos directamente crean acoplamiento fuerte
+
+**Sugerencia:** Dividir en ViewModels especializados: `TrackingViewModel`, `HistoryViewModel`, `FavoritesViewModel`, `SettingsViewModel`, `ExportViewModel`.
+
+---
+
+### A04 — Fuga de memoria potencial: `CoroutineScope` manual en LocationService
+
+**Archivo:** [LocationService.kt](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/location/LocationService.kt#L33)
+
+```kotlin
+private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob()) // Línea 33
+```
+
+**Impacto:** Aunque `serviceScope.cancel()` se invoca en `onDestroy()` (L645), existe un riesgo si Android mata el proceso sin invocar `onDestroy()` (edge case conocido en Foreground Services con bajo nivel de memoria). Las coroutinas lanzadas en `serviceScope` acceden a `repository`, que a su vez mantiene una referencia a la base de datos Room.
+
+Además, `stopTracking()` (L555-576) lanza una nueva coroutina en `serviceScope` para guardar datos, pero llama `stopSelf()` dentro de `withContext(Dispatchers.Main)`, lo que puede provocar que el servicio se destruya antes de que la coroutina de guardado complete su ejecución.
+
+**Sugerencia:** Usar `lifecycleScope` del servicio (con `LifecycleService`) o garantizar que `stopSelf()` solo se invoque después de que el Job de guardado se complete usando `.join()`.
+
+---
+
+### A05 — Thread Safety: Acceso concurrente a variables mutables sin sincronización
+
+**Archivo:** [LocationService.kt](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/location/LocationService.kt)
+
+Variables afectadas:
+- `totalDistanceMeters` (L43) — leída y escrita desde múltiples coroutinas en `serviceScope`
+- `lastRecordedLocation` (L44) — accedida desde `processNewLocation()` en el `HandlerThread` y desde coroutinas IO
+- `preStartBuffer` (L55) — `mutableListOf` accedido desde el `HandlerThread` del callback GPS y desde coroutinas
+- `consecutiveMovements` (L59) — incrementado desde el callback GPS, leído desde la misma
+
+**Impacto:** Race conditions que pueden causar:
+- Cálculos de distancia incorrectos (doble conteo o puntos perdidos)
+- `ConcurrentModificationException` en `preStartBuffer`
+- Arranques automáticos espurios en modo auto
+
+**Sugerencia:** Usar `AtomicInteger`/`AtomicReference` para contadores, y `CopyOnWriteArrayList` o `Mutex` de coroutinas para `preStartBuffer`. Serializar todo el procesamiento de ubicación en un solo `Dispatcher.IO.limitedParallelism(1)`.
+
+---
+
+### A06 — `MutableStateFlow` estáticos en companion object causan leaks entre configuraciones
+
+**Archivo:** [LocationService.kt](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/location/LocationService.kt#L88-L101)
+
+```kotlin
+companion object {
+    private val _isTracking = MutableStateFlow(false)        // L88
+    private val _currentRouteId = MutableStateFlow<Int?>(null) // L91
+    private val _latestLocation = MutableStateFlow<Location?>(null) // L94
+    // ...
+}
+```
+
+**Impacto:** Estos `StateFlow` estáticos sobreviven a la destrucción del servicio y mantienen referencias a objetos `Location` (que contienen `Bundle` con extras). Si el servicio se destruye sin limpiar correctamente, los valores obsoletos persisten en la siguiente instancia.
+
+Aunque `stopTracking()` resetea los valores, el código **no los resetea** en `onDestroy()` si el servicio es matado por el sistema sin pasar por `stopTracking()`.
+
+**Sugerencia:** Añadir reseteo explícito de todos los `StateFlow` estáticos en `onDestroy()`.
+
+---
+
+### A07 — `context as MainActivity` casting inseguro en Composable
+
+**Archivo:** [MainActivity.kt](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/MainActivity.kt#L233)
+
+```kotlin
+val mainActivity = context as MainActivity // Línea 233
+```
+
+**Impacto:** Este cast forzado fallará con `ClassCastException` si el composable es utilizado en un contexto diferente (tests instrumentados, Preview, multi-window). Es una violación directa de la separación entre UI y Activity en Jetpack Compose.
+
+**Sugerencia:** Pasar las funciones necesarias como lambdas al composable, o usar un `LocalProvider` para exponer la funcionalidad de biometría.
+
+---
+
+### A08 — `Toast.makeText` desde contexto de Composable sin verificar lifecycle
+
+**Archivo:** [MainActivity.kt](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/MainActivity.kt#L294) y múltiples otros
+
+```kotlin
+Toast.makeText(context, "Restaurando datos y fotos...", Toast.LENGTH_SHORT).show() // L294
+```
+
+**Impacto:** Las llamadas a `Toast` desde callbacks de `ActivityResultContracts` no verifican que la actividad siga activa. Si el usuario rota la pantalla durante un backup/restore, el `context` puede apuntar a una Activity destruida, causando un leak del Window token o crash.
+
+**Sugerencia:** Usar `Snackbar` de Material 3 integrado con el `SnackbarHostState` de Compose, que respeta el ciclo de vida.
+
+---
+
+### A09 — Excepciones silenciosas en operaciones críticas de I/O
+
+**Archivos múltiples:**
+- [RouteViewModel.kt L282](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/ui/RouteViewModel.kt#L282): `catch (e: Exception) { }` en backup
+- [RouteViewModel.kt L388](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/ui/RouteViewModel.kt#L388): `catch (e: Exception) { }` en CSV export
+- [RouteViewModel.kt L416](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/ui/RouteViewModel.kt#L416): `catch (e: Exception) { }` en GPX export
+- [RouteViewModel.kt L445](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/ui/RouteViewModel.kt#L445): `catch (e: Exception) { }` en GPX import
+- [LocationService.kt L424](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/location/LocationService.kt#L424): `catch (e: Exception) { }` en proximidad
+
+**Impacto:** Fallos silenciosos en operaciones de exportación, importación y backup. El usuario cree que la operación fue exitosa cuando puede haber fallado completamente. Particularmente grave en backup (`prepareBackupFile`) y restore (`restoreFromBackup`), donde la pérdida de datos pasa desapercibida.
+
+**Sugerencia:** Implementar un sistema de feedback al usuario para errores (Snackbar con acción de reintentar), y al menos loggear todas las excepciones.
+
+---
+
+### A10 — Vulnerabilidad de Zip Slip en `restoreFromBackup`
+
+**Archivo:** [RouteViewModel.kt](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/ui/RouteViewModel.kt#L564-L617)
+
+```kotlin
+val name = entry.name
+// ...
+(name.startsWith("fotos/") || name.startsWith("images/")) -> {
+    val fileName = name.substringAfterLast("/")
+    if (fileName.isNotEmpty()) File(imageDir, fileName).outputStream().use { zis.copyTo(it) }
+}
+```
+
+**Impacto:** Aunque se extrae solo el nombre del archivo (mitigando parcialmente el ataque), no se valida que `entry.name` no contenga secuencias de path traversal como `images/../../` antes del `substringAfterLast`. En el caso de restaurar archivos de base de datos (L572-574), el path se construye directamente desde `entry.name`:
+
+```kotlin
+name.contains("localizador_database") -> {
+    val dbFile = File(context.getDatabasePath("localizador_database").parent, name.substringAfterLast("/"))
+    dbFile.outputStream().use { zis.copyTo(it) }
+}
+```
+
+Un ZIP malicioso podría sobreescribir archivos arbitrarios en el directorio de la base de datos.
+
+**Sugerencia:** Validar que el archivo descomprimido se resuelve dentro del directorio esperado usando `canonicalPath.startsWith(targetDir.canonicalPath)`.
+
+---
+
+### A11 — User-Agent falsificado para OSMDroid
+
+**Archivo:** [MainActivity.kt](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/MainActivity.kt#L137)
+
+```kotlin
+Configuration.getInstance().userAgentValue = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36..."
+```
+
+**Impacto:** Violación de los [Términos de Uso de OpenStreetMap](https://operations.osmfoundation.org/policies/tiles/) que requieren un User-Agent identificable. Suplantar un navegador de escritorio puede resultar en:
+- Bloqueo de IP por parte de los servidores de tiles OSM
+- Tráfico identificado como scraping automatizado e inhibido
+
+**Sugerencia:** Usar un User-Agent descriptivo: `"LocaizadorPro/1.0 (Android; contact: dev@example.com)"`.
+
+---
+
+### A12 — Permisos excesivos declarados sin uso evidente
+
+**Archivo:** [AndroidManifest.xml](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/AndroidManifest.xml#L16-L19)
+
+```xml
+<uses-permission android:name="android.permission.CAMERA" />           <!-- L16 -->
+<uses-permission android:name="android.permission.ACCESS_MEDIA_LOCATION" />  <!-- L17 -->
+<uses-permission android:name="android.permission.READ_CONTACTS" />    <!-- L18 -->
+<uses-permission android:name="android.permission.WRITE_CONTACTS" />   <!-- L19 -->
+```
+
+**Impacto:**
+- `WRITE_CONTACTS`: Nunca se utiliza en el código. La app solo lee contactos y lanza un Intent de inserción (que no requiere este permiso).
+- `CAMERA`: Se solicita correctamente en runtime, pero el permiso en Manifest hace que Google Play muestre la app como requirente de cámara incluso si el feature está marcado `required=false`.
+
+Los permisos innecesarios degradan la confianza del usuario y aumentan la superficie de ataque.
+
+**Sugerencia:** Eliminar `WRITE_CONTACTS` del Manifest.
+
+---
+
+### A13 — `SharedPreferences` accedidas desde el hilo principal sin caching consistente
+
+**Archivos:**
+- [RouteViewModel.kt L77](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/ui/RouteViewModel.kt#L77): `PreferenceManager.getDefaultSharedPreferences(context)` en cada toggle
+- [RouteViewModel.kt L108](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/ui/RouteViewModel.kt#L108): Misma instancia recreada en `updateDefaultLocationPersistently`
+- [RouteViewModel.kt L115-116](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/ui/RouteViewModel.kt#L115-L116): Y en `toggleAutoMode`
+
+**Impacto:** Cada llamada a `PreferenceManager.getDefaultSharedPreferences()` implica una lectura de disco potencial (la primera vez) y un cache por instancia. Crear múltiples instancias del mismo `SharedPreferences` en diferentes métodos desperdicia memoria y puede crear inconsistencias de estado durante lecturas/escrituras concurrentes.
+
+**Sugerencia:** Cachear una única instancia de `SharedPreferences` como propiedad del ViewModel durante `init {}`, como ya se hace en `LocationService`.
+
+---
+
+### A14 — `BiometricCipherHelper.getEncryptCipher()` no usa `CryptoObject` para cifrado
+
+**Archivo:** [MainActivity.kt](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/MainActivity.kt#L547-L548)
+
+```kotlin
+val encryptCipher = BiometricCipherHelper.getEncryptCipher() // L547
+val (iv, encrypted) = BiometricCipherHelper.encryptText(tempKey, encryptCipher) // L548
+```
+
+**Impacto:** El cifrado de la API Key se realiza **sin** pasar el Cipher por un `BiometricPrompt.CryptoObject`. Dependiendo del nivel de API y la implementación del Keystore del dispositivo, el `Cipher` podría funcionar sin autenticación biométrica real, convirtiendo el modelo de seguridad `setUserAuthenticationRequired(true)` en ineficaz. Comparar con el descifrado (L170-172) que SÍ usa `authenticateWithCrypto()` correctamente.
+
+**Sugerencia:** Envolver el `encryptCipher` en un flujo biométrico con `authenticateWithCrypto()` antes de llamar a `encryptText()`.
+
+---
+
+## 🟡 Severidad MEDIA (14 hallazgos)
+
+---
+
+### M01 — Recomposición excesiva: `derivedStateOf` con `System.currentTimeMillis()` no funciona
+
+**Archivo:** [MapScreen.kt](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/ui/screens/MapScreen.kt#L78-L80)
+
+```kotlin
+val isManualMode by remember { 
+    derivedStateOf { System.currentTimeMillis() - lastInteractionTime < 10000L }
+}
+```
+
+**Impacto:** `derivedStateOf` solo recalcula cuando sus inputs de estado Compose cambian. `System.currentTimeMillis()` **no es un estado Compose observable**, por lo que `isManualMode` nunca se actualiza en tiempo real — solo se recalcula cuando `lastInteractionTime` cambia. El nombre sugiere una intención de temporizador, pero la implementación no cumple esa semántica.
+
+> [!NOTE]
+> La variable `isManualMode` ni siquiera se utiliza directamente en el código de renderizado; se usa `lastInteractionTime != 0L` en su lugar (L302), lo que sugiere código vestigial.
+
+---
+
+### M02 — MapView recreada en recomposición de DetailScreen
+
+**Archivo:** [DetailScreen.kt](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/ui/screens/DetailScreen.kt#L139)
+
+```kotlin
+update = { view ->
+    view.overlays.clear() // Línea 139 — DESTRUYE Y RECREA todos los overlays
+    val poly = Polyline().apply { ... }
+    view.overlays.add(poly)
+    waypoints.forEach { wp ->
+        val marker = Marker(view).apply { ... } // NUEVO marcador por recomposición
+        view.overlays.add(marker)
+    }
+}
+```
+
+**Impacto:** A diferencia de `MapScreen.kt` que implementa diffing selectivo con caches de marcadores (L131-134), `DetailScreen` recrea TODOS los overlays (Polyline + Markers) en cada invocación del bloque `update`. Esto causa:
+- Parpadeo visual del mapa
+- Garbage collection innecesario
+- Ineficiencia de CPU proporcional al número de waypoints
+
+**Sugerencia:** Aplicar el mismo patrón de cache/diff que ya existe en `MapScreen`.
+
+---
+
+### M03 — `Geocoder` síncrono en Dispatchers.IO sin timeout ni fallback
+
+**Archivo:** [RouteViewModel.kt](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/ui/RouteViewModel.kt#L236-L241)
+
+```kotlin
+viewModelScope.launch(Dispatchers.IO) {
+    val geocoder = android.location.Geocoder(context, Locale.getDefault())
+    val addresses = geocoder.getFromLocation(location.latitude, location.longitude, 1)
+    // ...
+}
+```
+
+**Impacto:** `Geocoder.getFromLocation()` realiza una llamada de red al servicio de Google Play Services que puede bloquear indefinidamente sin timeout configurado. En zonas con mala conectividad, múltiples llamadas concurrentes (pulsaciones rápidas del usuario) pueden saturar los hilos del pool IO de coroutinas.
+
+Además, se crean nuevas instancias de `Geocoder` en cada llamada (4 métodos diferentes: `fetchCurrentAddress`, `fetchAddressForCoordinates`, `fetchAddressForLocation`, `fetchLocationDetails`).
+
+**Sugerencia:** Cachear la instancia de `Geocoder`, usar `withTimeoutOrNull` de coroutinas (e.g., 5 segundos), e implementar una cola serial para evitar llamadas concurrentes.
+
+---
+
+### M04 — Archivos temporales de exportación nunca se limpian
+
+**Archivo:** [RouteViewModel.kt](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/ui/RouteViewModel.kt#L378-L389)
+
+```kotlin
+private fun saveCsvFile(content: String, routeName: String) {
+    val fileName = "export_${System.currentTimeMillis()}.csv"
+    context.openFileOutput(fileName, Context.MODE_PRIVATE).use { it.write(content.toByteArray()) }
+    // Archivo nunca se elimina después del share
+}
+```
+
+**Impacto:** Cada exportación CSV/GPX crea un archivo temporal en `filesDir` con un nombre único por timestamp. Estos archivos nunca se eliminan, acumulándose indefinidamente. Lo mismo ocurre con capturas de mapa en `cacheDir/images/` (L837-843) durante compartición de rutas.
+
+**Sugerencia:** Eliminar archivos temporales en un `finally` block o usar `File.deleteOnExit()`. Implementar limpieza periódica de archivos en `filesDir/export_*.csv` y `filesDir/export_*.gpx`.
+
+---
+
+### M05 — Navegación manual con `mutableStateOf` sin back-stack
+
+**Archivo:** [RouteViewModel.kt](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/ui/RouteViewModel.kt#L68)
+
+```kotlin
+var currentScreen by mutableStateOf<Screen>(Screen.Tracking) // L68
+fun navigateTo(screen: Screen) { currentScreen = screen }   // L147
+```
+
+**Impacto:** La navegación reimplementa manualmente lo que `NavController` de Jetpack Navigation Compose ya proporciona. Consecuencias:
+- Sin soporte para botón "Atrás" del sistema — el usuario sale de la app en vez de volver a la pantalla anterior
+- Sin deep-linking
+- Sin animaciones de transición entre pantallas
+- Sin preservación de estado al navegar (scroll position, etc.)
+- Sin type-safe arguments para rutas
+
+**Sugerencia:** Migrar a `NavHost` + `NavController` de `navigation-compose` (ya incluida como dependencia en L94 del build.gradle).
+
+---
+
+### M06 — `collectAsState()` en múltiples StateFlows causa recomposiciones en cascada
+
+**Archivo:** [MapScreen.kt](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/ui/screens/MapScreen.kt#L58-L64)
+
+```kotlin
+val isTracking by viewModel.isTrackingLive.collectAsState()     // L58
+val latestLocation by viewModel.latestLocationLive.collectAsState() // L59
+val elapsedSeconds by viewModel.elapsedSecondsLive.collectAsState() // L60
+val distanceMeters by viewModel.distanceMetersLive.collectAsState() // L61
+val routePoints by viewModel.activeRoutePoints.collectAsState()     // L62
+val waypoints by viewModel.activeRouteWaypoints.collectAsState()    // L63
+val savedLocations by viewModel.allSavedLocations.collectAsState()  // L64
+```
+
+**Impacto:** 7 `collectAsState()` en el nivel raíz del composable `MapScreen`. Cada emisión de CUALQUIERA de estos flows provoca la recomposición COMPLETA del composable, incluyendo el pesado bloque `AndroidView.update`. El `elapsedSecondsLive` emite cada 5 segundos (timer en `LocationService.startTimer()`), forzando actualizaciones de la `MapView` y todos los overlays incluso cuando solo cambia el cronómetro.
+
+**Sugerencia:** Elevar los `collectAsState()` solo al composable hijo que los necesita. Usar `collectAsStateWithLifecycle()` de `lifecycle-runtime-compose`.
+
+---
+
+### M07 — Caché de tiles OSMDroid excesivo: 500MB
+
+**Archivo:** [MainActivity.kt](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/MainActivity.kt#L149)
+
+```kotlin
+Configuration.getInstance().tileFileSystemCacheMaxBytes = 500L * 1024 * 1024 // 500MB
+```
+
+**Impacto:** En dispositivos con almacenamiento limitado (entry-level Android con 16-32GB), 500MB de caché de tiles puede representar un porcentaje significativo del almacenamiento libre, causando que el sistema marque la app como consumidora excesiva de almacenamiento.
+
+Además, `tileDownloadThreads = 5` (L146) puede crear contención de red excesiva en conexiones lentas.
+
+**Sugerencia:** Reducir a 100-200MB o hacerlo configurable. Reducir `tileDownloadThreads` a 2-3.
+
+---
+
+### M08 — Manejo inconsistente de `isAirplaneMode` entre ViewModel y Service
+
+**Archivo:** 
+- [RouteViewModel.kt L112](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/ui/RouteViewModel.kt#L112): `fun toggleAirplaneMode() { isAirplaneMode = !isAirplaneMode }`
+- [LocationService.kt L352](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/location/LocationService.kt#L352): `val isAirplane = sharedPrefs.getBoolean("airplane_mode", false)`
+
+**Impacto:** `isAirplaneMode` en el ViewModel se modifica solo en memoria (`mutableStateOf`), pero el `LocationService` lee el valor desde `SharedPreferences`. Como `toggleAirplaneMode()` nunca persiste el cambio en `SharedPreferences`, el servicio siempre leerá `false` para `"airplane_mode"`, haciendo que el filtro de velocidad máxima de 1250 km/h nunca se active.
+
+**Sugerencia:** Persistir el toggle en SharedPreferences como se hace con `auto_mode` y `near_me_enabled`.
+
+---
+
+### M09 — `deleteAllData()` no limpia waypoints ni location_points explícitamente
+
+**Archivo:** [RouteRepository.kt](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/data/repository/RouteRepository.kt#L206-L209)
+
+```kotlin
+suspend fun deleteAllData() {
+    routeDao.deleteAllRoutes()
+    routeDao.deleteAllSavedLocations()
+}
+```
+
+**Impacto:** Los `LocationPoint` y `Waypoint` están vinculados con `ForeignKey(onDelete = CASCADE)`, por lo que se eliminan al borrar las rutas. Sin embargo:
+- Los archivos de fotos en `filesDir/images/` NO se eliminan
+- Los archivos temporales de exportación NO se eliminan
+- El caché de tiles de OSMDroid NO se limpia
+
+El usuario cree que "Limpiar Todo" elimina todo, pero las fotos y archivos huérfanos persisten ocupando almacenamiento.
+
+**Sugerencia:** Añadir limpieza de `filesDir/images/` y archivos temporales en `deleteAllData()`.
+
+---
+
+### M10 — Duplicación masiva de código UI: Selector de color repetido 4 veces
+
+**Archivos:**
+- [MapScreen.kt L558-606](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/ui/screens/MapScreen.kt#L558-L606) (Waypoint dialog)
+- [MapScreen.kt L757-806](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/ui/screens/MapScreen.kt#L757-L806) (Save location dialog)
+- [SavedLocationsScreen.kt L250-299](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/ui/screens/SavedLocationsScreen.kt#L250-L299) (Add dialog)
+- [SavedLocationsScreen.kt L477-526](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/ui/screens/SavedLocationsScreen.kt#L477-L526) (Edit dialog)
+
+**Impacto:** ~50 líneas de código idénticas copiadas 4 veces. Cada cambio futuro en la lógica del selector de color debe propagarse manualmente a 4 ubicaciones, aumentando exponencialmente el riesgo de inconsistencias.
+
+**Sugerencia:** Extraer un composable `ColorPickerSection(selectedColor, onColorChange)`.
+
+---
+
+### M11 — `ElevationChart` (Canvas) nunca se utiliza
+
+**Archivo:** [DetailScreen.kt](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/ui/screens/DetailScreen.kt#L324-L344)
+
+```kotlin
+@Composable
+fun ElevationChart(data: List<Float>, color: Color, modifier: Modifier = Modifier) {
+```
+
+**Impacto:** Código muerto. Se implementó un chart con Canvas puro, pero luego se reemplazó por `ProfessionalChart` que usa MPAndroidChart. El composable `ElevationChart` nunca se invoca, añadiendo peso muerto al APK.
+
+**Sugerencia:** Eliminar `ElevationChart` o reemplazar la dependencia de MPAndroidChart por esta implementación nativa más ligera.
+
+---
+
+### M12 — `Greeting` composable es código de template no eliminado
+
+**Archivo:** [MainActivity.kt](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/MainActivity.kt#L864-L867)
+
+```kotlin
+@Composable
+fun Greeting(name: String, modifier: Modifier = Modifier) {
+    Text(text = "Hello $name!", modifier = modifier)
+}
+```
+
+**Impacto:** Código residual del template de nuevo proyecto de Android Studio. Indica una falta de limpieza del proyecto.
+
+---
+
+### M13 — Firebase BOM declarada como dependencia sin uso
+
+**Archivo:** [build.gradle.kts](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/build.gradle.kts#L76)
+
+```kotlin
+implementation(platform(libs.firebase.bom)) // L76
+```
+
+**Impacto:** El proyecto incluye el BOM de Firebase pero no usa ninguna librería Firebase (firebase-ai está en el catálogo pero comentada). Esto añade resolución de dependencias innecesaria y puede causar conflictos de versiones transitorias.
+
+**Sugerencia:** Eliminar la dependencia `firebase-bom` si no se usa ningún servicio Firebase.
+
+---
+
+### M14 — `gradle.properties` tiene `org.gradle.parallel` definido con valores contradictorios
+
+**Archivo:** [gradle.properties](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/gradle.properties#L11-L16)
+
+```properties
+org.gradle.parallel=false    # Línea 11
+# ...
+org.gradle.parallel=true     # Línea 16
+```
+
+**Impacto:** La segunda definición (L16) sobreescribe la primera (L11). Aunque el resultado final es correcto (`true`), las propiedades contradictorias indican confusión en la configuración y pueden llevar a errores de razonamiento futuro.
+
+**Sugerencia:** Eliminar la línea duplicada (L11).
+
+---
+
+## 🟢 Severidad BAJA (10 hallazgos)
+
+---
+
+### B01 — `@Suppress("UNCHECKED_CAST")` implícito en ViewModelFactory
+
+**Archivo:** [RouteViewModel.kt](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/ui/RouteViewModel.kt#L879-L884)
+
+```kotlin
+class RouteViewModelFactory(...) : ViewModelProvider.Factory {
+    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+        return RouteViewModel(application, repository) as T // Unchecked cast
+    }
+}
+```
+
+**Impacto:** Patrón obsoleto. Desde `lifecycle-viewmodel 2.5.0+`, se puede usar `CreationExtras` o `viewModels { }` con factory lambda.
+
+**Sugerencia:** Migrar a `viewModels { RouteViewModel(application, repository) }` o usar un framework de DI como Hilt.
+
+---
+
+### B02 — Uso de `import android.app.*` y `com.google.android.gms.location.*` (wildcards)
+
+**Archivo:** [LocationService.kt](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/location/LocationService.kt#L3-L21)
+
+**Impacto:** Los imports wildcard dificultan la comprensión de qué clases se usan realmente y pueden causar colisiones de nombres inesperadas.
+
+**Sugerencia:** Usar imports explícitos.
+
+---
+
+### B03 — Comentarios en inglés del template mezclados con español del proyecto
+
+**Archivos múltiples:** El proyecto alterna entre español (comentarios del desarrollador) e inglés (comentarios de templates y constantes). Esto dificulta la lectura cohesiva.
+
+**Sugerencia:** Unificar idioma de comentarios (español dado el contexto del proyecto).
+
+---
+
+### B04 — `namespace = "com.example"` es un placeholder genérico
+
+**Archivo:** [build.gradle.kts](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/build.gradle.kts#L14)
+
+```kotlin
+namespace = "com.example"
+```
+
+**Impacto:** El `applicationId` es correcto (`com.aistudio.localizador.vqtspk`), pero el namespace para las clases R es `com.example`, lo cual es confuso y puede causar conflictos con otros proyectos en el mismo workspace.
+
+**Sugerencia:** Alinear namespace con applicationId: `com.aistudio.localizador`.
+
+---
+
+### B05 — Hardcoded strings en la UI
+
+**Archivos múltiples:** Todos los textos de la interfaz están hardcodeados directamente en el código Kotlin en lugar de usar `strings.xml`. Esto imposibilita:
+- Internacionalización (i18n)
+- Cambio de textos sin recompilar
+- Consistencia de textos entre pantallas
+
+**Sugerencia:** Extraer strings a `res/values/strings.xml` progresivamente, empezando por los textos visibles al usuario.
+
+---
+
+### B06 — `exportSchema = false` en Room
+
+**Archivo:** [AppDatabase.kt](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/data/db/AppDatabase.kt#L18)
+
+```kotlin
+exportSchema = false
+```
+
+**Impacto:** Sin exportación de esquema, no se pueden generar migraciones automáticas ni verificar la integridad del esquema en tests. Combinado con `fallbackToDestructiveMigration()`, el proyecto no tiene ninguna red de seguridad para la evolución del modelo de datos.
+
+**Sugerencia:** Activar `exportSchema = true` y configurar `room.schemaLocation` en el build.gradle para exportar JSON de esquema.
+
+---
+
+### B07 — Shell scripts en el directorio `app/`
+
+**Archivo:** [app/](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app)
+
+```
+new.sh, new2.sh, new3.sh, new4.sh
+```
+
+**Impacto:** Scripts de desarrollo/debugging dejados en el directorio del módulo. Pueden ser incluidos en el APK dependiendo de la configuración de packaging.
+
+**Sugerencia:** Mover a un directorio `scripts/` fuera del módulo `app` o añadir al `.gitignore`.
+
+---
+
+### B08 — Dependencias alpha en producción
+
+**Archivo:** [libs.versions.toml](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/gradle/libs.versions.toml#L43-L44)
+
+```toml
+biometric = "1.2.0-alpha05"     # L43
+securityCrypto = "1.1.0-alpha06" # L44
+```
+
+**Impacto:** Las versiones alpha no tienen garantía de estabilidad API ni de comportamiento. Pueden contener bugs conocidos sin fix. Para un feature de seguridad (cifrado biométrico), esto es particularmente arriesgado.
+
+**Sugerencia:** Evaluar migrar a versiones estables o al menos RC. `biometric:1.1.0` es estable; `security-crypto:1.0.0` es estable.
+
+---
+
+### B09 — GPX export incompleto: falta `<ele>`, `<time>`, y atributos de namespace
+
+**Archivo:** [RouteViewModel.kt](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/src/main/java/com/example/ui/RouteViewModel.kt#L391-L402)
+
+```kotlin
+sb.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<gpx version=\"1.1\">\n")
+// ...
+sb.append("<trkpt lat=\"${it.latitude}\" lon=\"${it.longitude}\"></trkpt>\n")
+```
+
+**Impacto:** El GPX exportado:
+- No incluye namespace (`xmlns`) requerido por el estándar GPX 1.1
+- No exporta elevación (`<ele>`) ni timestamp (`<time>`) aunque los datos existen en `LocationPoint`
+- No incluye metadatos del track (`<desc>`, estadísticas)
+
+Muchas apps de terceros no importarán este archivo correctamente.
+
+**Sugerencia:** Generar GPX compliant: incluir `xmlns`, `<ele>`, `<time>`, y `<metadata>`.
+
+---
+
+### B10 — `material-icons-extended` completa incluida como dependencia
+
+**Archivo:** [build.gradle.kts](file:///home/delm/Documentos/Google%20IA%20Studio/localizador/app/build.gradle.kts#L84)
+
+```kotlin
+implementation(libs.androidx.compose.material.icons.extended) // L84
+```
+
+**Impacto:** Esta librería contiene ~2400 iconos y añade varios MB al APK. Solo se usan ~30 iconos diferentes en el proyecto. Sin R8/minificación (hallazgo A01), TODOS los iconos se incluyen.
+
+**Sugerencia:** Con minificación activada, R8 eliminará los no usados. Alternativamente, copiar solo los iconos SVG necesarios como drawables.
+
+---
+
+## 📊 Resumen Ejecutivo
+
+### Estado General de Salud del Proyecto
+
+| Área | Evaluación | Críticos |
+|------|-----------|----------|
+| Arquitectura | ⚠️ Concentración excesiva | God ViewModel, sin DI, sin Navigation |
+| Seguridad | ⚠️ Riesgos en cifrado y Zip | Zip Slip, BiometricCipher inconsistente |
+| Rendimiento UI | ⚠️ Recomposiciones excesivas | 7 StateFlows en raíz de MapScreen |
+| Memory Management | ⚠️ Riesgos de leak | Service CoroutineScope, StateFlow estáticos |
+| Batería/Red | ✅ Razonable | Filtros de GPS bien implementados |
+| Datos de Usuario | 🔴 Riesgo crítico | DestructiveMigration borra datos |
+| Build Configuration | ⚠️ No optimizada | Sin minificación, dependencias alpha |
+| Calidad de Código | ⚠️ Duplicación significativa | 4x selector de color, excepciones silenciosas |
+
+### Top 5 Prioridades de Remediación
+
+1. **Activar R8/minificación** (A01) — Impacto inmediato en tamaño APK y seguridad
+2. **Eliminar `fallbackToDestructiveMigration`** (A02) — Proteger datos del usuario
+3. **Corregir bug de `isAirplaneMode`** (M08) — Filtro de velocidad roto, bug funcional
+4. **Asegurar thread safety en LocationService** (A05) — Prevenir crashes intermitentes
+5. **Dividir RouteViewModel** (A03) — Fundamento para todas las mejoras futuras
+
+> [!CAUTION]
+> Este reporte documenta hallazgos sin modificar ningún archivo. Todas las sugerencias deben implementarse con testing unitario e instrumentado previo.
