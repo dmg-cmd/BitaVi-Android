@@ -86,6 +86,10 @@ class RouteRepository(private val routeDao: RouteDao) {
         routeDao.deleteRouteById(routeId)
     }
 
+    suspend fun deleteRoutes(routeIds: List<Int>) {
+        routeDao.deleteRoutes(routeIds)
+    }
+
     /**
      * Guarda una coordenada de rastreo vinculada a una ruta.
      */

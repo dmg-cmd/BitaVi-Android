@@ -138,7 +138,7 @@ class MainActivity : FragmentActivity() {
         // Inicializar ViewModel utilizando el factory personalizado
         val viewModel = ViewModelProvider(
             this,
-            RouteViewModelFactory(repository)
+            RouteViewModelFactory(application, repository)
         )[RouteViewModel::class.java]
 
         // --- CARGA SEGURA DE API KEY (HARDWARE BACKED) ---
@@ -165,15 +165,15 @@ class MainActivity : FragmentActivity() {
         
         // Cargar modo automático
         val autoMode = sharedPrefs.getBoolean("auto_mode", false)
-        if (autoMode) viewModel.toggleAutoMode(applicationContext)
+        if (autoMode) viewModel.toggleAutoMode()
 
         // Cargar ajuste de biometría
         val bioEnabled = sharedPrefs.getBoolean("biometric_enabled", false)
-        if (bioEnabled) viewModel.toggleBiometric(true, applicationContext)
+        if (bioEnabled) viewModel.toggleBiometric(true)
 
         // Cargar avisos cerca de mí
         val nearMe = sharedPrefs.getBoolean("near_me_enabled", false)
-        if (nearMe) viewModel.toggleNearMe(applicationContext)
+        if (nearMe) viewModel.toggleNearMe()
 
         setContent {
             MyApplicationTheme {
@@ -262,7 +262,7 @@ fun MainContainer(viewModel: RouteViewModel) {
             uri?.let { destinationUri ->
                 scope.launch(Dispatchers.IO) {
                     try {
-                        val tempFile = viewModel.prepareBackupFile(context)
+                        val tempFile = viewModel.prepareBackupFile()
                         if (tempFile != null) {
                             context.contentResolver.openOutputStream(destinationUri)?.use { output ->
                                 tempFile.inputStream().use { input ->
@@ -284,7 +284,7 @@ fun MainContainer(viewModel: RouteViewModel) {
         contract = ActivityResultContracts.OpenDocument(),
         onResult = { uri ->
             uri?.let { 
-                viewModel.restoreFromBackup(context, it)
+                viewModel.restoreFromBackup(it)
                 Toast.makeText(context, "Restaurando datos y fotos...", Toast.LENGTH_SHORT).show()
             }
         }
@@ -295,7 +295,7 @@ fun MainContainer(viewModel: RouteViewModel) {
     LaunchedEffect(latestLocation) {
         latestLocation?.let { loc ->
             if (loc.accuracy < 25f) {
-                viewModel.updateDefaultLocationPersistently(loc.latitude, loc.longitude, context)
+                viewModel.updateDefaultLocationPersistently(loc.latitude, loc.longitude)
             }
         }
     }
@@ -370,14 +370,14 @@ fun MainContainer(viewModel: RouteViewModel) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
                             Text("Modo Automático")
                             Switch(checked = viewModel.isAutoMode, onCheckedChange = { 
-                                viewModel.toggleAutoMode(context)
+                                viewModel.toggleAutoMode()
                             })
                         }
                     },
                     selected = false,
                     icon = { Icon(Icons.Default.FlashOn, null) },
                     onClick = { 
-                        viewModel.toggleAutoMode(context)
+                        viewModel.toggleAutoMode()
                     }
                 )
 
@@ -387,14 +387,14 @@ fun MainContainer(viewModel: RouteViewModel) {
                             Text("Avisos \"Cerca de mí\"")
                             val isNearMeEnabled by viewModel.isNearMeEnabled.collectAsState()
                             Switch(checked = isNearMeEnabled, onCheckedChange = { 
-                                viewModel.toggleNearMe(context)
+                                viewModel.toggleNearMe()
                             })
                         }
                     },
                     selected = false,
                     icon = { Icon(Icons.Default.NotificationsActive, null) },
                     onClick = { 
-                        viewModel.toggleNearMe(context)
+                        viewModel.toggleNearMe()
                     }
                 )
 
@@ -417,7 +417,7 @@ fun MainContainer(viewModel: RouteViewModel) {
                             Switch(checked = viewModel.isBiometricEnabled, onCheckedChange = { 
                                 val newState = it
                                 authenticate {
-                                    viewModel.toggleBiometric(newState, context) 
+                                    viewModel.toggleBiometric(newState) 
                                 }
                             })
                         }
@@ -427,7 +427,7 @@ fun MainContainer(viewModel: RouteViewModel) {
                     onClick = { 
                         val newState = !viewModel.isBiometricEnabled
                         authenticate {
-                            viewModel.toggleBiometric(newState, context)
+                            viewModel.toggleBiometric(newState)
                         }
                     }
                 )
@@ -608,7 +608,7 @@ fun MainContainer(viewModel: RouteViewModel) {
                     Button(onClick = { 
                         val lat = tempLat.toDoubleOrNull() ?: -34.6037
                         val lon = tempLon.toDoubleOrNull() ?: -58.3816
-                        viewModel.updateDefaultLocationPersistently(lat, lon, context)
+                        viewModel.updateDefaultLocationPersistently(lat, lon)
                         showLocationDialog = false 
                     }) { Text("Guardar") }
                 },

@@ -23,6 +23,10 @@ interface RouteDao {
     @Query("DELETE FROM routes WHERE id = :routeId")
     suspend fun deleteRouteById(routeId: Int)
 
+    @Transaction
+    @Query("DELETE FROM routes WHERE id IN (:ids)")
+    suspend fun deleteRoutes(ids: List<Int>)
+
     @Query("SELECT * FROM routes ORDER BY startTime DESC")
     fun getAllRoutesFlow(): Flow<List<Route>>
 

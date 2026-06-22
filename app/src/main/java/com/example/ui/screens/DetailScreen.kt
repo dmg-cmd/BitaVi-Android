@@ -84,20 +84,20 @@ fun DetailScreen(
                                 val bitmap = android.graphics.Bitmap.createBitmap(mapView.width, mapView.height, android.graphics.Bitmap.Config.ARGB_8888)
                                 val canvas = android.graphics.Canvas(bitmap)
                                 mapView.draw(canvas)
-                                viewModel.shareCompleteRoute(context, routeId, bitmap)
+                                viewModel.shareCompleteRoute(routeId, bitmap)
                             } else {
-                                viewModel.shareCompleteRoute(context, routeId, null)
+                                viewModel.shareCompleteRoute(routeId, null)
                             }
                         } catch (e: Exception) {
-                            viewModel.shareCompleteRoute(context, routeId, null)
+                            viewModel.shareCompleteRoute(routeId, null)
                         }
                     }) {
                         Icon(Icons.Default.Send, "Enviar Resumen", tint = Color(0xFF25D366)) // Verde WhatsApp
                     }
-                    IconButton(onClick = { viewModel.exportRoutesAsGPX(context, setOf(routeId)) }) {
+                    IconButton(onClick = { viewModel.exportRoutesAsGPX(setOf(routeId)) }) {
                         Icon(Icons.Default.Description, "Archivo GPX", tint = MaterialTheme.colorScheme.primary)
                     }
-                    IconButton(onClick = { viewModel.exportRoutesAsCSV(context, routeId) }) {
+                    IconButton(onClick = { viewModel.exportRoutesAsCSV(routeId) }) {
                         Icon(Icons.Default.TableChart, "Exportar Excel", tint = Color(0xFF2E7D32))
                     }
                     IconButton(onClick = { 

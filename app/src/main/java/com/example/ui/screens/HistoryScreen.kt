@@ -61,7 +61,7 @@ fun HistoryScreen(
     val gpxPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
         onResult = { uri: Uri? ->
-            uri?.let { viewModel.importGpxFile(context, it) }
+            uri?.let { viewModel.importGpxFile(it) }
         }
     )
 
@@ -149,7 +149,7 @@ fun HistoryScreen(
                         if (isSelectionMode) {
                             Row {
                                 IconButton(onClick = { 
-                                    viewModel.exportRoutesAsGPX(context, selectedRouteIds)
+                                    viewModel.exportRoutesAsGPX(selectedRouteIds)
                                     selectedRouteIds = emptySet()
                                 }) {
                                     Icon(Icons.Default.Share, contentDescription = "Exportar", tint = MaterialTheme.colorScheme.primary)

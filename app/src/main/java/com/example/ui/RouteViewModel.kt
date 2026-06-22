@@ -1,5 +1,6 @@
 package com.example.ui
 
+import android.app.Application
 import androidx.exifinterface.media.ExifInterface
 import android.content.Context
 import android.content.Intent
@@ -13,6 +14,7 @@ import org.xmlpull.v1.XmlPullParser
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -24,6 +26,7 @@ import org.osmdroid.util.GeoPoint
 import com.example.data.api.GroqApi
 import com.example.data.api.GroqRequest
 import com.example.data.api.GroqMessage
+import com.example.data.api.RetrofitClient
 import com.example.data.repository.RouteRepository
 import com.example.location.LocationService
 import kotlinx.coroutines.Dispatchers
@@ -31,9 +34,6 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import okhttp3.OkHttpClient
-import retrofit2.Retrofit
-import retrofit2.converter.moshi.MoshiConverterFactory
 import java.text.SimpleDateFormat
 import java.util.*
 import java.io.File
@@ -52,7 +52,9 @@ sealed interface Screen {
     data class Detail(val routeId: Int) : Screen
 }
 
-class RouteViewModel(private val repository: RouteRepository) : ViewModel() {
+class RouteViewModel(application: Application, private val repository: RouteRepository) : AndroidViewModel(application) {
+
+    private val context: Context get() = getApplication<Application>().applicationContext
 
     var mapTargetLocation by mutableStateOf<GeoPoint?>(null)
         private set
@@ -70,7 +72,7 @@ class RouteViewModel(private val repository: RouteRepository) : ViewModel() {
     var isBiometricEnabled by mutableStateOf(false)
         private set
 
-    fun toggleBiometric(enabled: Boolean, context: Context) {
+    fun toggleBiometric(enabled: Boolean) {
         isBiometricEnabled = enabled
         val sharedPrefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(context)
         sharedPrefs.edit().putBoolean("biometric_enabled", enabled).apply()
@@ -101,14 +103,14 @@ class RouteViewModel(private val repository: RouteRepository) : ViewModel() {
         private set
 
     fun updateDefaultLocation(lat: Double, lon: Double) { defaultLatitude = lat; defaultLongitude = lon }
-    fun updateDefaultLocationPersistently(lat: Double, lon: Double, context: Context) {
+    fun updateDefaultLocationPersistently(lat: Double, lon: Double) {
         updateDefaultLocation(lat, lon)
         val sharedPrefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(context)
         sharedPrefs.edit().putFloat("default_lat", lat.toFloat()).putFloat("default_lon", lon.toFloat()).apply()
     }
 
     fun toggleAirplaneMode() { isAirplaneMode = !isAirplaneMode }
-    fun toggleAutoMode(context: Context) {
+    fun toggleAutoMode() {
         isAutoMode = !isAutoMode
         val sharedPrefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(context)
         sharedPrefs.edit().putBoolean("auto_mode", isAutoMode).apply()
@@ -118,7 +120,7 @@ class RouteViewModel(private val repository: RouteRepository) : ViewModel() {
     private val _isNearMeEnabled = MutableStateFlow(false)
     val isNearMeEnabled: StateFlow<Boolean> = _isNearMeEnabled.asStateFlow()
 
-    fun toggleNearMe(context: Context) {
+    fun toggleNearMe() {
         val newState = !_isNearMeEnabled.value
         _isNearMeEnabled.value = newState
         val sharedPrefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(context)
@@ -133,8 +135,13 @@ class RouteViewModel(private val repository: RouteRepository) : ViewModel() {
 
     // Al inicializar, cargar el valor guardado
     init {
-        // Nota: Como no tengo el context aquí de forma directa, lo haremos desde la MainActivity o inyectando sharedPrefs.
-        // Por ahora, el valor se seteará desde el init de MainActivity.
+        // Cargar preferencias iniciales
+        val sharedPrefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(context)
+        isAutoMode = sharedPrefs.getBoolean("auto_mode", false)
+        _isNearMeEnabled.value = sharedPrefs.getBoolean("near_me_enabled", false)
+        isBiometricEnabled = sharedPrefs.getBoolean("biometric_enabled", false)
+        defaultLatitude = sharedPrefs.getFloat("default_lat", -34.6037f).toDouble()
+        defaultLongitude = sharedPrefs.getFloat("default_lon", -58.3816f).toDouble()
     }
 
     fun navigateTo(screen: Screen) { currentScreen = screen }
@@ -177,12 +184,12 @@ class RouteViewModel(private val repository: RouteRepository) : ViewModel() {
 
     fun selectRouteForDetail(routeId: Int) { _selectedDetailRouteId.value = routeId; navigateTo(Screen.Detail(routeId)) }
 
-    fun startPassiveLocationService(context: Context) {
+    fun startPassiveLocationService() {
         val intent = Intent(context, LocationService::class.java).apply { action = LocationService.ACTION_START_PASSIVE }
         context.startService(intent)
     }
 
-    fun startTrackingRoute(context: Context, name: String) {
+    fun startTrackingRoute(name: String) {
         viewModelScope.launch {
             val routeId = repository.startNewRoute(name)
             val intent = Intent(context, LocationService::class.java).apply {
@@ -196,7 +203,7 @@ class RouteViewModel(private val repository: RouteRepository) : ViewModel() {
         }
     }
 
-    fun stopTrackingRoute(context: Context) {
+    fun stopTrackingRoute() {
         val intent = Intent(context, LocationService::class.java).apply { action = LocationService.ACTION_STOP }
         context.startService(intent)
     }
@@ -211,7 +218,11 @@ class RouteViewModel(private val repository: RouteRepository) : ViewModel() {
     }
 
     fun deleteRoute(routeId: Int) { viewModelScope.launch { repository.deleteRoute(routeId) } }
-    fun deleteRoutes(routeIds: Set<Int>) { viewModelScope.launch { routeIds.forEach { repository.deleteRoute(it) } } }
+    fun deleteRoutes(routeIds: Set<Int>) { 
+        viewModelScope.launch { 
+            repository.deleteRoutes(routeIds.toList()) 
+        } 
+    }
     fun renameRoute(routeId: Int, newName: String) {
         viewModelScope.launch {
             val route = repository.getRouteById(routeId)
@@ -219,7 +230,7 @@ class RouteViewModel(private val repository: RouteRepository) : ViewModel() {
         }
     }
 
-    fun fetchCurrentAddress(context: Context) {
+    fun fetchCurrentAddress() {
         val location = latestLocationLive.value ?: return
         viewModelScope.launch(Dispatchers.IO) {
             try {
@@ -231,9 +242,9 @@ class RouteViewModel(private val repository: RouteRepository) : ViewModel() {
     }
 
     fun clearCurrentAddress() { currentAddress = null }
-    fun fetchAddressForCoordinates(context: Context, lat: Double, lon: Double) {
+    fun fetchAddressForCoordinates(lat: Double, lon: Double) {
         viewModelScope.launch(Dispatchers.IO) {
-            val details = fetchLocationDetails(context, lat, lon)
+            val details = fetchLocationDetails(lat, lon)
             withContext(Dispatchers.Main) { 
                 currentAddress = details.first 
                 selectedPointAddress = details.first
@@ -241,7 +252,7 @@ class RouteViewModel(private val repository: RouteRepository) : ViewModel() {
         }
     }
 
-    fun fetchAddressForLocation(context: Context, lat: Double, lon: Double) {
+    fun fetchAddressForLocation(lat: Double, lon: Double) {
         selectedPointAddress = "Buscando..."
         viewModelScope.launch(Dispatchers.IO) {
             try {
@@ -253,23 +264,23 @@ class RouteViewModel(private val repository: RouteRepository) : ViewModel() {
     }
 
     fun clearSelectedPointAddress() { selectedPointAddress = null }
-    fun generateSuggestedRouteName(context: Context, onResult: (String) -> Unit) {
+    fun generateSuggestedRouteName(onResult: (String) -> Unit) {
         val datePart = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date())
         onResult(datePart)
     }
 
     val allSavedLocations: StateFlow<List<SavedLocation>> = repository.allSavedLocations.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    fun saveSpecificLocation(name: String, address: String, latitude: Double, longitude: Double, comment: String = "", author: String = "", photoPath: String? = null, phoneNumber: String = "", email: String = "", isContact: Boolean = false, context: Context, color: String = "#FFD700") {
+    fun saveSpecificLocation(name: String, address: String, latitude: Double, longitude: Double, comment: String = "", author: String = "", photoPath: String? = null, phoneNumber: String = "", email: String = "", isContact: Boolean = false, color: String = "#FFD700") {
         viewModelScope.launch(Dispatchers.IO) {
             repository.addSavedLocation(name, address, latitude, longitude, comment, author, photoPath, phoneNumber, email, isContact, "Desconocido", "Desconocida", color)
         }
     }
 
     fun updateSavedLocation(location: SavedLocation) { viewModelScope.launch(Dispatchers.IO) { repository.updateSavedLocation(location) } }
-    fun refreshLocationDetails(context: Context, location: SavedLocation) {
+    fun refreshLocationDetails(location: SavedLocation) {
         viewModelScope.launch(Dispatchers.IO) {
-            val details = fetchLocationDetails(context, location.latitude, location.longitude)
+            val details = fetchLocationDetails(location.latitude, location.longitude)
             repository.updateSavedLocation(location.copy(address = details.first))
         }
     }
@@ -277,7 +288,7 @@ class RouteViewModel(private val repository: RouteRepository) : ViewModel() {
     fun deleteSavedLocation(savedLocation: SavedLocation) { viewModelScope.launch { repository.deleteSavedLocation(savedLocation) } }
     fun clearAllAppData() { viewModelScope.launch { repository.deleteAllData() } }
 
-    private fun fetchLocationDetails(context: Context, lat: Double, lon: Double): Triple<String, String, String> {
+    private fun fetchLocationDetails(lat: Double, lon: Double): Triple<String, String, String> {
         val coordFallback = "GPS: ${String.format("%.5f, %.5f", lat, lon)}"
         return try {
             val geocoder = android.location.Geocoder(context, Locale.getDefault())
@@ -289,7 +300,7 @@ class RouteViewModel(private val repository: RouteRepository) : ViewModel() {
         } catch (e: Exception) { Triple(coordFallback, "Desconocido", "Desconocida") }
     }
 
-    fun getPhotoLocation(context: Context, uri: Uri): Pair<Double, Double>? {
+    fun getPhotoLocation(uri: Uri): Pair<Double, Double>? {
         return try {
             val photoUri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) android.provider.MediaStore.setRequireOriginal(uri) else uri
             context.contentResolver.openInputStream(photoUri)?.use { input ->
@@ -332,13 +343,7 @@ class RouteViewModel(private val repository: RouteRepository) : ViewModel() {
                     4. Máximo 2 párrafos técnicos.
                 """.trimIndent()
 
-                val okHttpClient = OkHttpClient.Builder().connectTimeout(60, TimeUnit.SECONDS).build()
-                val retrofit = Retrofit.Builder()
-                    .baseUrl("https://api.groq.com/")
-                    .client(okHttpClient)
-                    .addConverterFactory(MoshiConverterFactory.create())
-                    .build()
-                val api = retrofit.create(GroqApi::class.java)
+                val api = RetrofitClient.groqApi
                 val request = GroqRequest(
                     messages = listOf(
                         GroqMessage("system", "Eres un sistema de análisis técnico de telemetría y geomática. Tu tono es seco, profesional y basado estrictamente en datos numéricos y geográficos."),
@@ -360,28 +365,30 @@ class RouteViewModel(private val repository: RouteRepository) : ViewModel() {
         }
     }
 
-    fun exportRoutesAsCSV(context: Context, routeId: Int) {
+    fun exportRoutesAsCSV(routeId: Int) {
         viewModelScope.launch {
             val route = repository.getRouteById(routeId) ?: return@launch
             val points = repository.getLocationPointsSync(routeId)
             val sb = StringBuilder("Fecha,Lat,Lon\n")
             points.forEach { sb.append("${it.timestamp},${it.latitude},${it.longitude}\n") }
-            saveCsvFile(context, sb.toString(), route.name)
+            saveCsvFile(sb.toString(), route.name)
         }
     }
 
-    private fun saveCsvFile(context: Context, content: String, routeName: String) {
+    private fun saveCsvFile(content: String, routeName: String) {
         try {
             val fileName = "export_${System.currentTimeMillis()}.csv"
             context.openFileOutput(fileName, Context.MODE_PRIVATE).use { it.write(content.toByteArray()) }
             val file = context.getFileStreamPath(fileName)
             val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
             val intent = Intent(Intent.ACTION_SEND).apply { type = "text/csv"; putExtra(Intent.EXTRA_STREAM, uri); addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION) }
-            context.startActivity(Intent.createChooser(intent, "Exportar"))
+            val chooser = Intent.createChooser(intent, "Exportar")
+            chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(chooser)
         } catch (e: Exception) { }
     }
 
-    fun exportRoutesAsGPX(context: Context, routeIds: Set<Int>) {
+    fun exportRoutesAsGPX(routeIds: Set<Int>) {
         viewModelScope.launch {
             val sb = StringBuilder("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<gpx version=\"1.1\">\n")
             routeIds.forEach { id ->
@@ -392,22 +399,24 @@ class RouteViewModel(private val repository: RouteRepository) : ViewModel() {
                 sb.append("</trkseg></trk>\n")
             }
             sb.append("</gpx>")
-            saveGpxFile(context, sb.toString())
+            saveGpxFile(sb.toString())
         }
     }
 
-    private fun saveGpxFile(context: Context, content: String) {
+    private fun saveGpxFile(content: String) {
         try {
             val fileName = "export_${System.currentTimeMillis()}.gpx"
             context.openFileOutput(fileName, Context.MODE_PRIVATE).use { it.write(content.toByteArray()) }
             val file = context.getFileStreamPath(fileName)
             val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
             val intent = Intent(Intent.ACTION_SEND).apply { type = "application/gpx+xml"; putExtra(Intent.EXTRA_STREAM, uri); addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION) }
-            context.startActivity(Intent.createChooser(intent, "Exportar"))
+            val chooser = Intent.createChooser(intent, "Exportar")
+            chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(chooser)
         } catch (e: Exception) { }
     }
 
-    fun importGpxFile(context: Context, uri: Uri) {
+    fun importGpxFile(uri: Uri) {
         viewModelScope.launch(Dispatchers.IO) {
             withContext(Dispatchers.Main) { isImporting = true }
             try {
@@ -437,7 +446,7 @@ class RouteViewModel(private val repository: RouteRepository) : ViewModel() {
         }
     }
 
-    fun createImageFile(context: Context): Uri? {
+    fun createImageFile(): Uri? {
         return try {
             val storageDir = File(context.filesDir, "images")
             if (!storageDir.exists()) storageDir.mkdirs()
@@ -445,7 +454,7 @@ class RouteViewModel(private val repository: RouteRepository) : ViewModel() {
             androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
         } catch (e: Exception) { null }
     }
-    suspend fun saveImageToInternalStorage(context: Context, uri: Uri): Uri? {
+    suspend fun saveImageToInternalStorage(uri: Uri): Uri? {
         return withContext(Dispatchers.IO) {
             try {
                 val storageDir = File(context.filesDir, "images")
@@ -456,7 +465,7 @@ class RouteViewModel(private val repository: RouteRepository) : ViewModel() {
             } catch (e: Exception) { null }
         }
     }
-    suspend fun prepareBackupFile(context: Context): File? {
+    suspend fun prepareBackupFile(): File? {
         return withContext(Dispatchers.IO) {
             try {
                 val backupFile = File(context.cacheDir, "respaldo_total.zip")
@@ -532,7 +541,7 @@ class RouteViewModel(private val repository: RouteRepository) : ViewModel() {
         }
     }
 
-    fun restoreFromBackup(context: Context, uri: Uri) {
+    fun restoreFromBackup(uri: Uri) {
         viewModelScope.launch(Dispatchers.IO) {
             withContext(Dispatchers.Main) { 
                 isImporting = true 
@@ -558,7 +567,7 @@ class RouteViewModel(private val repository: RouteRepository) : ViewModel() {
                             name.endsWith(".gpx", ignoreCase = true) -> {
                                 val routeName = name.substringAfterLast("/").substringBeforeLast(".")
                                 val content = zis.readBytes()
-                                processGpxInputStream(java.io.ByteArrayInputStream(content), routeName, context)
+                                processGpxInputStream(java.io.ByteArrayInputStream(content), routeName)
                             }
                             name.contains("localizador_database") -> {
                                 val dbFile = File(context.getDatabasePath("localizador_database").parent, name.substringAfterLast("/"))
@@ -581,7 +590,7 @@ class RouteViewModel(private val repository: RouteRepository) : ViewModel() {
                                         val isContactVal = if (p.size > 9) p[9].toBoolean() else false
                                         val colorVal = if (p.size > 10) p[10] else "#FFD700"
                                         
-                                        val details = fetchLocationDetails(context, lat, lon)
+                                        val details = fetchLocationDetails(lat, lon)
                                         val countryVal = if (p.size > 11) p[11] else details.second
                                         val cityVal = if (p.size > 12) p[12] else details.third
 
@@ -613,7 +622,7 @@ class RouteViewModel(private val repository: RouteRepository) : ViewModel() {
                     }
                     zis.close()
                 } else if (headerBytes[0] == 0x3C.toByte()) {
-                    importGpxFile(context, uri)
+                    importGpxFile(uri)
                     return@launch
                 }
 
@@ -631,7 +640,7 @@ class RouteViewModel(private val repository: RouteRepository) : ViewModel() {
     /**
      * Procesa GPX extrayendo ALTITUD, TIEMPO y calculando VELOCIDAD.
      */
-    private suspend fun processGpxInputStream(inputStream: java.io.InputStream, defaultName: String, context: Context) {
+    private suspend fun processGpxInputStream(inputStream: java.io.InputStream, defaultName: String) {
         try {
             val parser = Xml.newPullParser()
             parser.setInput(inputStream, null)
@@ -698,7 +707,7 @@ class RouteViewModel(private val repository: RouteRepository) : ViewModel() {
     /**
      * Extrae los detalles de un contacto de la agenda usando su URI.
      */
-    fun getContactDetails(context: Context, contactUri: Uri, onResult: (name: String, phone: String, email: String, address: String) -> Unit) {
+    fun getContactDetails(contactUri: Uri, onResult: (name: String, phone: String, email: String, address: String) -> Unit) {
         viewModelScope.launch(Dispatchers.IO) {
             var name = ""
             var phone = ""
@@ -765,7 +774,7 @@ class RouteViewModel(private val repository: RouteRepository) : ViewModel() {
     /**
      * Comparte los detalles de una ubicación guardada con otras aplicaciones.
      */
-    fun shareLocation(context: Context, location: SavedLocation) {
+    fun shareLocation(location: SavedLocation) {
         val mapsUrl = "https://www.google.com/maps/search/?api=1&query=${location.latitude},${location.longitude}"
         val shareText = """
             📍 *${location.name}*
@@ -783,7 +792,9 @@ class RouteViewModel(private val repository: RouteRepository) : ViewModel() {
             putExtra(Intent.EXTRA_SUBJECT, "Ubicación: ${location.name}")
             putExtra(Intent.EXTRA_TEXT, shareText)
         }
-        context.startActivity(Intent.createChooser(intent, "Compartir ubicación vía"))
+        val chooser = Intent.createChooser(intent, "Compartir ubicación vía")
+        chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        context.startActivity(chooser)
     }
 
     // --- FUNCIONES FASE 3: COMPARTIR TRAYECTO COMPLETO ---
@@ -791,7 +802,7 @@ class RouteViewModel(private val repository: RouteRepository) : ViewModel() {
     /**
      * Genera un resumen de la ruta y permite compartirlo junto con las fotos de sus waypoints y una captura del mapa.
      */
-    fun shareCompleteRoute(context: Context, routeId: Int, mapBitmap: android.graphics.Bitmap? = null) {
+    fun shareCompleteRoute(routeId: Int, mapBitmap: android.graphics.Bitmap? = null) {
         viewModelScope.launch {
             val route = repository.getRouteById(routeId) ?: return@launch
             val waypoints = repository.getWaypointsSync(routeId)
@@ -858,14 +869,16 @@ class RouteViewModel(private val repository: RouteRepository) : ViewModel() {
                 }
             }
 
-            context.startActivity(Intent.createChooser(intent, "Compartir trayecto en..."))
+            val chooser = Intent.createChooser(intent, "Compartir trayecto en...")
+            chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(chooser)
         }
     }
 }
 
-class RouteViewModelFactory(private val repository: RouteRepository) : ViewModelProvider.Factory {
+class RouteViewModelFactory(private val application: Application, private val repository: RouteRepository) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        if (modelClass.isAssignableFrom(RouteViewModel::class.java)) return RouteViewModel(repository) as T
+        if (modelClass.isAssignableFrom(RouteViewModel::class.java)) return RouteViewModel(application, repository) as T
         throw IllegalArgumentException("Unknown ViewModel class")
     }
 }

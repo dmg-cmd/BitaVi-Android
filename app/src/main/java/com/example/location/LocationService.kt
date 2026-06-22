@@ -3,9 +3,11 @@ package com.example.location
 import android.app.*
 import android.content.Context
 import android.content.Intent
+import android.content.SharedPreferences
 import android.content.pm.ServiceInfo
 import android.location.Location
 import android.os.Build
+import android.os.HandlerThread
 import android.os.IBinder
 import android.os.Looper
 import android.util.Log
@@ -30,6 +32,9 @@ class LocationService : Service() {
 
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private lateinit var repository: RouteRepository
+
+    private lateinit var sharedPrefs: SharedPreferences
+    private var locationHandlerThread: HandlerThread? = null
 
     private lateinit var fusedLocationClient: FusedLocationProviderClient
     private lateinit var locationCallback: LocationCallback
@@ -101,6 +106,14 @@ class LocationService : Service() {
         val database = AppDatabase.getDatabase(applicationContext)
         repository = RouteRepository(database.routeDao())
 
+        // Cache de SharedPreferences para evitar I/O repetitivo en el Main Thread
+        sharedPrefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(this)
+
+        // HandlerThread dedicado para procesar ubicación fuera del Main Thread
+        locationHandlerThread = HandlerThread("LocationHandlerThread").apply {
+            start()
+        }
+
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
 
         // Configuración del callback para actualizaciones GPS de FusedLocationProviderClient
@@ -152,7 +165,6 @@ class LocationService : Service() {
 
     private fun startPassiveTracking() {
         // Al iniciar en modo pasivo con Auto-Mode, nos ponemos en primer plano para que Android no nos mate
-        val sharedPrefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(applicationContext)
         val isAutoModeActive = sharedPrefs.getBoolean("auto_mode", false)
         
         if (isAutoModeActive) {
@@ -232,7 +244,7 @@ class LocationService : Service() {
             fusedLocationClient.requestLocationUpdates(
                 locationRequest,
                 locationCallback,
-                Looper.getMainLooper()
+                locationHandlerThread?.looper ?: Looper.getMainLooper()
             )
         } catch (unlikely: SecurityException) {
             Log.e(TAG, "No se admiten permisos necesarios para iniciar updates de ubicación GPS: $unlikely")
@@ -245,7 +257,6 @@ class LocationService : Service() {
         // Actualizamos siempre la ubicación "Live" para la UI
         _latestLocation.value = location
 
-        val sharedPrefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(applicationContext)
         val isAutoModeActive = sharedPrefs.getBoolean("auto_mode", false)
         val isNearMeEnabled = sharedPrefs.getBoolean("near_me_enabled", false)
 
@@ -459,7 +470,6 @@ class LocationService : Service() {
                 _elapsedTimeSeconds.value = elapsed
 
                 // COMPROBACIÓN 1: Inactividad (15 minutos) - SOLO SI EL USUARIO QUIERE AUTO-MODE
-                val sharedPrefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(applicationContext)
                 val isAutoModeActive = sharedPrefs.getBoolean("auto_mode", false)
 
                 if (isAutoModeActive && _isTracking.value && (now - lastMovementTimeMillis) > 15 * 60 * 1000) {
@@ -633,6 +643,11 @@ class LocationService : Service() {
         fusedLocationClient.removeLocationUpdates(locationCallback)
         timerJob?.cancel()
         serviceScope.cancel()
+
+        // Liberar el HandlerThread para evitar fugas de memoria
+        locationHandlerThread?.quitSafely()
+        locationHandlerThread = null
+
         super.onDestroy()
     }
 }

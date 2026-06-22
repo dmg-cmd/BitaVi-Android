@@ -69,7 +69,7 @@ fun SavedLocationsScreen(
         } else {
             // Intentar extraer GPS de la foto recién sacada
             capturedPhotoUri?.let { uri ->
-                val loc = viewModel.getPhotoLocation(context, uri)
+                val loc = viewModel.getPhotoLocation(uri)
                 photoGpsLocation = loc
                 if (loc != null) usePhotoGps = true
             }
@@ -81,9 +81,9 @@ fun SavedLocationsScreen(
     ) { uri ->
         uri?.let {
             scope.launch {
-                val internalUri = viewModel.saveImageToInternalStorage(context, it)
+                val internalUri = viewModel.saveImageToInternalStorage(it)
                 capturedPhotoUri = internalUri
-                photoGpsLocation = viewModel.getPhotoLocation(context, it)
+                photoGpsLocation = viewModel.getPhotoLocation(it)
                 usePhotoGps = photoGpsLocation != null // Si tiene GPS, sugerimos usarlo
             }
         }
@@ -94,7 +94,7 @@ fun SavedLocationsScreen(
         ActivityResultContracts.PickContact()
     ) { uri ->
         uri?.let {
-            viewModel.getContactDetails(context, it) { cName, cPhone, cEmail, cAddress ->
+            viewModel.getContactDetails(it) { cName, cPhone, cEmail, cAddress ->
                 newName = cName
                 phone = cPhone
                 email = cEmail
@@ -118,7 +118,7 @@ fun SavedLocationsScreen(
     // Al abrir el diálogo, disparamos la búsqueda de dirección actual
     LaunchedEffect(showAddDialog) {
         if (showAddDialog) {
-            viewModel.fetchCurrentAddress(context)
+            viewModel.fetchCurrentAddress()
         }
     }
 
@@ -191,7 +191,7 @@ fun SavedLocationsScreen(
                                         android.util.Log.d("Navegacion", "Yendo a: ${location.name} en ${location.latitude}, ${location.longitude}")
                                         viewModel.setMapTarget(location.latitude, location.longitude)
                                     },
-                                    onShare = { viewModel.shareLocation(context, location) }
+                                    onShare = { viewModel.shareLocation(location) }
                                 )
                             }
                         }
@@ -208,9 +208,9 @@ fun SavedLocationsScreen(
         LaunchedEffect(usePhotoGps) {
             manualAddress = "" // Limpiamos para que tome la dirección del ViewModel
             if (usePhotoGps && photoGpsLocation != null) {
-                viewModel.fetchAddressForCoordinates(context, photoGpsLocation!!.first, photoGpsLocation!!.second)
+                viewModel.fetchAddressForCoordinates(photoGpsLocation!!.first, photoGpsLocation!!.second)
             } else if (!usePhotoGps) {
-                viewModel.fetchCurrentAddress(context)
+                viewModel.fetchCurrentAddress()
             }
         }
 
@@ -343,7 +343,7 @@ fun SavedLocationsScreen(
                                 onClick = { 
                                     val hasCameraPermission = ContextCompat.checkSelfPermission(context, android.Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
                                     if (hasCameraPermission) {
-                                        val uri = viewModel.createImageFile(context)
+                                        val uri = viewModel.createImageFile()
                                         if (uri != null) {
                                             capturedPhotoUri = uri
                                             cameraLauncher.launch(uri)
@@ -400,8 +400,7 @@ fun SavedLocationsScreen(
                             photoPath = capturedPhotoUri?.toString(),
                             phoneNumber = phone,
                             email = email,
-                            isContact = isContact,
-                            context = context
+                            isContact = isContact
                         )
                         showAddDialog = false
                         newName = ""
@@ -466,7 +465,7 @@ fun SavedLocationsScreen(
 
                     // BOTÓN DE REFRESCO DE UBICACIÓN
                     OutlinedButton(
-                        onClick = { viewModel.refreshLocationDetails(context, locationToEdit!!) },
+                        onClick = { viewModel.refreshLocationDetails(locationToEdit!!) },
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Icon(Icons.Default.Refresh, null)

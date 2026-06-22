@@ -89,7 +89,7 @@ fun MapScreen(viewModel: RouteViewModel, modifier: Modifier = Modifier) {
         if (!success) {
             capturedPhotoUri = null
         } else {
-            capturedPhotoUri?.let { photoGpsLocation = viewModel.getPhotoLocation(context, it) }
+            capturedPhotoUri?.let { photoGpsLocation = viewModel.getPhotoLocation(it) }
         }
     }
 
@@ -98,9 +98,9 @@ fun MapScreen(viewModel: RouteViewModel, modifier: Modifier = Modifier) {
     ) { uri ->
         uri?.let {
             scope.launch {
-                val internalUri = viewModel.saveImageToInternalStorage(context, it)
+                val internalUri = viewModel.saveImageToInternalStorage(it)
                 capturedPhotoUri = internalUri
-                photoGpsLocation = viewModel.getPhotoLocation(context, it)
+                photoGpsLocation = viewModel.getPhotoLocation(it)
                 usePhotoGps = photoGpsLocation != null
             }
         }
@@ -110,7 +110,7 @@ fun MapScreen(viewModel: RouteViewModel, modifier: Modifier = Modifier) {
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
         if (permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true) {
-            viewModel.startPassiveLocationService(context)
+            viewModel.startPassiveLocationService()
         }
     }
 
@@ -127,6 +127,38 @@ fun MapScreen(viewModel: RouteViewModel, modifier: Modifier = Modifier) {
 
     val mapView = remember { MapView(context) }
     val locationOverlay = remember { MyLocationNewOverlay(GpsMyLocationProvider(context), mapView) }
+
+    // --- CACHES PARA OPTIMIZACIÓN DE RENDERIZADO (Hallazgo A11) ---
+    val markerIconCache = remember { mutableMapOf<String, android.graphics.drawable.Drawable>() }
+    val waypointMarkers = remember { mutableMapOf<Int, Marker>() }
+    val favoriteMarkers = remember { mutableMapOf<Int, Marker>() }
+    val routePolyline = remember { 
+        Polyline(mapView).apply {
+            outlinePaint.color = android.graphics.Color.RED
+            outlinePaint.strokeWidth = 5f
+        }
+    }
+    
+    val personIcon = remember(isTracking) {
+        ContextCompat.getDrawable(context, org.osmdroid.library.R.drawable.person)!!.mutate().apply {
+            setTint(if (isTracking) android.graphics.Color.RED else android.graphics.Color.parseColor("#1B5E20"))
+        }.toBitmap()
+    }
+    val directionIcon = remember(isTracking) {
+        ContextCompat.getDrawable(context, org.osmdroid.library.R.drawable.next)!!.mutate().apply {
+            setTint(if (isTracking) android.graphics.Color.RED else android.graphics.Color.parseColor("#1B5E20"))
+        }.toBitmap()
+    }
+
+    val getCachedIcon = { resId: Int, colorHex: String ->
+        val key = "$resId-$colorHex"
+        markerIconCache.getOrPut(key) {
+            ContextCompat.getDrawable(context, resId)!!.mutate().apply {
+                setTint(android.graphics.Color.parseColor(colorHex))
+            }
+        }
+    }
+    // --------------------------------------------------------------
 
     // Centrar en la ubicación predeterminada y pedir permisos
     LaunchedEffect(Unit) {
@@ -252,7 +284,7 @@ fun MapScreen(viewModel: RouteViewModel, modifier: Modifier = Modifier) {
                         override fun longPressHelper(p: GeoPoint?): Boolean {
                             p?.let { 
                                 clickedGeoPoint = it
-                                viewModel.fetchAddressForLocation(context, it.latitude, it.longitude)
+                                viewModel.fetchAddressForLocation(it.latitude, it.longitude)
                                 showSaveLocationDialog = true 
                             }
                             return true
@@ -270,71 +302,77 @@ fun MapScreen(viewModel: RouteViewModel, modifier: Modifier = Modifier) {
                         locationOverlay.disableFollowLocation()
                     }
                     
-                    // Actualizar color de la flecha de ubicación según el estado de grabación
-                    val personDrawable = ContextCompat.getDrawable(context, org.osmdroid.library.R.drawable.person)!!
-                    val directionDrawable = ContextCompat.getDrawable(context, org.osmdroid.library.R.drawable.next)!!
-                    
-                    if (isTracking) {
-                        personDrawable.setTint(android.graphics.Color.RED)
-                        directionDrawable.setTint(android.graphics.Color.RED)
-                    } else {
-                        personDrawable.setTint(android.graphics.Color.parseColor("#1B5E20")) // Verde oscuro
-                        directionDrawable.setTint(android.graphics.Color.parseColor("#1B5E20"))
-                    }
-                    
-                    locationOverlay.setPersonIcon(personDrawable.toBitmap())
-                    locationOverlay.setDirectionIcon(directionDrawable.toBitmap())
+                    // Sincronizar iconos de ubicación (solo si cambiaron por isTracking)
+                    locationOverlay.setPersonIcon(personIcon)
+                    locationOverlay.setDirectionIcon(directionIcon)
 
-                    view.overlays.removeAll { it is Polyline || (it is Marker && it.title != "Ubicación") }
+                    // 1. Optimización de Polyline (Ruta) - Reutilización de objeto
                     if (routePoints.size > 1) {
-                        view.overlays.add(Polyline(view).apply {
-                            // ORDENAR PUNTOS POR TIMESTAMP ANTES DE DIBUJAR
-                            val sortedPoints = routePoints.sortedBy { it.timestamp }
-                            setPoints(sortedPoints.map { GeoPoint(it.latitude, it.longitude) })
-                            outlinePaint.color = android.graphics.Color.RED
-                            outlinePaint.strokeWidth = 5f // Línea más fina para mayor claridad
-                        })
-                    }
-                    waypoints.forEach { wp ->
-                        view.overlays.add(Marker(view).apply { 
-                            position = GeoPoint(wp.latitude, wp.longitude)
-                            title = wp.name
-                            snippet = wp.description
-                            setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
-                            // ESTRELLA con color dinámico
-                            icon = ContextCompat.getDrawable(context, android.R.drawable.star_on)?.apply {
-                                setTint(android.graphics.Color.parseColor(wp.color))
-                            }
-                            
-                            setOnMarkerClickListener { marker, _ ->
-                                lastInteractionTime = System.currentTimeMillis()
-                                view.controller.animateTo(marker.position)
-                                marker.showInfoWindow()
-                                true
-                            }
-                        })
+                        if (!view.overlays.contains(routePolyline)) {
+                            view.overlays.add(routePolyline)
+                        }
+                        val sortedPoints = routePoints.sortedBy { it.timestamp }
+                        routePolyline.setPoints(sortedPoints.map { GeoPoint(it.latitude, it.longitude) })
+                    } else {
+                        view.overlays.remove(routePolyline)
                     }
 
-                    // DIBUJAR FAVORITOS (ESTRELLAS DORADAS)
-                    savedLocations.forEach { loc ->
-                        view.overlays.add(Marker(view).apply {
-                            position = GeoPoint(loc.latitude, loc.longitude)
-                            title = loc.name
-                            snippet = loc.address
-                            setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
-                            // ESTRELLA con color dinámico
-                            icon = ContextCompat.getDrawable(context, android.R.drawable.btn_star_big_on)?.apply {
-                                setTint(android.graphics.Color.parseColor(loc.color))
-                            }
-                            
-                            setOnMarkerClickListener { marker, _ ->
-                                lastInteractionTime = System.currentTimeMillis()
-                                view.controller.animateTo(marker.position)
-                                marker.showInfoWindow()
-                                true
-                            }
-                        })
+                    // 2. Optimización de Waypoints (Diffing selectivo)
+                    val currentWpIds = waypoints.map { it.id }.toSet()
+                    // Eliminar marcadores que ya no están en la lista
+                    waypointMarkers.keys.retainAll { id ->
+                        if (id !in currentWpIds) {
+                            view.overlays.remove(waypointMarkers[id])
+                            false
+                        } else true
                     }
+                    // Añadir o actualizar marcadores existentes
+                    waypoints.forEach { wp ->
+                        val marker = waypointMarkers.getOrPut(wp.id) {
+                            Marker(view).apply {
+                                setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+                                setOnMarkerClickListener { m, v ->
+                                    lastInteractionTime = System.currentTimeMillis()
+                                    v.controller.animateTo(m.position)
+                                    m.showInfoWindow()
+                                    true
+                                }
+                                view.overlays.add(this)
+                            }
+                        }
+                        marker.position = GeoPoint(wp.latitude, wp.longitude)
+                        marker.title = wp.name
+                        marker.snippet = wp.description
+                        marker.icon = getCachedIcon(android.R.drawable.star_on, wp.color)
+                    }
+
+                    // 3. Optimización de Favoritos (Diffing selectivo)
+                    val currentFavIds = savedLocations.map { it.id }.toSet()
+                    favoriteMarkers.keys.retainAll { id ->
+                        if (id !in currentFavIds) {
+                            view.overlays.remove(favoriteMarkers[id])
+                            false
+                        } else true
+                    }
+                    savedLocations.forEach { loc ->
+                        val marker = favoriteMarkers.getOrPut(loc.id) {
+                            Marker(view).apply {
+                                setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+                                setOnMarkerClickListener { m, v ->
+                                    lastInteractionTime = System.currentTimeMillis()
+                                    v.controller.animateTo(m.position)
+                                    m.showInfoWindow()
+                                    true
+                                }
+                                view.overlays.add(this)
+                            }
+                        }
+                        marker.position = GeoPoint(loc.latitude, loc.longitude)
+                        marker.title = loc.name
+                        marker.snippet = loc.address
+                        marker.icon = getCachedIcon(android.R.drawable.btn_star_big_on, loc.color)
+                    }
+
                     view.invalidate()
                 } catch (e: Exception) { }
             }
@@ -350,7 +388,7 @@ fun MapScreen(viewModel: RouteViewModel, modifier: Modifier = Modifier) {
                 shape = RoundedCornerShape(10.dp),
                 modifier = Modifier.clickable { 
                     if (!showAddressBox) {
-                        viewModel.fetchCurrentAddress(context)
+                        viewModel.fetchCurrentAddress()
                         showAddressBox = true
                     } else {
                         showAddressBox = false
@@ -441,14 +479,14 @@ fun MapScreen(viewModel: RouteViewModel, modifier: Modifier = Modifier) {
         Box(modifier = Modifier.align(Alignment.BottomEnd).padding(bottom = 24.dp, end = 16.dp)) {
             if (!isTracking) {
                 ExtendedFloatingActionButton(
-                    onClick = { viewModel.generateSuggestedRouteName(context) { newRouteName = it; showStartDialog = true } },
+                    onClick = { viewModel.generateSuggestedRouteName { newRouteName = it; showStartDialog = true } },
                     icon = { Icon(Icons.Default.PlayArrow, null) },
                     text = { Text("Grabar") }
                 )
             } else {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     FloatingActionButton(onClick = { showWaypointDialog = true }) { Icon(Icons.Default.AddLocationAlt, null) }
-                    FloatingActionButton(onClick = { viewModel.stopTrackingRoute(context) }, containerColor = MaterialTheme.colorScheme.error) { Icon(Icons.Default.Stop, null) }
+                    FloatingActionButton(onClick = { viewModel.stopTrackingRoute() }, containerColor = MaterialTheme.colorScheme.error) { Icon(Icons.Default.Stop, null) }
                 }
             }
         }
@@ -465,7 +503,7 @@ fun MapScreen(viewModel: RouteViewModel, modifier: Modifier = Modifier) {
                     Slider(value = viewModel.updateIntervalSeconds, onValueChange = { viewModel.updateIntervalSeconds = it }, valueRange = 1f..60f)
                 }
             },
-            confirmButton = { Button(onClick = { viewModel.startTrackingRoute(context, newRouteName); showStartDialog = false }) { Text("Iniciar") } }
+            confirmButton = { Button(onClick = { viewModel.startTrackingRoute(newRouteName); showStartDialog = false }) { Text("Iniciar") } }
         )
     }
 
@@ -479,16 +517,16 @@ fun MapScreen(viewModel: RouteViewModel, modifier: Modifier = Modifier) {
         // Actualizar dirección si cambia el switch de ubicación de foto
         LaunchedEffect(usePhotoGps) {
             if (usePhotoGps && photoGpsLocation != null) {
-                viewModel.fetchAddressForCoordinates(context, photoGpsLocation!!.first, photoGpsLocation!!.second)
+                viewModel.fetchAddressForCoordinates(photoGpsLocation!!.first, photoGpsLocation!!.second)
             } else if (!usePhotoGps) {
-                viewModel.fetchCurrentAddress(context)
+                viewModel.fetchCurrentAddress()
             }
         }
 
         // Intentar obtener la dirección actual para la descripción si está vacía
         LaunchedEffect(Unit) {
             if (viewModel.currentAddress == null) {
-                viewModel.fetchCurrentAddress(context)
+                viewModel.fetchCurrentAddress()
             }
         }
 
@@ -590,7 +628,7 @@ fun MapScreen(viewModel: RouteViewModel, modifier: Modifier = Modifier) {
                                 onClick = { 
                                     val hasCameraPermission = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
                                     if (hasCameraPermission) {
-                                        val uri = viewModel.createImageFile(context)
+                                        val uri = viewModel.createImageFile()
                                         if (uri != null) {
                                             capturedPhotoUri = uri
                                             cameraLauncher.launch(uri)
@@ -673,9 +711,9 @@ fun MapScreen(viewModel: RouteViewModel, modifier: Modifier = Modifier) {
         // Actualizar dirección si cambia el switch de ubicación de foto
         LaunchedEffect(usePhotoGps) {
             if (usePhotoGps && photoGpsLocation != null) {
-                viewModel.fetchAddressForLocation(context, photoGpsLocation!!.first, photoGpsLocation!!.second)
+                viewModel.fetchAddressForLocation(photoGpsLocation!!.first, photoGpsLocation!!.second)
             } else if (!usePhotoGps && clickedGeoPoint != null) {
-                viewModel.fetchAddressForLocation(context, clickedGeoPoint!!.latitude, clickedGeoPoint!!.longitude)
+                viewModel.fetchAddressForLocation(clickedGeoPoint!!.latitude, clickedGeoPoint!!.longitude)
             }
         }
 
@@ -802,7 +840,7 @@ fun MapScreen(viewModel: RouteViewModel, modifier: Modifier = Modifier) {
                                 onClick = { 
                                     val hasCameraPermission = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
                                     if (hasCameraPermission) {
-                                        val uri = viewModel.createImageFile(context)
+                                        val uri = viewModel.createImageFile()
                                         if (uri != null) {
                                             capturedPhotoUri = uri
                                             cameraLauncher.launch(uri)
@@ -854,7 +892,6 @@ fun MapScreen(viewModel: RouteViewModel, modifier: Modifier = Modifier) {
                         phoneNumber = phone,
                         email = email,
                         isContact = isContact,
-                        context = context,
                         color = selectedColor
                     )
                     showSaveLocationDialog = false 
