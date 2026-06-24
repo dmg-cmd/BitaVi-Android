@@ -179,6 +179,11 @@ class LocationService : Service() {
     }
 
     private fun startPassiveTracking() {
+        // Adquirir WakeLock para auto-mode con timeout de seguridad (25h)
+        wakeLock?.let {
+            if (!it.isHeld) it.acquire(25 * 60 * 60 * 1000L)
+        }
+
         // Al iniciar en modo pasivo con Auto-Mode, nos ponemos en primer plano para que Android no nos mate
         val isAutoModeActive = sharedPrefs.getBoolean("auto_mode", false)
         val statusText = if (isAutoModeActive) "Vigilando movimiento... Modo Automático activo." else "Servicio activo en modo pasivo."
@@ -199,7 +204,7 @@ class LocationService : Service() {
 
         // Adquirir WakeLock para asegurar procesamiento de GPS continuo
         wakeLock?.let {
-            if (!it.isHeld) it.acquire()
+            if (!it.isHeld) it.acquire(25 * 60 * 60 * 1000L)
         }
 
         // Limpiar buffer de pre-grabación si el usuario inicia manualmente
