@@ -77,6 +77,9 @@ interface RouteDao {
     @Update
     suspend fun updateSavedLocation(location: com.example.data.model.SavedLocation)
 
+    @Query("UPDATE saved_locations SET color = :color WHERE id = :id")
+    suspend fun updateSavedLocationColor(id: Int, color: String)
+
     @Query("SELECT * FROM saved_locations ORDER BY timestamp DESC")
     fun getAllSavedLocationsFlow(): Flow<List<com.example.data.model.SavedLocation>>
 

@@ -199,6 +199,10 @@ class RouteRepository(private val routeDao: RouteDao) {
         routeDao.updateSavedLocation(location)
     }
 
+    suspend fun updateSavedLocationColor(id: Int, color: String) {
+        routeDao.updateSavedLocationColor(id, color)
+    }
+
     suspend fun deleteSavedLocation(location: com.example.data.model.SavedLocation) {
         routeDao.deleteSavedLocation(location)
     }

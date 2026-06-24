@@ -10,6 +10,7 @@ import android.os.Build
 import android.os.HandlerThread
 import android.os.IBinder
 import android.os.Looper
+import android.os.PowerManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.example.MainActivity
@@ -35,6 +36,7 @@ class LocationService : Service() {
 
     private lateinit var sharedPrefs: SharedPreferences
     private var locationHandlerThread: HandlerThread? = null
+    private var wakeLock: PowerManager.WakeLock? = null
 
     private lateinit var fusedLocationClient: FusedLocationProviderClient
     private lateinit var locationCallback: LocationCallback
@@ -76,6 +78,7 @@ class LocationService : Service() {
         const val ACTION_STOP = "ACTION_STOP"
         const val ACTION_PAUSE = "ACTION_PAUSE"
         const val ACTION_START_PASSIVE = "ACTION_START_PASSIVE"
+        const val ACTION_SHUTDOWN = "ACTION_SHUTDOWN"
         const val ACTION_UPDATE_SETTINGS = "ACTION_UPDATE_SETTINGS"
 
         // Claves para Intent
@@ -106,6 +109,10 @@ class LocationService : Service() {
         val database = AppDatabase.getDatabase(applicationContext)
         repository = RouteRepository(database.routeDao())
 
+        // Inicializar WakeLock para evitar que el sistema suspenda el CPU
+        val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+        wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Localizador:TrackingWakeLock")
+
         // Cache de SharedPreferences para evitar I/O repetitivo en el Main Thread
         sharedPrefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(this)
 
@@ -133,8 +140,16 @@ class LocationService : Service() {
         val action = intent?.action
         Log.d(TAG, "onStartCommand acción recibida: $action")
 
+        // Asegurar que el servicio inicie en primer plano de inmediato (Requisito Android 12+)
+        if (action != ACTION_SHUTDOWN) {
+            ensureForeground()
+        }
+
         try {
             when (action) {
+                ACTION_SHUTDOWN -> {
+                    shutdownService()
+                }
                 ACTION_START_PASSIVE -> {
                     startPassiveTracking()
                 }
@@ -166,14 +181,13 @@ class LocationService : Service() {
     private fun startPassiveTracking() {
         // Al iniciar en modo pasivo con Auto-Mode, nos ponemos en primer plano para que Android no nos mate
         val isAutoModeActive = sharedPrefs.getBoolean("auto_mode", false)
+        val statusText = if (isAutoModeActive) "Vigilando movimiento... Modo Automático activo." else "Servicio activo en modo pasivo."
         
-        if (isAutoModeActive) {
-            val notification = buildNotification("Localizador", "Vigilando movimiento... Modo Automático activo.")
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
-            } else {
-                startForeground(NOTIFICATION_ID, notification)
-            }
+        val notification = buildNotification("Localizador", statusText)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
+        } else {
+            startForeground(NOTIFICATION_ID, notification)
         }
 
         // Solicitar actualizaciones de baja frecuencia para la UI cuando no se está grabando
@@ -182,6 +196,11 @@ class LocationService : Service() {
 
     private fun startTracking(routeName: String, routeId: Int, interval: Long, distance: Float) {
         if (_isTracking.value) return // Ya está en marcha
+
+        // Adquirir WakeLock para asegurar procesamiento de GPS continuo
+        wakeLock?.let {
+            if (!it.isHeld) it.acquire()
+        }
 
         // Limpiar buffer de pre-grabación si el usuario inicia manualmente
         preStartBuffer.clear()
@@ -556,6 +575,11 @@ class LocationService : Service() {
         fusedLocationClient.removeLocationUpdates(locationCallback)
         timerJob?.cancel()
 
+        // Liberar WakeLock
+        if (wakeLock?.isHeld == true) {
+            try { wakeLock?.release() } catch (e: Exception) { Log.e(TAG, "Error liberando WakeLock: ${e.message}") }
+        }
+
         serviceScope.launch {
             if (activeRouteId != -1) {
                 repository.stopActiveRoute(activeRouteId, totalDistanceMeters)
@@ -564,14 +588,45 @@ class LocationService : Service() {
             // Reiniciar estados una vez confirmado el guardado
             withContext(Dispatchers.Main) {
                 _isTracking.value = false
+                activeRouteId = -1
                 _currentRouteId.value = null
                 _latestLocation.value = null
                 _elapsedTimeSeconds.value = 0L
                 _currentDistanceMeters.value = 0.0
 
+                // No llamamos a stopSelf(). El servicio se mantiene en modo pasivo.
+                startPassiveTracking()
+            }
+        }
+    }
+
+    private fun shutdownService() {
+        Log.d(TAG, "Iniciando apagado total del servicio.")
+        fusedLocationClient.removeLocationUpdates(locationCallback)
+        timerJob?.cancel()
+        
+        if (wakeLock?.isHeld == true) {
+            try { wakeLock?.release() } catch (e: Exception) { }
+        }
+
+        serviceScope.launch {
+            if (activeRouteId != -1) {
+                repository.stopActiveRoute(activeRouteId, totalDistanceMeters)
+            }
+            withContext(Dispatchers.Main) {
+                _isTracking.value = false
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
             }
+        }
+    }
+
+    private fun ensureForeground() {
+        val notification = buildNotification("Localizador", "Servicio en ejecución")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
+        } else {
+            startForeground(NOTIFICATION_ID, notification)
         }
     }
 
@@ -643,6 +698,11 @@ class LocationService : Service() {
         fusedLocationClient.removeLocationUpdates(locationCallback)
         timerJob?.cancel()
         serviceScope.cancel()
+
+        // Liberar WakeLock si aún está activo
+        if (wakeLock?.isHeld == true) {
+            try { wakeLock?.release() } catch (e: Exception) { }
+        }
 
         // Liberar el HandlerThread para evitar fugas de memoria
         locationHandlerThread?.quitSafely()

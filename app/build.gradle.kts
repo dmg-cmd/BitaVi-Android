@@ -22,6 +22,12 @@ android {
     versionName = "1.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+    externalNativeBuild {
+      cmake {
+        cppFlags("-Wl,-z,max-page-size=16384")
+      }
+    }
   }
 
   signingConfigs {
@@ -60,6 +66,12 @@ android {
     buildConfig = true
   }
   testOptions { unitTests { isIncludeAndroidResources = true } }
+
+  packaging {
+    jniLibs {
+      useLegacyPackaging = false
+    }
+  }
 }
 
 // Configure the Secrets Gradle Plugin to use .env and .env.example files
@@ -111,6 +123,8 @@ dependencies {
   implementation(libs.retrofit)
   implementation(libs.androidx.biometric)
   implementation(libs.androidx.security.crypto)
+  implementation(libs.androidx.appcompat)
+  implementation(libs.sqlcipher.android)
   
   // Librería para leer coordenadas de las fotos
   implementation("androidx.exifinterface:exifinterface:1.3.7")

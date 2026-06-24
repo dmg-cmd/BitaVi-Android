@@ -55,6 +55,16 @@ sealed interface Screen {
 class RouteViewModel(application: Application, private val repository: RouteRepository) : AndroidViewModel(application) {
 
     private val context: Context get() = getApplication<Application>().applicationContext
+ 
+    // A13: Cache de SharedPreferences para evitar I/O repetitivo y múltiples instancias
+    private val sharedPrefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(context)
+
+    // Flujo compartido reactivo para actualizar color en Room evitando condiciones de carrera
+    private val _savedLocationColorUpdateFlow = MutableSharedFlow<Pair<Int, String>>(extraBufferCapacity = 64)
+
+    fun updateSavedLocationColorReactively(id: Int, color: String) {
+        _savedLocationColorUpdateFlow.tryEmit(Pair(id, color))
+    }
 
     var mapTargetLocation by mutableStateOf<GeoPoint?>(null)
         private set
@@ -74,7 +84,6 @@ class RouteViewModel(application: Application, private val repository: RouteRepo
 
     fun toggleBiometric(enabled: Boolean) {
         isBiometricEnabled = enabled
-        val sharedPrefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(context)
         sharedPrefs.edit().putBoolean("biometric_enabled", enabled).apply()
     }
 
@@ -105,14 +114,17 @@ class RouteViewModel(application: Application, private val repository: RouteRepo
     fun updateDefaultLocation(lat: Double, lon: Double) { defaultLatitude = lat; defaultLongitude = lon }
     fun updateDefaultLocationPersistently(lat: Double, lon: Double) {
         updateDefaultLocation(lat, lon)
-        val sharedPrefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(context)
         sharedPrefs.edit().putFloat("default_lat", lat.toFloat()).putFloat("default_lon", lon.toFloat()).apply()
     }
 
-    fun toggleAirplaneMode() { isAirplaneMode = !isAirplaneMode }
+    fun toggleAirplaneMode() { 
+        isAirplaneMode = !isAirplaneMode 
+        // M08: Persistir el cambio para que el LocationService lo detecte
+        sharedPrefs.edit().putBoolean("airplane_mode", isAirplaneMode).apply()
+    }
+
     fun toggleAutoMode() {
         isAutoMode = !isAutoMode
-        val sharedPrefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(context)
         sharedPrefs.edit().putBoolean("auto_mode", isAutoMode).apply()
     }
     fun toggleOfflineMode() { isOfflineMode = !isOfflineMode }
@@ -123,7 +135,6 @@ class RouteViewModel(application: Application, private val repository: RouteRepo
     fun toggleNearMe() {
         val newState = !_isNearMeEnabled.value
         _isNearMeEnabled.value = newState
-        val sharedPrefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(context)
         sharedPrefs.edit().putBoolean("near_me_enabled", newState).apply()
         
         // Notificar al servicio que ha cambiado el ajuste
@@ -136,12 +147,22 @@ class RouteViewModel(application: Application, private val repository: RouteRepo
     // Al inicializar, cargar el valor guardado
     init {
         // Cargar preferencias iniciales
-        val sharedPrefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(context)
         isAutoMode = sharedPrefs.getBoolean("auto_mode", false)
+        isAirplaneMode = sharedPrefs.getBoolean("airplane_mode", false)
         _isNearMeEnabled.value = sharedPrefs.getBoolean("near_me_enabled", false)
         isBiometricEnabled = sharedPrefs.getBoolean("biometric_enabled", false)
         defaultLatitude = sharedPrefs.getFloat("default_lat", -34.6037f).toDouble()
         defaultLongitude = sharedPrefs.getFloat("default_lon", -58.3816f).toDouble()
+
+        // Recolectar reactivamente las actualizaciones de color en Room
+        @OptIn(kotlinx.coroutines.FlowPreview::class)
+        viewModelScope.launch(Dispatchers.IO) {
+            _savedLocationColorUpdateFlow
+                .debounce(100) // Evita saturar la base de datos si el slider se mueve rápido
+                .collectLatest { (id, color) ->
+                    repository.updateSavedLocationColor(id, color)
+                }
+        }
     }
 
     fun navigateTo(screen: Screen) { currentScreen = screen }
@@ -469,70 +490,74 @@ class RouteViewModel(application: Application, private val repository: RouteRepo
         return withContext(Dispatchers.IO) {
             try {
                 val backupFile = File(context.cacheDir, "respaldo_total.zip")
-                val zos = ZipOutputStream(FileOutputStream(backupFile))
-                
-                // 1. Exportar FAVORITOS (Completo)
-                val favs: List<SavedLocation> = repository.allSavedLocations.first()
-                if (favs.isNotEmpty()) {
-                    zos.putNextEntry(ZipEntry("favoritos.txt"))
-                    val content = favs.joinToString("\n") { f ->
-                        "${f.name}|${f.address}|${f.latitude}|${f.longitude}|${f.comment}|${f.author}|${f.photoPath ?: ""}|${f.phoneNumber}|${f.email}|${f.isContact}|${f.color}|${f.country}|${f.city}" 
-                    }
-                    zos.write(content.toByteArray())
-                    zos.closeEntry()
-                }
-
-                // 2. Exportar RUTAS
-                val routes: List<Route> = repository.allRoutes.first()
-                if (routes.isNotEmpty()) {
-                    zos.putNextEntry(ZipEntry("rutas.txt"))
-                    val routesContent = routes.joinToString("\n") { r ->
-                        "${r.id}|${r.name}|${r.startTime}|${r.endTime}|${r.distanceMeters}|${r.maxSpeed}|${r.avgSpeed}"
-                    }
-                    zos.write(routesContent.toByteArray())
-                    zos.closeEntry()
-
-                    // 3. Exportar PUNTOS y WAYPOINTS
-                    val allPoints = mutableListOf<String>()
-                    val allWaypoints = mutableListOf<String>()
-                    
-                    for (route in routes) {
-                        val pts = repository.getLocationPointsSync(route.id)
-                        for (p in pts) {
-                            allPoints.add("${p.routeId}|${p.latitude}|${p.longitude}|${p.altitude}|${p.speed}|${p.timestamp}")
+                val buffer = ByteArray(4096)
+                ZipOutputStream(FileOutputStream(backupFile)).use { zos ->
+                    // 1. Exportar FAVORITOS (Completo)
+                    val favs: List<SavedLocation> = repository.allSavedLocations.first()
+                    if (favs.isNotEmpty()) {
+                        zos.putNextEntry(ZipEntry("favoritos.txt"))
+                        val content = favs.joinToString("\n") { f ->
+                            "${f.name}|${f.address}|${f.latitude}|${f.longitude}|${f.comment}|${f.author}|${f.photoPath ?: ""}|${f.phoneNumber}|${f.email}|${f.isContact}|${f.color}|${f.country}|${f.city}" 
                         }
+                        zos.write(content.toByteArray())
+                        zos.closeEntry()
+                    }
+
+                    // 2. Exportar RUTAS
+                    val routes: List<Route> = repository.allRoutes.first()
+                    if (routes.isNotEmpty()) {
+                        zos.putNextEntry(ZipEntry("rutas.txt"))
+                        val routesContent = routes.joinToString("\n") { r ->
+                            "${r.id}|${r.name}|${r.startTime}|${r.endTime}|${r.distanceMeters}|${r.maxSpeed}|${r.avgSpeed}"
+                        }
+                        zos.write(routesContent.toByteArray())
+                        zos.closeEntry()
+
+                        // 3. Exportar PUNTOS y WAYPOINTS
+                        val allPoints = mutableListOf<String>()
+                        val allWaypoints = mutableListOf<String>()
                         
-                        val wps = repository.getWaypointsSync(route.id)
-                        for (w in wps) {
-                            allWaypoints.add("${w.routeId}|${w.name}|${w.description}|${w.latitude}|${w.longitude}|${w.photoPath ?: ""}|${w.author}|${w.color}")
+                        for (route in routes) {
+                            val pts = repository.getLocationPointsSync(route.id)
+                            for (p in pts) {
+                                allPoints.add("${p.routeId}|${p.latitude}|${p.longitude}|${p.altitude}|${p.speed}|${p.timestamp}")
+                            }
+                            
+                            val wps = repository.getWaypointsSync(route.id)
+                            for (w in wps) {
+                                allWaypoints.add("${w.routeId}|${w.name}|${w.description}|${w.latitude}|${w.longitude}|${w.photoPath ?: ""}|${w.author}|${w.color}")
+                            }
                         }
-                    }
 
-                    if (allPoints.isNotEmpty()) {
-                        zos.putNextEntry(ZipEntry("puntos.txt"))
-                        zos.write(allPoints.joinToString("\n").toByteArray())
-                        zos.closeEntry()
-                    }
-                    if (allWaypoints.isNotEmpty()) {
-                        zos.putNextEntry(ZipEntry("marcadores.txt"))
-                        zos.write(allWaypoints.joinToString("\n").toByteArray())
-                        zos.closeEntry()
-                    }
-                }
-
-                // 4. Exportar FOTOS físicas
-                val imageDir = File(context.filesDir, "images")
-                if (imageDir.exists()) {
-                    imageDir.listFiles()?.forEach { file ->
-                        if (file.isFile) {
-                            zos.putNextEntry(ZipEntry("images/${file.name}"))
-                            file.inputStream().use { it.copyTo(zos) }
+                        if (allPoints.isNotEmpty()) {
+                            zos.putNextEntry(ZipEntry("puntos.txt"))
+                            zos.write(allPoints.joinToString("\n").toByteArray())
+                            zos.closeEntry()
+                        }
+                        if (allWaypoints.isNotEmpty()) {
+                            zos.putNextEntry(ZipEntry("marcadores.txt"))
+                            zos.write(allWaypoints.joinToString("\n").toByteArray())
                             zos.closeEntry()
                         }
                     }
-                }
 
-                zos.close()
+                    // 4. Exportar FOTOS físicas
+                    val imageDir = File(context.filesDir, "images")
+                    if (imageDir.exists()) {
+                        imageDir.listFiles()?.forEach { file ->
+                            if (file.isFile) {
+                                zos.putNextEntry(ZipEntry("images/${file.name}"))
+                                file.inputStream().use { inputStream ->
+                                    var bytesRead: Int
+                                    while (inputStream.read(buffer).also { bytesRead = it } != -1) {
+                                        zos.write(buffer, 0, bytesRead)
+                                    }
+                                }
+                                zos.closeEntry()
+                            }
+                        }
+                    }
+                }
                 backupFile
             } catch (e: Exception) { 
                 e.printStackTrace()
@@ -548,79 +573,90 @@ class RouteViewModel(application: Application, private val repository: RouteRepo
                 Toast.makeText(context, "Restaurando datos completos...", Toast.LENGTH_SHORT).show()
             }
             try {
-                val inputStream = context.contentResolver.openInputStream(uri) ?: return@launch
                 val headerBytes = ByteArray(4)
-                inputStream.read(headerBytes)
-                inputStream.close()
-                
-                val finalInputStream = context.contentResolver.openInputStream(uri) ?: return@launch
+                context.contentResolver.openInputStream(uri)?.use { it.read(headerBytes) }
                 
                 if (headerBytes[0] == 0x50.toByte() && headerBytes[1] == 0x4B.toByte()) {
-                    val zis = ZipInputStream(finalInputStream)
-                    var entry = zis.nextEntry
-                    val imageDir = File(context.filesDir, "images")
-                    if (!imageDir.exists()) imageDir.mkdirs()
+                    context.contentResolver.openInputStream(uri)?.use { fis ->
+                        ZipInputStream(fis).use { zis ->
+                            var entry = zis.nextEntry
+                            val imageDir = File(context.filesDir, "images")
+                            if (!imageDir.exists()) imageDir.mkdirs()
+                            val buffer = ByteArray(4096)
 
-                    while (entry != null) {
-                        val name = entry.name
-                        when {
-                            name.endsWith(".gpx", ignoreCase = true) -> {
-                                val routeName = name.substringAfterLast("/").substringBeforeLast(".")
-                                val content = zis.readBytes()
-                                processGpxInputStream(java.io.ByteArrayInputStream(content), routeName)
-                            }
-                            name.contains("localizador_database") -> {
-                                val dbFile = File(context.getDatabasePath("localizador_database").parent, name.substringAfterLast("/"))
-                                dbFile.outputStream().use { zis.copyTo(it) }
-                            }
-                            name == "mis_favoritos.txt" || name == "favoritos.txt" -> {
-                                val lines = zis.readBytes().decodeToString().split("\n")
-                                lines.filter { it.isNotBlank() }.forEach { line ->
-                                    val p = line.split("|")
-                                    if (p.size >= 4) {
-                                        val nameVal = p[0]
-                                        val addressVal = p[1]
-                                        val lat = p[2].toDoubleOrNull() ?: 0.0
-                                        val lon = p[3].toDoubleOrNull() ?: 0.0
-                                        val commentVal = if (p.size > 4) p[4] else ""
-                                        val authorVal = if (p.size > 5) p[5] else ""
-                                        val photoPathVal = if (p.size > 6 && p[6].isNotBlank()) p[6] else null
-                                        val phoneNumberVal = if (p.size > 7) p[7] else ""
-                                        val emailVal = if (p.size > 8) p[8] else ""
-                                        val isContactVal = if (p.size > 9) p[9].toBoolean() else false
-                                        val colorVal = if (p.size > 10) p[10] else "#FFD700"
-                                        
-                                        val details = fetchLocationDetails(lat, lon)
-                                        val countryVal = if (p.size > 11) p[11] else details.second
-                                        val cityVal = if (p.size > 12) p[12] else details.third
+                            while (entry != null) {
+                                val name = entry.name
+                                when {
+                                    name.endsWith(".gpx", ignoreCase = true) -> {
+                                        val routeName = name.substringAfterLast("/").substringBeforeLast(".")
+                                        val content = zis.readBytes()
+                                        processGpxInputStream(java.io.ByteArrayInputStream(content), routeName)
+                                    }
+                                    name.contains("localizador_database") -> {
+                                        val dbFile = File(context.getDatabasePath("localizador_database").parent, name.substringAfterLast("/"))
+                                        dbFile.outputStream().use { os ->
+                                            var bytesRead: Int
+                                            while (zis.read(buffer).also { bytesRead = it } != -1) {
+                                                os.write(buffer, 0, bytesRead)
+                                            }
+                                        }
+                                    }
+                                    name == "mis_favoritos.txt" || name == "favoritos.txt" -> {
+                                        val lines = zis.readBytes().decodeToString().split("\n")
+                                        lines.filter { it.isNotBlank() }.forEach { line ->
+                                            val p = line.split("|")
+                                            if (p.size >= 4) {
+                                                val nameVal = p[0]
+                                                val addressVal = p[1]
+                                                val lat = p[2].toDoubleOrNull() ?: 0.0
+                                                val lon = p[3].toDoubleOrNull() ?: 0.0
+                                                val commentVal = if (p.size > 4) p[4] else ""
+                                                val authorVal = if (p.size > 5) p[5] else ""
+                                                val photoPathVal = if (p.size > 6 && p[6].isNotBlank()) p[6] else null
+                                                val phoneNumberVal = if (p.size > 7) p[7] else ""
+                                                val emailVal = if (p.size > 8) p[8] else ""
+                                                val isContactVal = if (p.size > 9) p[9].toBoolean() else false
+                                                val colorVal = if (p.size > 10) p[10] else "#FFD700"
+                                                
+                                                val details = fetchLocationDetails(lat, lon)
+                                                val countryVal = if (p.size > 11) p[11] else details.second
+                                                val cityVal = if (p.size > 12) p[12] else details.third
 
-                                        repository.addSavedLocation(
-                                            name = nameVal,
-                                            address = addressVal,
-                                            latitude = lat,
-                                            longitude = lon,
-                                            comment = commentVal,
-                                            author = authorVal,
-                                            photoPath = photoPathVal,
-                                            phoneNumber = phoneNumberVal,
-                                            email = emailVal,
-                                            isContact = isContactVal,
-                                            country = countryVal,
-                                            city = cityVal,
-                                            color = colorVal
-                                        )
+                                                repository.addSavedLocation(
+                                                    name = nameVal,
+                                                    address = addressVal,
+                                                    latitude = lat,
+                                                    longitude = lon,
+                                                    comment = commentVal,
+                                                    author = authorVal,
+                                                    photoPath = photoPathVal,
+                                                    phoneNumber = phoneNumberVal,
+                                                    email = emailVal,
+                                                    isContact = isContactVal,
+                                                    country = countryVal,
+                                                    city = cityVal,
+                                                    color = colorVal
+                                                )
+                                            }
+                                        }
+                                    }
+                                    (name.startsWith("fotos/") || name.startsWith("images/")) -> {
+                                        val fileName = name.substringAfterLast("/")
+                                        if (fileName.isNotEmpty()) {
+                                            File(imageDir, fileName).outputStream().use { os ->
+                                                var bytesRead: Int
+                                                while (zis.read(buffer).also { bytesRead = it } != -1) {
+                                                    os.write(buffer, 0, bytesRead)
+                                                }
+                                            }
+                                        }
                                     }
                                 }
-                            }
-                            (name.startsWith("fotos/") || name.startsWith("images/")) -> {
-                                val fileName = name.substringAfterLast("/")
-                                if (fileName.isNotEmpty()) File(imageDir, fileName).outputStream().use { zis.copyTo(it) }
+                                zis.closeEntry()
+                                entry = zis.nextEntry
                             }
                         }
-                        zis.closeEntry()
-                        entry = zis.nextEntry
                     }
-                    zis.close()
                 } else if (headerBytes[0] == 0x3C.toByte()) {
                     importGpxFile(uri)
                     return@launch

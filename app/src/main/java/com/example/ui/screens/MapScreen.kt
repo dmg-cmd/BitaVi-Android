@@ -239,6 +239,10 @@ fun MapScreen(viewModel: RouteViewModel, modifier: Modifier = Modifier) {
                 mapView.apply {
                     setTileSource(TileSourceFactory.MAPNIK)
                     setMultiTouchControls(true)
+                    setOnTouchListener { v, event ->
+                        v.parent.requestDisallowInterceptTouchEvent(true)
+                        false
+                    }
                     zoomController.setVisibility(CustomZoomButtonsController.Visibility.NEVER)
                     
                     // Si venimos con un objetivo, centrar inmediatamente en el factory
@@ -309,29 +313,48 @@ fun MapScreen(viewModel: RouteViewModel, modifier: Modifier = Modifier) {
                     locationOverlay.setPersonIcon(personIcon)
                     locationOverlay.setDirectionIcon(directionIcon)
 
-                    // 1. Optimización de Polyline (Ruta) - Reutilización de objeto
-                    if (routePoints.size > 1) {
-                        if (!view.overlays.contains(routePolyline)) {
-                            view.overlays.add(routePolyline)
+                    var needsInvalidate = false
+
+                    // 1. Optimización de Polyline (Ruta) - Actualización incremental (Hallazgo A11)
+                    val polyPoints = routePolyline.actualPoints
+                    if (routePoints.size != polyPoints.size) {
+                        if (routePoints.isEmpty()) {
+                            if (view.overlays.remove(routePolyline)) needsInvalidate = true
+                            routePolyline.setPoints(emptyList())
+                        } else {
+                            if (!view.overlays.contains(routePolyline)) {
+                                view.overlays.add(routePolyline)
+                                needsInvalidate = true
+                            }
+                            
+                            // Añadimos solo los nuevos puntos si la lista creció (ya vienen ordenados del DAO)
+                            if (routePoints.size > polyPoints.size && polyPoints.isNotEmpty()) {
+                                for (i in polyPoints.size until routePoints.size) {
+                                    val p = routePoints[i]
+                                    routePolyline.addPoint(GeoPoint(p.latitude, p.longitude))
+                                }
+                            } else {
+                                // Reconstrucción total solo si es necesario, sin ordenación manual costosa
+                                routePolyline.setPoints(routePoints.map { GeoPoint(it.latitude, it.longitude) })
+                            }
+                            needsInvalidate = true
                         }
-                        val sortedPoints = routePoints.sortedBy { it.timestamp }
-                        routePolyline.setPoints(sortedPoints.map { GeoPoint(it.latitude, it.longitude) })
-                    } else {
-                        view.overlays.remove(routePolyline)
                     }
 
                     // 2. Optimización de Waypoints (Diffing selectivo)
                     val currentWpIds = waypoints.map { it.id }.toSet()
-                    // Eliminar marcadores que ya no están en la lista
-                    waypointMarkers.keys.retainAll { id ->
+                    if (waypointMarkers.keys.retainAll { id ->
                         if (id !in currentWpIds) {
                             view.overlays.remove(waypointMarkers[id])
+                            needsInvalidate = true
                             false
                         } else true
-                    }
-                    // Añadir o actualizar marcadores existentes
+                    }) { /* Se eliminaron marcadores */ }
+
                     waypoints.forEach { wp ->
+                        var isNew = false
                         val marker = waypointMarkers.getOrPut(wp.id) {
+                            isNew = true
                             Marker(view).apply {
                                 setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
                                 setOnMarkerClickListener { m, v ->
@@ -343,22 +366,30 @@ fun MapScreen(viewModel: RouteViewModel, modifier: Modifier = Modifier) {
                                 view.overlays.add(this)
                             }
                         }
-                        marker.position = GeoPoint(wp.latitude, wp.longitude)
-                        marker.title = wp.name
-                        marker.snippet = wp.description
-                        marker.icon = getCachedIcon(android.R.drawable.star_on, wp.color)
+                        val newPos = GeoPoint(wp.latitude, wp.longitude)
+                        if (isNew || marker.position != newPos || marker.title != wp.name) {
+                            marker.position = newPos
+                            marker.title = wp.name
+                            marker.snippet = wp.description
+                            marker.icon = getCachedIcon(android.R.drawable.star_on, wp.color)
+                            needsInvalidate = true
+                        }
                     }
 
                     // 3. Optimización de Favoritos (Diffing selectivo)
                     val currentFavIds = savedLocations.map { it.id }.toSet()
-                    favoriteMarkers.keys.retainAll { id ->
+                    if (favoriteMarkers.keys.retainAll { id ->
                         if (id !in currentFavIds) {
                             view.overlays.remove(favoriteMarkers[id])
+                            needsInvalidate = true
                             false
                         } else true
-                    }
+                    }) { }
+
                     savedLocations.forEach { loc ->
+                        var isNew = false
                         val marker = favoriteMarkers.getOrPut(loc.id) {
+                            isNew = true
                             Marker(view).apply {
                                 setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
                                 setOnMarkerClickListener { m, v ->
@@ -370,13 +401,17 @@ fun MapScreen(viewModel: RouteViewModel, modifier: Modifier = Modifier) {
                                 view.overlays.add(this)
                             }
                         }
-                        marker.position = GeoPoint(loc.latitude, loc.longitude)
-                        marker.title = loc.name
-                        marker.snippet = loc.address
-                        marker.icon = getCachedIcon(android.R.drawable.btn_star_big_on, loc.color)
+                        val newPos = GeoPoint(loc.latitude, loc.longitude)
+                        if (isNew || marker.position != newPos || marker.title != loc.name) {
+                            marker.position = newPos
+                            marker.title = loc.name
+                            marker.snippet = loc.address
+                            marker.icon = getCachedIcon(android.R.drawable.btn_star_big_on, loc.color)
+                            needsInvalidate = true
+                        }
                     }
 
-                    view.invalidate()
+                    if (needsInvalidate) view.invalidate()
                 } catch (e: Exception) { }
             }
         )

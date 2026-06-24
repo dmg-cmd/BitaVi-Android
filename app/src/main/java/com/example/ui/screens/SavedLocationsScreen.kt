@@ -400,7 +400,8 @@ fun SavedLocationsScreen(
                             photoPath = capturedPhotoUri?.toString(),
                             phoneNumber = phone,
                             email = email,
-                            isContact = isContact
+                            isContact = isContact,
+                            color = selectedColor
                         )
                         showAddDialog = false
                         newName = ""
@@ -410,6 +411,7 @@ fun SavedLocationsScreen(
                         phone = ""
                         email = ""
                         isContact = false
+                        selectedColor = "#FFD700"
                         capturedPhotoUri = null
                         photoGpsLocation = null
                         usePhotoGps = false
@@ -486,7 +488,10 @@ fun SavedLocationsScreen(
                                 modifier = Modifier
                                     .size(32.dp)
                                     .background(Color(android.graphics.Color.parseColor(colorHex)), RoundedCornerShape(16.dp))
-                                    .clickable { editColor = colorHex }
+                                    .clickable { 
+                                        editColor = colorHex 
+                                        viewModel.updateSavedLocationColorReactively(locationToEdit!!.id, colorHex)
+                                    }
                                     .padding(4.dp)
                             ) {
                                 if (editColor == colorHex) {
@@ -519,6 +524,7 @@ fun SavedLocationsScreen(
                                 hue = it
                                 val newColor = String.format("#%06X", 0xFFFFFF and android.graphics.Color.HSVToColor(floatArrayOf(hue, 1f, 1f)))
                                 editColor = newColor
+                                viewModel.updateSavedLocationColorReactively(locationToEdit!!.id, newColor)
                             },
                             valueRange = 0f..360f,
                             modifier = Modifier.fillMaxWidth()

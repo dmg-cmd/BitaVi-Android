@@ -1,5 +1,8 @@
 package com.example
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.content.Context
 import android.content.SharedPreferences
@@ -59,6 +62,7 @@ import com.example.ui.screens.HistoryScreen
 import com.example.ui.screens.MapScreen
 import com.example.ui.screens.SavedLocationsScreen
 import com.example.ui.theme.MyApplicationTheme
+import java.util.UUID
 
 /**
  * Actividad Principal que inicializa la capa de base de datos local (Room) y sirve de contenedor
@@ -67,6 +71,52 @@ import com.example.ui.theme.MyApplicationTheme
 class MainActivity : FragmentActivity() {
 
     private lateinit var encryptedPrefs: SharedPreferences
+
+    // --- LÓGICA DE PERMISOS ESCALONADA (Hallazgo B03) ---
+    private val backgroundLocationLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) Toast.makeText(this, "Rastreo persistente activado", Toast.LENGTH_SHORT).show()
+    }
+
+    private val locationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            checkAndRequestBackgroundLocation()
+        }
+    }
+
+    private fun checkAndRequestBackgroundLocation() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val hasBackground = ContextCompat.checkSelfPermission(
+                this, Manifest.permission.ACCESS_BACKGROUND_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED
+
+            if (!hasBackground) {
+                // Rationale para cumplir con las políticas de Google Play
+                androidx.appcompat.app.AlertDialog.Builder(this)
+                    .setTitle("Ubicación en segundo plano")
+                    .setMessage("Para grabar tus rutas con la pantalla apagada, selecciona 'Permitir todo el tiempo' en la siguiente pantalla.")
+                    .setPositiveButton("Configurar") { _, _ ->
+                        backgroundLocationLauncher.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+                    }
+                    .setNegativeButton("Ahora no", null)
+                    .show()
+            }
+        }
+    }
+
+    // --- GENERACIÓN DE CLAVE PARA CIFRADO (Hallazgo A01) ---
+    private fun getOrCreateDbPassphrase(): ByteArray {
+        val key = "room_sqlcipher_key"
+        var pass = encryptedPrefs.getString(key, null)
+        if (pass == null) {
+            pass = UUID.randomUUID().toString()
+            encryptedPrefs.edit().putString(key, pass).apply()
+        }
+        return pass.toByteArray()
+    }
 
     // Función para lanzar Biometría con Cifrado Real (CryptoObject)
     fun authenticateWithCrypto(
@@ -103,9 +153,11 @@ class MainActivity : FragmentActivity() {
         val sharedPrefs = PreferenceManager.getDefaultSharedPreferences(this)
         
         // --- INICIALIZACIÓN ROBUSTA DE ENCRYPTED SHARED PREFERENCES ---
-        val fileName = "secret_shared_prefs"
+        // 1. Cambiamos el nombre del archivo para forzar un contenedor limpio en disco
+        val fileName = "secure_api_credentials_v2" 
         encryptedPrefs = try {
-            val masterKey = MasterKey.Builder(this)
+            // Usamos un alias personalizado único para evadir el alias corrupto del hardware
+            val masterKey = MasterKey.Builder(this, "localizador_pro_master_key_alias")
                 .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
                 .build()
 
@@ -117,12 +169,21 @@ class MainActivity : FragmentActivity() {
                 EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
             )
         } catch (e: Exception) {
-            // Error de hardware/Keystore (común en Debug al reinstalar o corrupción de alias)
-            // Aplicamos estrategia de autoreparación: borrar y reintentar.
+            // Si el hardware falla, limpiamos de raíz tanto el archivo como el alias del chip
             deleteSharedPreferences(fileName)
-            val masterKey = MasterKey.Builder(this)
+            try {
+                val keyStore = java.security.KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+                keyStore.deleteEntry("localizador_pro_master_key_alias")
+                keyStore.deleteEntry("_androidx_security_master_key_") // Limpieza del alias por defecto
+            } catch (keystoreEx: Exception) {
+                keystoreEx.printStackTrace()
+            }
+            
+            // Reintento final limpio
+            val masterKey = MasterKey.Builder(this, "localizador_pro_master_key_alias")
                 .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
                 .build()
+
             EncryptedSharedPreferences.create(
                 this,
                 fileName,
@@ -133,8 +194,8 @@ class MainActivity : FragmentActivity() {
         }
 
         Configuration.getInstance().load(this, sharedPrefs)
-        // User-Agent de un navegador moderno para evitar bloqueos
-        Configuration.getInstance().userAgentValue = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
+        // User-Agent legítimo e identificable siguiendo las directrices de la política de OSM (Hallazgo A11)
+        Configuration.getInstance().userAgentValue = "LocalizadorPro/1.0 (Android; contact: dev@example.com)"
         
         // Asegurar que osmdroid use la carpeta interna de la app para el caché (evita problemas de permisos)
         Configuration.getInstance().osmdroidTileCache = getExternalFilesDir(null) ?: filesDir
@@ -151,8 +212,23 @@ class MainActivity : FragmentActivity() {
         // Habilitar diseño de dibujo de borde a borde (Edge-to-Edge)
         enableEdgeToEdge()
 
-        // Inicialización manual de la base de datos y repositorios para inyección directa sin sobrecarga
-        val database = AppDatabase.getDatabase(applicationContext)
+        // Inicialización de Base de Datos con Cifrado SQLCipher (Hallazgo A01)
+        val dbPassphrase = getOrCreateDbPassphrase()
+        
+        // --- MANEJO ROBUSTO DE APERTURA DE DB (Hallazgo A01 / Corregir Crash Code 26) ---
+        val database = try {
+            val db = AppDatabase.getDatabase(applicationContext, dbPassphrase)
+            // Forzamos una operación de lectura simple para validar la clave inmediatamente
+            db.openHelper.writableDatabase
+            db
+        } catch (e: Exception) {
+            // Si la clave no coincide (ej. tras reset de Keystore) o el archivo está corrupto (Code 26)
+            AppDatabase.destroyInstance()
+            applicationContext.deleteDatabase("localizador_database")
+            // Reintento con base de datos nueva
+            AppDatabase.getDatabase(applicationContext, dbPassphrase)
+        }
+
         val repository = RouteRepository(database.routeDao())
 
         // Inicializar ViewModel utilizando el factory personalizado
@@ -160,6 +236,13 @@ class MainActivity : FragmentActivity() {
             this,
             RouteViewModelFactory(application, repository)
         )[RouteViewModel::class.java]
+
+        // Solicitar permisos de forma escalonada (Hallazgo B03)
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            locationPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+        } else {
+            checkAndRequestBackgroundLocation()
+        }
 
         // --- CARGA SEGURA DE API KEY (HARDWARE BACKED) ---
         val encryptedKey = encryptedPrefs.getString("groq_api_key_v2", null)
@@ -178,23 +261,6 @@ class MainActivity : FragmentActivity() {
             }
         }
 
-        // Cargar ubicación inicial guardada
-        val savedLat = sharedPrefs.getFloat("default_lat", -34.6037f).toDouble()
-        val savedLon = sharedPrefs.getFloat("default_lon", -58.3816f).toDouble()
-        viewModel.updateDefaultLocation(savedLat, savedLon)
-        
-        // Cargar modo automático
-        val autoMode = sharedPrefs.getBoolean("auto_mode", false)
-        if (autoMode) viewModel.toggleAutoMode()
-
-        // Cargar ajuste de biometría
-        val bioEnabled = sharedPrefs.getBoolean("biometric_enabled", false)
-        if (bioEnabled) viewModel.toggleBiometric(true)
-
-        // Cargar avisos cerca de mí
-        val nearMe = sharedPrefs.getBoolean("near_me_enabled", false)
-        if (nearMe) viewModel.toggleNearMe()
-
         setContent {
             MyApplicationTheme {
                 MainContainer(viewModel = viewModel, encryptedPrefs = encryptedPrefs)
@@ -212,6 +278,20 @@ class MainActivity : FragmentActivity() {
 fun MainContainer(viewModel: RouteViewModel, encryptedPrefs: SharedPreferences) {
     val currentScreen = viewModel.currentScreen
     val context = androidx.compose.ui.platform.LocalContext.current
+    
+    // Obtener versión de la app de forma segura
+    val appVersion = try {
+        val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            context.packageManager.getPackageInfo(context.packageName, PackageManager.PackageInfoFlags.of(0))
+        } else {
+            @Suppress("DEPRECATION")
+            context.packageManager.getPackageInfo(context.packageName, 0)
+        }
+        packageInfo.versionName ?: "1.0.0"
+    } catch (e: Exception) {
+        "1.0.0"
+    }
+
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val sharedPrefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(context)
@@ -543,18 +623,20 @@ fun MainContainer(viewModel: RouteViewModel, encryptedPrefs: SharedPreferences) 
                         enabled = isKeyUnlocked,
                         onClick = { 
                             try {
-                                // Ciframos la nueva clave usando biometría (cifrado hardware)
+                                // A14: Ciframos la nueva clave pasando por CryptoObject para máxima seguridad hardware
                                 val encryptCipher = BiometricCipherHelper.getEncryptCipher()
-                                val (iv, encrypted) = BiometricCipherHelper.encryptText(tempKey, encryptCipher)
-                                
-                                encryptedPrefs.edit()
-                                    .putString("groq_api_key_v2", encrypted)
-                                    .putString("groq_api_key_iv", iv)
-                                    .apply()
-                                
-                                viewModel.updateGroqApiKey(tempKey)
-                                showApiKeyDialog = false 
-                                isKeyUnlocked = false
+                                mainActivity.authenticateWithCrypto(encryptCipher, "Cifrar API Key") { authorizedCipher ->
+                                    val (iv, encrypted) = BiometricCipherHelper.encryptText(tempKey, authorizedCipher)
+                                    
+                                    encryptedPrefs.edit()
+                                        .putString("groq_api_key_v2", encrypted)
+                                        .putString("groq_api_key_iv", iv)
+                                        .apply()
+                                    
+                                    viewModel.updateGroqApiKey(tempKey)
+                                    showApiKeyDialog = false 
+                                    isKeyUnlocked = false
+                                }
                             } catch (e: Exception) {
                                 Toast.makeText(context, "Error al cifrar: ${e.message}", Toast.LENGTH_SHORT).show()
                             }
@@ -656,7 +738,7 @@ fun MainContainer(viewModel: RouteViewModel, encryptedPrefs: SharedPreferences) 
                         TopAppBar(
                             title = {
                                 Text(
-                                    text = "Localizador",
+                                    text = "Localizador PRO (v $appVersion)",
                                     fontWeight = FontWeight.SemiBold,
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
