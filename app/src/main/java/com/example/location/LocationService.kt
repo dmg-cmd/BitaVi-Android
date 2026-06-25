@@ -73,6 +73,14 @@ class LocationService : Service() {
         private const val CHANNEL_ID = "location_tracking_channel"
         private const val NOTIFICATION_ID = 1205
 
+        // Filtro de ruido GPS inteligente
+        private const val MIN_DISTANCE_THRESHOLD = 10.0f // metros
+        private const val MAX_ACCURACY_THRESHOLD = 15.0f // metros (Reducido para evitar saltos entre calles)
+        private const val ABSOLUTE_MAX_ACCURACY = 50.0f  // metros (Puntos con error mayor a esto se descartan siempre)
+        private const val MIN_TIME_DELTA_MS = 5000L      // milisegundos (Evita ruido de alta frecuencia)
+        private const val MIN_DISTANCE_DELTA = 15.0f     // metros para el filtro de tiempo
+        private const val MAX_REALISTIC_SPEED = 30.0f    // m/s (aprox 108 km/h)
+
         // Acciones de control del servicio
         const val ACTION_START = "ACTION_START"
         const val ACTION_STOP = "ACTION_STOP"
@@ -350,59 +358,68 @@ class LocationService : Service() {
             }
         }
 
-        // Filtro de precisión estricto para evitar "saltos" de GPS (Drift)
-        // Reducimos el umbral a 40m durante la grabación para ignorar rebotes en edificios
-        val accuracyThreshold = if (lastRecordedLocation == null) 25f else 40f
-        
-        if (location.accuracy > accuracyThreshold) {
-            Log.d(TAG, "Ubicación descartada por baja precisión: ${location.accuracy}m")
-            return
-        }
-
         serviceScope.launch {
             try {
                 val routeId = activeRouteId
                 if (routeId == -1) return@launch
 
-                // --- FILTRO DE VEROSIMILITUD (SANITY CHECK) ---
+                // 1. Filtro de precisión absoluta (Puntos con error > 50m son descartados siempre)
+                if (location.accuracy > ABSOLUTE_MAX_ACCURACY) {
+                    Log.d(TAG, "Punto descartado: Precisión pésima (${location.accuracy}m)")
+                    return@launch
+                }
+
+                // 2. Filtro de precisión estricto (Reducido a 15m para evitar el 'paseo por el barrio')
+                if (location.accuracy > MAX_ACCURACY_THRESHOLD) {
+                    Log.d(TAG, "Ubicación descartada por precisión insuficiente: ${location.accuracy}m")
+                    return@launch
+                }
+
+                var distanceStep = 0f
+
+                // 3. Filtro de ruido inteligente: Time Delta y Velocidad
                 lastRecordedLocation?.let { last ->
-                    val distanceStep = last.distanceTo(location)
-                    val timeStepSeconds = (location.time - last.time) / 1000.0
-                    
-                    if (timeStepSeconds > 0) {
-                        val instantSpeedKmh = (distanceStep / timeStepSeconds) * 3.6
-                        
-                        // Leer Modo Avión desde SharedPreferences
-                        val isAirplane = sharedPrefs.getBoolean("airplane_mode", false)
-                        val maxAllowedSpeed = if (isAirplane) 1250.0 else 180.0
-                        
-                        if (instantSpeedKmh > maxAllowedSpeed) {
-                            Log.w(TAG, "SALTO DE GPS DETECTADO: Velocidad imposible de ${instantSpeedKmh}km/h. Punto descartado.")
+                    distanceStep = last.distanceTo(location)
+                    val timeDelta = location.time - last.time
+
+                    // Filtro Time Delta: si el tiempo es corto (<5s) y la distancia es pequeña (<15m), 
+                    // descartamos para evitar micro-saltos aleatorios cuando se está casi quieto.
+                    if (timeDelta < MIN_TIME_DELTA_MS && distanceStep < MIN_DISTANCE_DELTA) {
+                        Log.d(TAG, "Punto descartado por Time Delta (ruido alta frecuencia): $distanceStep m en ${timeDelta}ms")
+                        return@launch
+                    }
+
+                    // Filtro de distancia mínima absoluta para evitar 'manchones' de puntos
+                    if (distanceStep < MIN_DISTANCE_THRESHOLD) {
+                        Log.d(TAG, "Punto descartado por ruido (distancia insuficiente): $distanceStep m")
+                        return@launch
+                    }
+
+                    // Validar velocidad realista entre puntos
+                    if (timeDelta > 0) {
+                        val speedMs = (distanceStep / (timeDelta / 1000.0)).toFloat()
+
+                        if (speedMs > MAX_REALISTIC_SPEED) {
+                            Log.w(TAG, "SALTO DE GPS DETECTADO: Velocidad irreal de $speedMs m/s. Punto descartado.")
                             return@launch
                         }
                     }
-
-                    // Si el movimiento es significativo (> 2m) o hay velocidad real, actualizamos el tiempo de último movimiento
-                    if (distanceStep > 2.0 || location.speed > 0.4f) {
-                        lastMovementTimeMillis = System.currentTimeMillis()
-                    }
-
-                    // Filtrar ruidos estáticos mínimos y saltos grandes residuales
-                    if (distanceStep > 2.0 && distanceStep < 500) {
-                        totalDistanceMeters += distanceStep
-                        _currentDistanceMeters.value = totalDistanceMeters
-
-                        val currentRoute = repository.getRouteById(routeId)
-                        if (currentRoute != null) {
-                            repository.updateRoute(currentRoute.copy(distanceMeters = totalDistanceMeters))
-                        }
-                    } else if (distanceStep >= 500) {
-                        Log.w(TAG, "Punto descartado por salto excesivo (>500m).")
-                        return@launch
-                    }
                 }
 
+                // Si el punto es válido, actualizamos la referencia y persistimos
                 lastRecordedLocation = location
+                lastMovementTimeMillis = System.currentTimeMillis()
+
+                // Acumular distancia total
+                if (distanceStep > 0) {
+                    totalDistanceMeters += distanceStep
+                    _currentDistanceMeters.value = totalDistanceMeters
+
+                    val currentRoute = repository.getRouteById(routeId)
+                    if (currentRoute != null) {
+                        repository.updateRoute(currentRoute.copy(distanceMeters = totalDistanceMeters))
+                    }
+                }
 
                 // Guardar punto GPS en base de datos local
                 repository.addLocationPoint(
