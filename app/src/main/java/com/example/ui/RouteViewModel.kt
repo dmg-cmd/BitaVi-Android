@@ -2,6 +2,7 @@ package com.example.ui
 
 import android.app.Application
 import androidx.exifinterface.media.ExifInterface
+import androidx.core.content.FileProvider
 import android.content.Context
 import android.content.Intent
 import android.widget.Toast
@@ -257,7 +258,7 @@ class RouteViewModel(application: Application, private val repository: RouteRepo
             try {
                 val geocoder = android.location.Geocoder(context, Locale.getDefault())
                 val addresses = geocoder.getFromLocation(location.latitude, location.longitude, 1)
-                if (!addresses.isNullOrEmpty()) withContext(Dispatchers.Main) { currentAddress = addresses[0].thoroughfare ?: "Calle desconocida" }
+                if (!addresses.isNullOrEmpty()) withContext(Dispatchers.Main) { currentAddress = formatAddress(addresses[0], "Calle desconocida") }
             } catch (e: Exception) { }
         }
     }
@@ -279,7 +280,7 @@ class RouteViewModel(application: Application, private val repository: RouteRepo
             try {
                 val geocoder = android.location.Geocoder(context, Locale.getDefault())
                 val addresses = geocoder.getFromLocation(lat, lon, 1)
-                if (!addresses.isNullOrEmpty()) withContext(Dispatchers.Main) { selectedPointAddress = addresses[0].thoroughfare ?: "Desconocida" }
+                if (!addresses.isNullOrEmpty()) withContext(Dispatchers.Main) { selectedPointAddress = formatAddress(addresses[0], "Desconocida") }
             } catch (e: Exception) { withContext(Dispatchers.Main) { selectedPointAddress = null } }
         }
     }
@@ -309,6 +310,57 @@ class RouteViewModel(application: Application, private val repository: RouteRepo
     fun deleteSavedLocation(savedLocation: SavedLocation) { viewModelScope.launch { repository.deleteSavedLocation(savedLocation) } }
     fun clearAllAppData() { viewModelScope.launch { repository.deleteAllData() } }
 
+    /**
+     * Formatea una dirección completa (calle + altura) de forma segura.
+     * Estrategia de fallback:
+     * 1. thoroughfare + subThoroughfare (ideal)
+     * 2. Si subThoroughfare es nulo, intenta extraer el número de featureName
+     * 3. Si thoroughfare es nulo, usa getAddressLine(0) completo
+     * 4. Si todo falla, usa el fallback proporcionado
+     */
+    private fun formatAddress(addr: android.location.Address, fallback: String): String {
+        val calle = addr.thoroughfare
+        val altura = addr.subThoroughfare
+
+        // Caso 1: Tenemos calle y altura → concatenar
+        if (!calle.isNullOrBlank() && !altura.isNullOrBlank()) {
+            return "$calle $altura"
+        }
+
+        // Caso 2: Tenemos calle pero no altura → intentar extraer de featureName
+        if (!calle.isNullOrBlank()) {
+            val feature = addr.featureName
+            if (!feature.isNullOrBlank() && feature != calle) {
+                // featureName suele ser "Calle 1234" — extraer número si empieza con la calle
+                val possibleNumber = feature.removePrefix(calle).trim()
+                if (possibleNumber.isNotBlank() && possibleNumber.first().isDigit()) {
+                    return "$calle $possibleNumber"
+                }
+                // Si featureName es completamente un número suelto, usarlo como altura
+                if (feature.all { it.isDigit() }) {
+                    return "$calle $feature"
+                }
+            }
+            // Solo calle, sin altura disponible
+            return calle
+        }
+
+        // Caso 3: Sin thoroughfare → usar getAddressLine(0) si existe
+        val addressLine = if (addr.maxAddressLineIndex >= 0) addr.getAddressLine(0) else null
+        if (!addressLine.isNullOrBlank()) {
+            return addressLine
+        }
+
+        // Caso 4: featureName como último recurso
+        val feature = addr.featureName
+        if (!feature.isNullOrBlank()) {
+            return feature
+        }
+
+        // Caso 5: Fallback total
+        return fallback
+    }
+
     private fun fetchLocationDetails(lat: Double, lon: Double): Triple<String, String, String> {
         val coordFallback = "GPS: ${String.format("%.5f, %.5f", lat, lon)}"
         return try {
@@ -316,7 +368,7 @@ class RouteViewModel(application: Application, private val repository: RouteRepo
             val addresses = geocoder.getFromLocation(lat, lon, 1)
             if (!addresses.isNullOrEmpty()) {
                 val addr = addresses[0]
-                Triple(addr.thoroughfare ?: coordFallback, addr.countryName ?: "Desconocido", addr.locality ?: addr.adminArea ?: "Desconocida")
+                Triple(formatAddress(addr, coordFallback), addr.countryName ?: "Desconocido", addr.locality ?: addr.adminArea ?: "Desconocida")
             } else Triple(coordFallback, "Desconocido", "Desconocida")
         } catch (e: Exception) { Triple(coordFallback, "Desconocido", "Desconocida") }
     }
@@ -401,7 +453,7 @@ class RouteViewModel(application: Application, private val repository: RouteRepo
             val fileName = "export_${System.currentTimeMillis()}.csv"
             context.openFileOutput(fileName, Context.MODE_PRIVATE).use { it.write(content.toByteArray()) }
             val file = context.getFileStreamPath(fileName)
-            val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+            val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
             val intent = Intent(Intent.ACTION_SEND).apply { type = "text/csv"; putExtra(Intent.EXTRA_STREAM, uri); addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION) }
             val chooser = Intent.createChooser(intent, "Exportar")
             chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -429,7 +481,7 @@ class RouteViewModel(application: Application, private val repository: RouteRepo
             val fileName = "export_${System.currentTimeMillis()}.gpx"
             context.openFileOutput(fileName, Context.MODE_PRIVATE).use { it.write(content.toByteArray()) }
             val file = context.getFileStreamPath(fileName)
-            val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+            val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
             val intent = Intent(Intent.ACTION_SEND).apply { type = "application/gpx+xml"; putExtra(Intent.EXTRA_STREAM, uri); addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION) }
             val chooser = Intent.createChooser(intent, "Exportar")
             chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -472,7 +524,7 @@ class RouteViewModel(application: Application, private val repository: RouteRepo
             val storageDir = File(context.filesDir, "images")
             if (!storageDir.exists()) storageDir.mkdirs()
             val file = File.createTempFile("IMG_${System.currentTimeMillis()}_", ".jpg", storageDir)
-            androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+            FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
         } catch (e: Exception) { null }
     }
     suspend fun saveImageToInternalStorage(uri: Uri): Uri? {
@@ -482,14 +534,15 @@ class RouteViewModel(application: Application, private val repository: RouteRepo
                 if (!storageDir.exists()) storageDir.mkdirs()
                 val file = File(storageDir, "IMG_GALLERY_${System.currentTimeMillis()}.jpg")
                 context.contentResolver.openInputStream(uri)?.use { input -> file.outputStream().use { output -> input.copyTo(output) } }
-                androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+                FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
             } catch (e: Exception) { null }
         }
     }
     suspend fun prepareBackupFile(): File? {
         return withContext(Dispatchers.IO) {
             try {
-                val backupFile = File(context.cacheDir, "respaldo_total.zip")
+                val timestamp = SimpleDateFormat("yyyyMMdd_HHmm", Locale.US).format(Date())
+                val backupFile = File(context.cacheDir, "backup_$timestamp.zip")
                 val buffer = ByteArray(4096)
                 ZipOutputStream(FileOutputStream(backupFile)).use { zos ->
                     // 1. Exportar FAVORITOS (Completo)
@@ -497,7 +550,7 @@ class RouteViewModel(application: Application, private val repository: RouteRepo
                     if (favs.isNotEmpty()) {
                         zos.putNextEntry(ZipEntry("favoritos.txt"))
                         val content = favs.joinToString("\n") { f ->
-                            "${f.name}|${f.address}|${f.latitude}|${f.longitude}|${f.comment}|${f.author}|${f.photoPath ?: ""}|${f.phoneNumber}|${f.email}|${f.isContact}|${f.color}|${f.country}|${f.city}" 
+                            "${f.name}|${f.address}|${f.latitude}|${f.longitude}|${f.comment}|${f.author}|${f.photoPath ?: ""}|${f.phoneNumber}|${f.email}|${f.isContact}|${f.color}|${f.country}|${f.city}|${f.timestamp}" 
                         }
                         zos.write(content.toByteArray())
                         zos.closeEntry()
@@ -583,6 +636,10 @@ class RouteViewModel(application: Application, private val repository: RouteRepo
                             val imageDir = File(context.filesDir, "images")
                             if (!imageDir.exists()) imageDir.mkdirs()
                             val buffer = ByteArray(4096)
+                            
+                            val pendingRouteLines = mutableListOf<String>()
+                            val pendingPointLines = mutableListOf<String>()
+                            val pendingWaypointLines = mutableListOf<String>()
 
                             while (entry != null) {
                                 val name = entry.name
@@ -612,7 +669,22 @@ class RouteViewModel(application: Application, private val repository: RouteRepo
                                                 val lon = p[3].toDoubleOrNull() ?: 0.0
                                                 val commentVal = if (p.size > 4) p[4] else ""
                                                 val authorVal = if (p.size > 5) p[5] else ""
-                                                val photoPathVal = if (p.size > 6 && p[6].isNotBlank()) p[6] else null
+                                                val originalPhotoPath = if (p.size > 6 && p[6].isNotBlank()) p[6] else null
+                                                var photoPathVal = originalPhotoPath
+
+                                                // Validar y regenerar integridad referencial del URI
+                                                if (originalPhotoPath != null) {
+                                                    val fileName = originalPhotoPath.substringAfterLast("/")
+                                                    val file = File(context.filesDir, "images/$fileName")
+                                                    // Si la imagen importada existe físicamente en el almacenamiento, generamos un URI válido
+                                                    if (file.exists()) {
+                                                        photoPathVal = FileProvider.getUriForFile(
+                                                            context, 
+                                                            "${context.packageName}.fileprovider", 
+                                                            file
+                                                        ).toString()
+                                                    }
+                                                }
                                                 val phoneNumberVal = if (p.size > 7) p[7] else ""
                                                 val emailVal = if (p.size > 8) p[8] else ""
                                                 val isContactVal = if (p.size > 9) p[9].toBoolean() else false
@@ -621,6 +693,7 @@ class RouteViewModel(application: Application, private val repository: RouteRepo
                                                 val details = fetchLocationDetails(lat, lon)
                                                 val countryVal = if (p.size > 11) p[11] else details.second
                                                 val cityVal = if (p.size > 12) p[12] else details.third
+                                                val timestampVal = if (p.size > 13) p[13].toLongOrNull() ?: System.currentTimeMillis() else System.currentTimeMillis()
 
                                                 repository.addSavedLocation(
                                                     name = nameVal,
@@ -635,10 +708,26 @@ class RouteViewModel(application: Application, private val repository: RouteRepo
                                                     isContact = isContactVal,
                                                     country = countryVal,
                                                     city = cityVal,
-                                                    color = colorVal
+                                                    color = colorVal,
+                                                    timestamp = timestampVal
                                                 )
                                             }
                                         }
+                                    }
+                                    name == "rutas.txt" -> {
+                                        pendingRouteLines.addAll(
+                                            zis.readBytes().decodeToString().split("\n").filter { it.isNotBlank() }
+                                        )
+                                    }
+                                    name == "puntos.txt" -> {
+                                        pendingPointLines.addAll(
+                                            zis.readBytes().decodeToString().split("\n").filter { it.isNotBlank() }
+                                        )
+                                    }
+                                    name == "marcadores.txt" -> {
+                                        pendingWaypointLines.addAll(
+                                            zis.readBytes().decodeToString().split("\n").filter { it.isNotBlank() }
+                                        )
                                     }
                                     (name.startsWith("fotos/") || name.startsWith("images/")) -> {
                                         val fileName = name.substringAfterLast("/")
@@ -654,6 +743,96 @@ class RouteViewModel(application: Application, private val repository: RouteRepo
                                 }
                                 zis.closeEntry()
                                 entry = zis.nextEntry
+                            }
+
+                            // --- Procesar rutas, puntos y waypoints pendientes ---
+                            if (pendingRouteLines.isNotEmpty()) {
+                                // Mapa de routeId original → routeId nuevo
+                                val routeIdMap = mutableMapOf<Int, Int>()
+
+                                // 1. Crear las rutas
+                                for (line in pendingRouteLines) {
+                                    val p = line.split("|")
+                                    if (p.size >= 7) {
+                                        val originalId = p[0].toIntOrNull() ?: continue
+                                        val routeName = p[1]
+                                        val startTime = p[2].toLongOrNull() ?: System.currentTimeMillis()
+                                        val endTime = p[3].toLongOrNull() ?: 0L
+                                        val distance = p[4].toDoubleOrNull() ?: 0.0
+                                        val maxSpd = p[5].toFloatOrNull() ?: 0f
+                                        val avgSpd = p[6].toFloatOrNull() ?: 0f
+
+                                        val newRoute = Route(
+                                            name = routeName,
+                                            startTime = startTime,
+                                            endTime = endTime,
+                                            distanceMeters = distance,
+                                            isActive = false,
+                                            maxSpeed = maxSpd,
+                                            avgSpeed = avgSpd
+                                        )
+                                        val newId = repository.insertRouteDirectly(newRoute)
+                                        routeIdMap[originalId] = newId
+                                    }
+                                }
+
+                                // 2. Insertar los puntos GPS con speed y timestamp originales
+                                if (pendingPointLines.isNotEmpty()) {
+                                    val pointsBatch = mutableListOf<LocationPoint>()
+                                    for (line in pendingPointLines) {
+                                        val p = line.split("|")
+                                        if (p.size >= 6) {
+                                            val originalRouteId = p[0].toIntOrNull() ?: continue
+                                            val newRouteId = routeIdMap[originalRouteId] ?: continue
+                                            val lat = p[1].toDoubleOrNull() ?: continue
+                                            val lon = p[2].toDoubleOrNull() ?: continue
+                                            val alt = p[3].toDoubleOrNull() ?: 0.0
+                                            val spd = p[4].toFloatOrNull() ?: 0f
+                                            val ts = p[5].toLongOrNull() ?: System.currentTimeMillis()
+
+                                            pointsBatch.add(LocationPoint(
+                                                routeId = newRouteId,
+                                                latitude = lat,
+                                                longitude = lon,
+                                                altitude = alt,
+                                                speed = spd,
+                                                timestamp = ts
+                                            ))
+                                        }
+                                    }
+                                    if (pointsBatch.isNotEmpty()) {
+                                        repository.addLocationPoints(pointsBatch)
+                                    }
+                                }
+
+                                // 3. Insertar los waypoints/marcadores
+                                if (pendingWaypointLines.isNotEmpty()) {
+                                    for (line in pendingWaypointLines) {
+                                        val p = line.split("|")
+                                        if (p.size >= 5) {
+                                            val originalRouteId = p[0].toIntOrNull() ?: continue
+                                            val newRouteId = routeIdMap[originalRouteId] ?: continue
+                                            val wpName = p[1]
+                                            val wpDesc = if (p.size > 2) p[2] else ""
+                                            val wpLat = p[3].toDoubleOrNull() ?: continue
+                                            val wpLon = p[4].toDoubleOrNull() ?: continue
+                                            val wpPhoto = if (p.size > 5 && p[5].isNotBlank()) p[5] else null
+                                            val wpAuthor = if (p.size > 6) p[6] else ""
+                                            val wpColor = if (p.size > 7) p[7] else "#00FF00"
+
+                                            repository.addWaypoint(
+                                                routeId = newRouteId,
+                                                name = wpName,
+                                                description = wpDesc,
+                                                latitude = wpLat,
+                                                longitude = wpLon,
+                                                photoPath = wpPhoto,
+                                                author = wpAuthor,
+                                                color = wpColor
+                                            )
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -876,7 +1055,7 @@ class RouteViewModel(application: Application, private val repository: RouteRepo
                     val stream = FileOutputStream(mapFile)
                     bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, stream)
                     stream.close()
-                    val contentUri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", mapFile)
+                    val contentUri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", mapFile)
                     imageUris.add(contentUri)
                 } catch (e: Exception) { e.printStackTrace() }
             }

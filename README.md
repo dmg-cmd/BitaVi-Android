@@ -1,5 +1,12 @@
 # Localizador Pro - Tracker GPS Inteligente & IA  
-Localizador Pro es una aplicación avanzada de seguimiento geográfico para Android construida con tecnologías de última generación (2026). A diferencia de los trackers convencionales, combina precisión técnica, automatización basada en movimiento y análisis de telemetría mediante Inteligencia Artificial (Llama 3.3).  
+
+Localizador Pro es una aplicación avanzada de seguimiento geográfico para Android. Combina precisión técnica, automatización basada en movimiento y análisis de telemetría mediante Inteligencia Artificial (Llama 3.3).
+
+---
+### 📖 Documentación para el Usuario
+Si eres un usuario de la aplicación, consulta nuestra **[Guía de Usuario Detallada](GUIA_USUARIO.md)** para aprender a usar todas las funciones.
+---
+
 ## 🚀 Características Principales  
 ### 🛰️ Seguimiento y Navegación  
 •Modo Automático Inteligente: Vigilancia en segundo plano que inicia la grabación al detectar desplazamientos reales (>25m) y pausa tras 15 min de inactividad, filtrando el ruido del GPS.  

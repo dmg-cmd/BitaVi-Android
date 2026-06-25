@@ -43,6 +43,14 @@ class RouteRepository(private val routeDao: RouteDao) {
         return routeDao.insertRoute(newRoute).toInt()
     }
 
+    /**
+     * Inserta una ruta directamente sin desactivar rutas activas.
+     * Usado durante la restauración de backups.
+     */
+    suspend fun insertRouteDirectly(route: Route): Int {
+        return routeDao.insertRoute(route).toInt()
+    }
+
     suspend fun getActiveRouteSync(): Route? {
         return routeDao.getActiveRoute()
     }
@@ -175,13 +183,15 @@ class RouteRepository(private val routeDao: RouteDao) {
         isContact: Boolean = false,
         country: String = "Desconocido",
         city: String = "Desconocida",
-        color: String = "#FFD700"
+        color: String = "#FFD700",
+        timestamp: Long = System.currentTimeMillis()
     ) {
         val location = com.example.data.model.SavedLocation(
             name = name,
             address = address,
             latitude = latitude,
             longitude = longitude,
+            timestamp = timestamp,
             comment = comment,
             author = author,
             photoPath = photoPath,

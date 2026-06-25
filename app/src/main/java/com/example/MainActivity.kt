@@ -525,7 +525,8 @@ fun MainContainer(viewModel: RouteViewModel, encryptedPrefs: SharedPreferences) 
                     icon = { Icon(Icons.Default.CloudUpload, null) },
                     onClick = { 
                         scope.launch { drawerState.close() }
-                        saveBackupLauncher.launch("Localizador_Backup_${System.currentTimeMillis()}.zip")
+                        val timestamp = java.text.SimpleDateFormat("yyyyMMdd_HHmm", java.util.Locale.US).format(java.util.Date())
+                        saveBackupLauncher.launch("backup_$timestamp.zip")
                     }
                 )
 
