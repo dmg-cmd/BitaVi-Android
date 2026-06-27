@@ -3,6 +3,8 @@ package com.example.data.db
 import androidx.room.*
 import com.example.data.model.LocationPoint
 import com.example.data.model.Route
+import com.example.data.model.RouteFavoriteCrossRef
+import com.example.data.model.SavedLocation
 import com.example.data.model.Waypoint
 import kotlinx.coroutines.flow.Flow
 
@@ -74,6 +76,23 @@ interface RouteDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertSavedLocation(location: com.example.data.model.SavedLocation): Long
 
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertIfNew(location: com.example.data.model.SavedLocation): Long
+
+    @Query("""
+        DELETE FROM saved_locations
+        WHERE id NOT IN (
+            SELECT MIN(id) FROM saved_locations GROUP BY latitude, longitude, name
+        )
+    """)
+    suspend fun deleteDuplicateFavorites()
+
+    @Query("""
+        DELETE FROM route_favorite_cross_ref
+        WHERE favoriteId NOT IN (SELECT id FROM saved_locations)
+    """)
+    suspend fun cleanOrphanedRelations()
+
     @Update
     suspend fun updateSavedLocation(location: com.example.data.model.SavedLocation)
 
@@ -83,6 +102,9 @@ interface RouteDao {
     @Query("SELECT * FROM saved_locations ORDER BY timestamp DESC")
     fun getAllSavedLocationsFlow(): Flow<List<com.example.data.model.SavedLocation>>
 
+    @Query("SELECT * FROM saved_locations")
+    suspend fun getAllSavedLocations(): List<com.example.data.model.SavedLocation>
+
     @Delete
     suspend fun deleteSavedLocation(location: com.example.data.model.SavedLocation)
 
@@ -91,4 +113,41 @@ interface RouteDao {
 
     @Query("DELETE FROM saved_locations")
     suspend fun deleteAllSavedLocations()
+
+
+    // --- Operaciones de relación muchos-a-muchos (Ruta ↔ Favorito) ---
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun addRouteFavoriteCrossRef(crossRef: RouteFavoriteCrossRef)
+
+    @Delete
+    suspend fun removeRouteFavoriteCrossRef(crossRef: RouteFavoriteCrossRef)
+
+    @Query("""
+        SELECT sl.* FROM saved_locations sl
+        INNER JOIN route_favorite_cross_ref rf ON sl.id = rf.favoriteId
+        WHERE rf.routeId = :routeId
+    """)
+    fun getFavoritesForRouteFlow(routeId: Int): Flow<List<SavedLocation>>
+
+    @Query("""
+        SELECT sl.* FROM saved_locations sl
+        INNER JOIN route_favorite_cross_ref rf ON sl.id = rf.favoriteId
+        WHERE rf.routeId = :routeId
+    """)
+    suspend fun getFavoritesForRoute(routeId: Int): List<SavedLocation>
+
+    @Query("""
+        SELECT r.* FROM routes r
+        INNER JOIN route_favorite_cross_ref rf ON r.id = rf.routeId
+        WHERE rf.favoriteId = :favoriteId
+    """)
+    fun getRoutesForFavoriteFlow(favoriteId: Int): Flow<List<Route>>
+
+    @Query("""
+        SELECT r.* FROM routes r
+        INNER JOIN route_favorite_cross_ref rf ON r.id = rf.routeId
+        WHERE rf.favoriteId = :favoriteId
+    """)
+    suspend fun getRoutesForFavorite(favoriteId: Int): List<Route>
 }

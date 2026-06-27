@@ -3,6 +3,8 @@ package com.example.data.repository
 import com.example.data.db.RouteDao
 import com.example.data.model.LocationPoint
 import com.example.data.model.Route
+import com.example.data.model.RouteFavoriteCrossRef
+import com.example.data.model.SavedLocation
 import com.example.data.model.Waypoint
 import kotlinx.coroutines.flow.Flow
 
@@ -170,6 +172,8 @@ class RouteRepository(private val routeDao: RouteDao) {
 
     val allSavedLocations: Flow<List<com.example.data.model.SavedLocation>> = routeDao.getAllSavedLocationsFlow()
 
+    suspend fun getAllSavedLocationsSync(): List<com.example.data.model.SavedLocation> = routeDao.getAllSavedLocations()
+
     suspend fun addSavedLocation(
         name: String, 
         address: String, 
@@ -217,8 +221,47 @@ class RouteRepository(private val routeDao: RouteDao) {
         routeDao.deleteSavedLocation(location)
     }
 
+    suspend fun insertIfNew(location: com.example.data.model.SavedLocation): Long {
+        return routeDao.insertIfNew(location)
+    }
+
+    suspend fun deleteDuplicateFavorites() {
+        routeDao.deleteDuplicateFavorites()
+    }
+
+    suspend fun cleanOrphanedRelations() {
+        routeDao.cleanOrphanedRelations()
+    }
+
     suspend fun deleteAllData() {
         routeDao.deleteAllRoutes()
         routeDao.deleteAllSavedLocations()
+    }
+
+
+    // --- Operaciones de relación muchos-a-muchos (Ruta ↔ Favorito) ---
+
+    suspend fun addFavoriteToRoute(routeId: Int, favoriteId: Int) {
+        routeDao.addRouteFavoriteCrossRef(RouteFavoriteCrossRef(routeId = routeId, favoriteId = favoriteId))
+    }
+
+    suspend fun removeFavoriteFromRoute(routeId: Int, favoriteId: Int) {
+        routeDao.removeRouteFavoriteCrossRef(RouteFavoriteCrossRef(routeId = routeId, favoriteId = favoriteId))
+    }
+
+    fun getFavoritesForRouteFlow(routeId: Int): Flow<List<SavedLocation>> {
+        return routeDao.getFavoritesForRouteFlow(routeId)
+    }
+
+    suspend fun getFavoritesForRoute(routeId: Int): List<SavedLocation> {
+        return routeDao.getFavoritesForRoute(routeId)
+    }
+
+    fun getRoutesForFavoriteFlow(favoriteId: Int): Flow<List<Route>> {
+        return routeDao.getRoutesForFavoriteFlow(favoriteId)
+    }
+
+    suspend fun getRoutesForFavorite(favoriteId: Int): List<Route> {
+        return routeDao.getRoutesForFavorite(favoriteId)
     }
 }

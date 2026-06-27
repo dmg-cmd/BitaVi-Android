@@ -3,6 +3,7 @@ package com.example.ui.screens
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -53,8 +54,11 @@ fun DetailScreen(
     val route by viewModel.selectedDetailRoute.collectAsState()
     val points by viewModel.selectedDetailPoints.collectAsState()
     val waypoints by viewModel.selectedDetailWaypoints.collectAsState()
-    
+    val favorites by viewModel.allFavorites.collectAsState()
+    val linkedFavorites by viewModel.getFavoritesForRouteFlow(routeId).collectAsState(initial = emptyList())
+
     var showEditDialog by remember { mutableStateOf(false) }
+    var showSheet by remember { mutableStateOf(false) }
     var editedName by remember { mutableStateOf("") }
 
     val mapView = remember { MapView(context) }
@@ -107,6 +111,16 @@ fun DetailScreen(
                     }
                     IconButton(onClick = { viewModel.exportRoutesAsCSV(routeId) }) {
                         Icon(Icons.Default.TableChart, "Exportar Excel", tint = Color(0xFF2E7D32))
+                    }
+                    IconButton(onClick = { showSheet = true }) {
+                        Icon(Icons.Default.BookmarkBorder, "Favoritos")
+                    }
+                    IconButton(onClick = { viewModel.navigateToExperienceMap(routeId) }) {
+                        Icon(
+                            Icons.Default.Explore,
+                            "Mapa de experiencia",
+                            tint = Color(0xFF7C4DFF)
+                        )
                     }
                     IconButton(onClick = { 
                         editedName = route?.name ?: ""
@@ -252,6 +266,58 @@ fun DetailScreen(
             }
 
             Spacer(Modifier.height(80.dp))
+        }
+    }
+
+    if (showSheet) {
+        ModalBottomSheet(onDismissRequest = { showSheet = false }) {
+            Column(modifier = Modifier.padding(bottom = 32.dp)) {
+                Text(
+                    text = "Vincular Favoritos",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(16.dp)
+                )
+
+                if (favorites.isEmpty()) {
+                    Text(
+                        text = "No tienes favoritos guardados.",
+                        modifier = Modifier.padding(16.dp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else {
+                    LazyColumn(modifier = Modifier.heightIn(max = 400.dp)) {
+                        items(favorites) { fav ->
+                            val isLinked = linkedFavorites.any { it.id == fav.id }
+                            ListItem(
+                                headlineContent = { Text(fav.name, maxLines = 1) },
+                                supportingContent = { Text(fav.address, maxLines = 1) },
+                                leadingContent = {
+                                    Icon(
+                                        Icons.Default.Star,
+                                        null,
+                                        tint = Color(android.graphics.Color.parseColor(fav.color)),
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                },
+                                trailingContent = {
+                                    IconButton(onClick = {
+                                        if (isLinked) viewModel.removeFavoriteFromRoute(routeId, fav.id)
+                                        else viewModel.addFavoriteToRoute(routeId, fav.id)
+                                    }) {
+                                        Icon(
+                                            imageVector = if (isLinked) Icons.Default.Check else Icons.Default.Add,
+                                            tint = if (isLinked) Color.Green else Color.Gray,
+                                            contentDescription = if (isLinked) "Desvincular" else "Vincular"
+                                        )
+                                    }
+                                }
+                            )
+                            HorizontalDivider()
+                        }
+                    }
+                }
+            }
         }
     }
 

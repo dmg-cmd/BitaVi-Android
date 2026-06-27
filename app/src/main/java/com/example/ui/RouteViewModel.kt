@@ -51,6 +51,7 @@ sealed interface Screen {
     object History : Screen
     object SavedLocations : Screen
     data class Detail(val routeId: Int) : Screen
+    data class ExperienceMap(val routeId: Int) : Screen
 }
 
 class RouteViewModel(application: Application, private val repository: RouteRepository) : AndroidViewModel(application) {
@@ -164,6 +165,11 @@ class RouteViewModel(application: Application, private val repository: RouteRepo
                     repository.updateSavedLocationColor(id, color)
                 }
         }
+
+        // Limpieza única de duplicados al arrancar
+        viewModelScope.launch(Dispatchers.IO) {
+            cleanDuplicateFavorites()
+        }
     }
 
     fun navigateTo(screen: Screen) { currentScreen = screen }
@@ -205,6 +211,7 @@ class RouteViewModel(application: Application, private val repository: RouteRepo
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     fun selectRouteForDetail(routeId: Int) { _selectedDetailRouteId.value = routeId; navigateTo(Screen.Detail(routeId)) }
+    fun navigateToExperienceMap(routeId: Int) { _selectedDetailRouteId.value = routeId; navigateTo(Screen.ExperienceMap(routeId)) }
 
     fun startPassiveLocationService() {
         val intent = Intent(context, LocationService::class.java).apply { action = LocationService.ACTION_START_PASSIVE }
@@ -293,6 +300,24 @@ class RouteViewModel(application: Application, private val repository: RouteRepo
 
     val allSavedLocations: StateFlow<List<SavedLocation>> = repository.allSavedLocations.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    val allFavorites: StateFlow<List<SavedLocation>> = allSavedLocations
+
+    fun getFavoritesForRouteFlow(routeId: Int): Flow<List<SavedLocation>> =
+        repository.getFavoritesForRouteFlow(routeId)
+
+    fun isFavoriteLinked(routeId: Int, favoriteId: Int): Flow<Boolean> =
+        repository.getFavoritesForRouteFlow(routeId)
+            .map { favorites -> favorites.any { it.id == favoriteId } }
+            .distinctUntilChanged()
+
+    fun addFavoriteToRoute(routeId: Int, favoriteId: Int) {
+        viewModelScope.launch { repository.addFavoriteToRoute(routeId, favoriteId) }
+    }
+
+    fun removeFavoriteFromRoute(routeId: Int, favoriteId: Int) {
+        viewModelScope.launch { repository.removeFavoriteFromRoute(routeId, favoriteId) }
+    }
+
     fun saveSpecificLocation(name: String, address: String, latitude: Double, longitude: Double, comment: String = "", author: String = "", photoPath: String? = null, phoneNumber: String = "", email: String = "", isContact: Boolean = false, color: String = "#FFD700") {
         viewModelScope.launch(Dispatchers.IO) {
             repository.addSavedLocation(name, address, latitude, longitude, comment, author, photoPath, phoneNumber, email, isContact, "Desconocido", "Desconocida", color)
@@ -308,6 +333,20 @@ class RouteViewModel(application: Application, private val repository: RouteRepo
     }
 
     fun deleteSavedLocation(savedLocation: SavedLocation) { viewModelScope.launch { repository.deleteSavedLocation(savedLocation) } }
+
+    suspend fun cleanDuplicateFavorites() {
+        val allFavorites = repository.getAllSavedLocationsSync()
+        val seen = mutableSetOf<String>()
+
+        allFavorites.forEach { fav ->
+            val fingerprint = "${fav.name}_${fav.latitude}_${fav.longitude}"
+            if (seen.contains(fingerprint)) {
+                repository.deleteSavedLocation(fav)
+            } else {
+                seen.add(fingerprint)
+            }
+        }
+    }
     fun clearAllAppData() { viewModelScope.launch { repository.deleteAllData() } }
 
     /**
@@ -660,59 +699,63 @@ class RouteViewModel(application: Application, private val repository: RouteRepo
                                     }
                                     name == "mis_favoritos.txt" || name == "favoritos.txt" -> {
                                         val lines = zis.readBytes().decodeToString().split("\n")
-                                        lines.filter { it.isNotBlank() }.forEach { line ->
+                                        val parsed = lines.filter { it.isNotBlank() }.mapNotNull { line ->
                                             val p = line.split("|")
-                                            if (p.size >= 4) {
-                                                val nameVal = p[0]
-                                                val addressVal = p[1]
-                                                val lat = p[2].toDoubleOrNull() ?: 0.0
-                                                val lon = p[3].toDoubleOrNull() ?: 0.0
-                                                val commentVal = if (p.size > 4) p[4] else ""
-                                                val authorVal = if (p.size > 5) p[5] else ""
-                                                val originalPhotoPath = if (p.size > 6 && p[6].isNotBlank()) p[6] else null
-                                                var photoPathVal = originalPhotoPath
+                                            if (p.size < 4) return@mapNotNull null
+                                            val nameVal = p[0]
+                                            val addressVal = p[1]
+                                            val lat = p[2].toDoubleOrNull() ?: return@mapNotNull null
+                                            val lon = p[3].toDoubleOrNull() ?: return@mapNotNull null
+                                            val commentVal = if (p.size > 4) p[4] else ""
+                                            val authorVal = if (p.size > 5) p[5] else ""
+                                            val originalPhotoPath = if (p.size > 6 && p[6].isNotBlank()) p[6] else null
+                                            var photoPathVal = originalPhotoPath
 
-                                                // Validar y regenerar integridad referencial del URI
-                                                if (originalPhotoPath != null) {
-                                                    val fileName = originalPhotoPath.substringAfterLast("/")
-                                                    val file = File(context.filesDir, "images/$fileName")
-                                                    // Si la imagen importada existe físicamente en el almacenamiento, generamos un URI válido
-                                                    if (file.exists()) {
-                                                        photoPathVal = FileProvider.getUriForFile(
-                                                            context, 
-                                                            "${context.packageName}.fileprovider", 
-                                                            file
-                                                        ).toString()
-                                                    }
+                                            if (originalPhotoPath != null) {
+                                                val fileName = originalPhotoPath.substringAfterLast("/")
+                                                val file = File(context.filesDir, "images/$fileName")
+                                                if (file.exists()) {
+                                                    photoPathVal = FileProvider.getUriForFile(
+                                                        context,
+                                                        "${context.packageName}.fileprovider",
+                                                        file
+                                                    ).toString()
                                                 }
-                                                val phoneNumberVal = if (p.size > 7) p[7] else ""
-                                                val emailVal = if (p.size > 8) p[8] else ""
-                                                val isContactVal = if (p.size > 9) p[9].toBoolean() else false
-                                                val colorVal = if (p.size > 10) p[10] else "#FFD700"
-                                                
-                                                val details = fetchLocationDetails(lat, lon)
-                                                val countryVal = if (p.size > 11) p[11] else details.second
-                                                val cityVal = if (p.size > 12) p[12] else details.third
-                                                val timestampVal = if (p.size > 13) p[13].toLongOrNull() ?: System.currentTimeMillis() else System.currentTimeMillis()
-
-                                                repository.addSavedLocation(
-                                                    name = nameVal,
-                                                    address = addressVal,
-                                                    latitude = lat,
-                                                    longitude = lon,
-                                                    comment = commentVal,
-                                                    author = authorVal,
-                                                    photoPath = photoPathVal,
-                                                    phoneNumber = phoneNumberVal,
-                                                    email = emailVal,
-                                                    isContact = isContactVal,
-                                                    country = countryVal,
-                                                    city = cityVal,
-                                                    color = colorVal,
-                                                    timestamp = timestampVal
-                                                )
                                             }
+                                            val phoneNumberVal = if (p.size > 7) p[7] else ""
+                                            val emailVal = if (p.size > 8) p[8] else ""
+                                            val isContactVal = if (p.size > 9) p[9].toBoolean() else false
+                                            val colorVal = if (p.size > 10) p[10] else "#FFD700"
+
+                                            val details = fetchLocationDetails(lat, lon)
+                                            val countryVal = if (p.size > 11) p[11] else details.second
+                                            val cityVal = if (p.size > 12) p[12] else details.third
+                                            val timestampVal = if (p.size > 13) p[13].toLongOrNull() ?: System.currentTimeMillis() else System.currentTimeMillis()
+
+                                            com.example.data.model.SavedLocation(
+                                                name = nameVal,
+                                                address = addressVal,
+                                                latitude = lat,
+                                                longitude = lon,
+                                                comment = commentVal,
+                                                author = authorVal,
+                                                photoPath = photoPathVal,
+                                                phoneNumber = phoneNumberVal,
+                                                email = emailVal,
+                                                isContact = isContactVal,
+                                                country = countryVal,
+                                                city = cityVal,
+                                                color = colorVal,
+                                                timestamp = timestampVal
+                                            )
                                         }
+
+                                        parsed
+                                            .distinctBy { "${it.name}_${it.latitude}_${it.longitude}" }
+                                            .forEach { repository.insertIfNew(it) }
+
+                                        repository.deleteDuplicateFavorites()
+                                        repository.cleanOrphanedRelations()
                                     }
                                     name == "rutas.txt" -> {
                                         pendingRouteLines.addAll(

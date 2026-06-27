@@ -60,6 +60,7 @@ import com.example.ui.Screen
 import com.example.ui.screens.DetailScreen
 import com.example.ui.screens.HistoryScreen
 import com.example.ui.screens.MapScreen
+import com.example.ui.screens.ExperienceMapScreen
 import com.example.ui.screens.SavedLocationsScreen
 import com.example.ui.theme.MyApplicationTheme
 import java.util.UUID
@@ -734,7 +735,7 @@ fun MainContainer(viewModel: RouteViewModel, encryptedPrefs: SharedPreferences) 
         Scaffold(
             modifier = Modifier.fillMaxSize(),
             topBar = {
-                if (currentScreen !is Screen.Detail) {
+                if (currentScreen !is Screen.Detail && currentScreen !is Screen.ExperienceMap) {
                     Column {
                         TopAppBar(
                             title = {
@@ -800,7 +801,7 @@ fun MainContainer(viewModel: RouteViewModel, encryptedPrefs: SharedPreferences) 
             },
         bottomBar = {
             // Ocultamos la barra de navegación si el usuario se encuentra visualizando el detalle de un mapa estático
-            if (currentScreen !is Screen.Detail) {
+            if (currentScreen !is Screen.Detail && currentScreen !is Screen.ExperienceMap) {
                 Column {
                     val isTrackingActive by viewModel.isTrackingLive.collectAsState()
                     if (isTrackingActive) {
@@ -911,6 +912,13 @@ fun MainContainer(viewModel: RouteViewModel, encryptedPrefs: SharedPreferences) 
             is Screen.Detail -> {
                 // Detalle no tiene padding del Scaffold botomBar para optimizar el mapa al 100%
                 DetailScreen(
+                    viewModel = viewModel,
+                    routeId = screen.routeId,
+                    modifier = Modifier
+                )
+            }
+            is Screen.ExperienceMap -> {
+                ExperienceMapScreen(
                     viewModel = viewModel,
                     routeId = screen.routeId,
                     modifier = Modifier

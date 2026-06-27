@@ -1,12 +1,16 @@
 package com.example.data.model
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
 /**
  * Entidad para guardar direcciones o puntos de interés fijos (favoritos).
  */
-@Entity(tableName = "saved_locations")
+@Entity(
+    tableName = "saved_locations",
+    indices = [Index(value = ["latitude", "longitude"], unique = true)]
+)
 data class SavedLocation(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val name: String,

@@ -43,7 +43,7 @@ class LocationService : Service() {
 
     private var activeRouteId: Int = -1
     private var totalDistanceMeters: Double = 0.0
-    private var lastRecordedLocation: Location? = null
+    private var lastValidLocation: Location? = null
     private var lastStopLocation: Location? = null
 
     private var timerJob: Job? = null
@@ -74,12 +74,12 @@ class LocationService : Service() {
         private const val NOTIFICATION_ID = 1205
 
         // Filtro de ruido GPS inteligente
-        private const val MIN_DISTANCE_THRESHOLD = 10.0f // metros
-        private const val MAX_ACCURACY_THRESHOLD = 15.0f // metros (Reducido para evitar saltos entre calles)
-        private const val ABSOLUTE_MAX_ACCURACY = 50.0f  // metros (Puntos con error mayor a esto se descartan siempre)
-        private const val MIN_TIME_DELTA_MS = 5000L      // milisegundos (Evita ruido de alta frecuencia)
-        private const val MIN_DISTANCE_DELTA = 15.0f     // metros para el filtro de tiempo
-        private const val MAX_REALISTIC_SPEED = 30.0f    // m/s (aprox 108 km/h)
+        private const val MIN_DISTANCE_THRESHOLD = 10.0f // metros (Capa 1: distancia mínima para muestrear)
+        private const val ABSOLUTE_MAX_ACCURACY = 50.0f  // metros (Pre-filtro: error máximo absoluto)
+        private const val MIN_TIME_DELTA_MS = 5000L      // milisegundos (Capa 1: evita ruido de alta frecuencia)
+        private const val MIN_DISTANCE_DELTA = 15.0f     // metros (Capa 1: distancia mínima con time delta)
+        private const val MAX_VALID_SPEED_MPS = 4.5f     // m/s (~16 km/h, Capa 2: velocidad máxima creíble)
+        private const val MAX_ACCEPTABLE_ACCURACY = 30.0f // metros (Capa 2: precisión mínima aceptable)
 
         // Acciones de control del servicio
         const val ACTION_START = "ACTION_START"
@@ -248,13 +248,13 @@ class LocationService : Service() {
             val previousPoints = repository.getLocationPointsSync(routeId)
             if (previousPoints.isNotEmpty()) {
                 val lastPoint = previousPoints.last()
-                lastRecordedLocation = Location("gps").apply {
+                lastValidLocation = Location("gps").apply {
                     latitude = lastPoint.latitude
                     longitude = lastPoint.longitude
                     altitude = lastPoint.altitude
                 }
             } else {
-                lastRecordedLocation = null
+                lastValidLocation = null
             }
 
             requestLocationUpdates(interval, distance)
@@ -363,51 +363,44 @@ class LocationService : Service() {
                 val routeId = activeRouteId
                 if (routeId == -1) return@launch
 
-                // 1. Filtro de precisión absoluta (Puntos con error > 50m son descartados siempre)
+                // PRE-FILTER: Error de GPS absoluto
                 if (location.accuracy > ABSOLUTE_MAX_ACCURACY) {
                     Log.d(TAG, "Punto descartado: Precisión pésima (${location.accuracy}m)")
                     return@launch
                 }
 
-                // 2. Filtro de precisión estricto (Reducido a 15m para evitar el 'paseo por el barrio')
-                if (location.accuracy > MAX_ACCURACY_THRESHOLD) {
-                    Log.d(TAG, "Ubicación descartada por precisión insuficiente: ${location.accuracy}m")
-                    return@launch
-                }
-
                 var distanceStep = 0f
 
-                // 3. Filtro de ruido inteligente: Time Delta y Velocidad
-                lastRecordedLocation?.let { last ->
+                lastValidLocation?.let { last ->
                     distanceStep = last.distanceTo(location)
                     val timeDelta = location.time - last.time
 
-                    // Filtro Time Delta: si el tiempo es corto (<5s) y la distancia es pequeña (<15m), 
-                    // descartamos para evitar micro-saltos aleatorios cuando se está casi quieto.
+                    // ── CAPA 1: Sampling optimization ──
                     if (timeDelta < MIN_TIME_DELTA_MS && distanceStep < MIN_DISTANCE_DELTA) {
                         Log.d(TAG, "Punto descartado por Time Delta (ruido alta frecuencia): $distanceStep m en ${timeDelta}ms")
                         return@launch
                     }
-
-                    // Filtro de distancia mínima absoluta para evitar 'manchones' de puntos
                     if (distanceStep < MIN_DISTANCE_THRESHOLD) {
                         Log.d(TAG, "Punto descartado por ruido (distancia insuficiente): $distanceStep m")
                         return@launch
                     }
 
-                    // Validar velocidad realista entre puntos
+                    // ── CAPA 2: Quality validation ──
                     if (timeDelta > 0) {
-                        val speedMs = (distanceStep / (timeDelta / 1000.0)).toFloat()
-
-                        if (speedMs > MAX_REALISTIC_SPEED) {
-                            Log.w(TAG, "SALTO DE GPS DETECTADO: Velocidad irreal de $speedMs m/s. Punto descartado.")
+                        val speedMps = distanceStep / (timeDelta / 1000f)
+                        if (speedMps > MAX_VALID_SPEED_MPS) {
+                            Log.w(TAG, "Punto descartado: Velocidad irreal de $speedMps m/s (${speedMps * 3.6f} km/h)")
                             return@launch
                         }
+                    }
+                    if (location.accuracy > MAX_ACCEPTABLE_ACCURACY) {
+                        Log.d(TAG, "Punto descartado por precisión baja: ${location.accuracy}m")
+                        return@launch
                     }
                 }
 
                 // Si el punto es válido, actualizamos la referencia y persistimos
-                lastRecordedLocation = location
+                lastValidLocation = location
                 lastMovementTimeMillis = System.currentTimeMillis()
 
                 // Acumular distancia total
@@ -578,7 +571,7 @@ class LocationService : Service() {
                 // Limpiar contadores pero mantener el servicio vivo
                 _elapsedTimeSeconds.value = 0L
                 _currentDistanceMeters.value = totalDistanceMeters
-                lastRecordedLocation = null
+                lastValidLocation = null
                 
                 // Reiniciar seguimiento con el nuevo ID
                 _isTracking.value = false // Forzar reinicio en startTracking

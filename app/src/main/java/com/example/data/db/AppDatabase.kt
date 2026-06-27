@@ -9,6 +9,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
 import com.example.data.model.LocationPoint
 import com.example.data.model.Route
+import com.example.data.model.RouteFavoriteCrossRef
 import com.example.data.model.Waypoint
 
 /**
@@ -16,8 +17,8 @@ import com.example.data.model.Waypoint
  * ubicaciones y waypoints.
  */
 @Database(
-    entities = [Route::class, LocationPoint::class, Waypoint::class, com.example.data.model.SavedLocation::class],
-    version = 8,
+    entities = [Route::class, LocationPoint::class, Waypoint::class, com.example.data.model.SavedLocation::class, RouteFavoriteCrossRef::class],
+    version = 10,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -35,6 +36,28 @@ abstract class AppDatabase : RoomDatabase() {
         private val MIGRATION_7_8 = object : Migration(7, 8) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 // Sin cambios estructurales, solo protege datos existentes
+            }
+        }
+
+        private val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `route_favorite_cross_ref` (
+                        `routeId` INTEGER NOT NULL,
+                        `favoriteId` INTEGER NOT NULL,
+                        PRIMARY KEY(`routeId`, `favoriteId`),
+                        FOREIGN KEY(`routeId`) REFERENCES `routes`(`id`) ON DELETE CASCADE,
+                        FOREIGN KEY(`favoriteId`) REFERENCES `saved_locations`(`id`) ON DELETE CASCADE
+                    )
+                """)
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_route_favorite_cross_ref_routeId` ON `route_favorite_cross_ref`(`routeId`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_route_favorite_cross_ref_favoriteId` ON `route_favorite_cross_ref`(`favoriteId`)")
+            }
+        }
+
+        private val MIGRATION_9_10 = object : Migration(9, 10) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Sin cambios estructurales, solo para permitir el salto de versión
             }
         }
 
@@ -56,8 +79,8 @@ abstract class AppDatabase : RoomDatabase() {
                 }
 
                 val instance = databaseBuilder
-                    .addMigrations(MIGRATION_7_8)
-                    .fallbackToDestructiveMigration() // Agregado para mayor robustez
+                    .addMigrations(MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
+                    .fallbackToDestructiveMigration()
                     .build()
                 INSTANCE = instance
                 instance
