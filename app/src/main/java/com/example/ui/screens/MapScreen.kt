@@ -17,6 +17,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -34,6 +35,8 @@ import androidx.core.content.FileProvider
 import androidx.core.graphics.drawable.toBitmap
 import coil.compose.AsyncImage
 import kotlinx.coroutines.launch
+import com.example.location.ActivityMode
+import com.example.ui.components.FullScreenPhotoDialog
 import com.example.ui.RouteViewModel
 import com.example.ui.Screen
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
@@ -59,6 +62,7 @@ fun MapScreen(viewModel: RouteViewModel, modifier: Modifier = Modifier) {
     val latestLocation by viewModel.latestLocationLive.collectAsState()
     val elapsedSeconds by viewModel.elapsedSecondsLive.collectAsState()
     val distanceMeters by viewModel.distanceMetersLive.collectAsState()
+    val activityMode by viewModel.currentActivityMode.collectAsState()
     val routePoints by viewModel.activeRoutePoints.collectAsState()
     val waypoints by viewModel.activeRouteWaypoints.collectAsState()
     val savedLocations by viewModel.allSavedLocations.collectAsState()
@@ -82,6 +86,7 @@ fun MapScreen(viewModel: RouteViewModel, modifier: Modifier = Modifier) {
     var capturedPhotoUri by remember { mutableStateOf<android.net.Uri?>(null) }
     var photoGpsLocation by remember { mutableStateOf<Pair<Double, Double>?>(null) }
     var usePhotoGps by remember { mutableStateOf(false) }
+    var photoToZoom by remember { mutableStateOf<String?>(null) }
 
     val cameraLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.TakePicture()
@@ -456,6 +461,31 @@ fun MapScreen(viewModel: RouteViewModel, modifier: Modifier = Modifier) {
                     if (isTracking) {
                         Box(modifier = Modifier.width(1.dp).height(35.dp).background(Color.White.copy(alpha = 0.3f)))
                         Column {
+                            // ── Icono del modo actividad ──
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(18.dp)
+                                        .background(Color.White.copy(alpha = 0.15f), RoundedCornerShape(4.dp)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = when (activityMode) {
+                                            ActivityMode.STOPPED -> Icons.Default.Stop
+                                        ActivityMode.WALKING -> Icons.AutoMirrored.Filled.DirectionsWalk
+                                        ActivityMode.BIKING -> Icons.AutoMirrored.Filled.DirectionsBike
+                                            ActivityMode.DRIVING -> Icons.Default.DirectionsCar
+                                        },
+                                        contentDescription = activityMode.name,
+                                        tint = Color.White,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                }
+                                Spacer(Modifier.width(6.dp))
+                                Text(activityMode.name, color = Color.White.copy(alpha = 0.8f), fontSize = 10.sp, fontWeight = FontWeight.Medium)
+                            }
+                            Spacer(Modifier.height(2.dp))
+                            // ── Velocidad ──
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Default.Speed, null, tint = Color.White, modifier = Modifier.size(10.dp))
                                 Spacer(Modifier.width(4.dp))
@@ -647,6 +677,7 @@ fun MapScreen(viewModel: RouteViewModel, modifier: Modifier = Modifier) {
                             model = capturedPhotoUri,
                             contentDescription = "Foto capturada",
                             modifier = Modifier.fillMaxWidth().height(150.dp).background(Color.Gray, RoundedCornerShape(8.dp))
+                                .clickable { photoToZoom = capturedPhotoUri?.toString() }
                         )
 
                         if (photoGpsLocation != null) {
@@ -859,6 +890,7 @@ fun MapScreen(viewModel: RouteViewModel, modifier: Modifier = Modifier) {
                             model = capturedPhotoUri,
                             contentDescription = "Foto",
                             modifier = Modifier.fillMaxWidth().height(150.dp).background(Color.Gray, RoundedCornerShape(8.dp))
+                                .clickable { photoToZoom = capturedPhotoUri?.toString() }
                         )
 
                         if (photoGpsLocation != null) {
@@ -954,4 +986,9 @@ fun MapScreen(viewModel: RouteViewModel, modifier: Modifier = Modifier) {
             }
         )
     }
+
+    FullScreenPhotoDialog(
+        photoUri = photoToZoom,
+        onDismiss = { photoToZoom = null }
+    )
 }

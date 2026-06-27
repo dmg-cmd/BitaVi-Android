@@ -31,6 +31,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.example.ui.components.FullScreenPhotoDialog
 import kotlinx.coroutines.launch
 import com.example.data.model.SavedLocation
 import com.example.ui.RouteViewModel
@@ -564,6 +565,7 @@ fun LocationCard(
     onShare: () -> Unit
 ) {
     val context = LocalContext.current
+    var photoToZoom by remember { mutableStateOf<String?>(null) }
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -581,6 +583,7 @@ fun LocationCard(
                         .fillMaxWidth()
                         .height(140.dp)
                         .background(Color.LightGray)
+                        .clickable { photoToZoom = location.photoPath }
                 )
             }
             
@@ -725,4 +728,9 @@ fun LocationCard(
             }
         }
     }
+
+    FullScreenPhotoDialog(
+        photoUri = photoToZoom,
+        onDismiss = { photoToZoom = null }
+    )
 }

@@ -29,6 +29,7 @@ import com.example.data.api.GroqRequest
 import com.example.data.api.GroqMessage
 import com.example.data.api.RetrofitClient
 import com.example.data.repository.RouteRepository
+import com.example.location.ActivityMode
 import com.example.location.LocationService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -180,6 +181,7 @@ class RouteViewModel(application: Application, private val repository: RouteRepo
     val isTrackingLive: StateFlow<Boolean> = LocationService.isTracking
     val activeRouteIdLive: StateFlow<Int?> = LocationService.currentRouteId
     val latestLocationLive: StateFlow<Location?> = LocationService.latestLocation
+    val currentActivityMode: StateFlow<ActivityMode> = LocationService.currentActivityMode
     val elapsedSecondsLive: StateFlow<Long> = LocationService.elapsedTimeSeconds
     val distanceMetersLive: StateFlow<Double> = LocationService.currentDistanceMeters
 

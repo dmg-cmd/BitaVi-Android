@@ -2,6 +2,7 @@ package com.example.ui.screens
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -26,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import coil.compose.AsyncImage
+import com.example.ui.components.FullScreenPhotoDialog
 import com.example.ui.RouteViewModel
 import com.example.ui.Screen
 import com.github.mikephil.charting.charts.LineChart
@@ -60,6 +62,7 @@ fun DetailScreen(
     var showEditDialog by remember { mutableStateOf(false) }
     var showSheet by remember { mutableStateOf(false) }
     var editedName by remember { mutableStateOf("") }
+    var photoToZoom by remember { mutableStateOf<String?>(null) }
 
     val mapView = remember { MapView(context) }
 
@@ -221,6 +224,7 @@ fun DetailScreen(
                                         model = wp.photoPath,
                                         contentDescription = wp.name,
                                         modifier = Modifier.fillMaxWidth().height(120.dp).background(Color.LightGray)
+                                            .clickable { photoToZoom = wp.photoPath }
                                     )
                                 }
                                 Column(modifier = Modifier.padding(12.dp)) {
@@ -339,6 +343,11 @@ fun DetailScreen(
             dismissButton = { TextButton(onClick = { showEditDialog = false }) { Text("Cancelar") } }
         )
     }
+
+    FullScreenPhotoDialog(
+        photoUri = photoToZoom,
+        onDismiss = { photoToZoom = null }
+    )
 }
 
 @Composable

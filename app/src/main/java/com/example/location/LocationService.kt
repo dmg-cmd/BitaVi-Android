@@ -25,6 +25,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import java.util.concurrent.TimeUnit
 
+enum class ActivityMode { STOPPED, WALKING, BIKING, DRIVING }
+
 /**
  * Servicio en primer plano (Foreground Service) que gestiona el seguimiento GPS en tiempo real.
  * Diseñado con persistencia interna reactiva (Room) y variables estáticas observables en Compose.
@@ -62,6 +64,11 @@ class LocationService : Service() {
     private val REQUIRED_CONFIRMATIONS = 3 // Subimos a 3 lecturas seguidas para mayor seguridad
     private var lastAutoStartTimeMillis: Long = 0L // Para evitar reinicios infinitos rápidos
 
+    // Activity Mode con inercia (histeresis)
+    private var currentMode = ActivityMode.STOPPED
+    private var lastModeChangeTime = 0L
+    private var lastComputedSpeedMps = 0f
+
     // Lógica "Cerca de mí"
     private var lastNotifiedFavoriteId: Int = -1
     private var lastNotificationTime: Long = 0L
@@ -80,6 +87,10 @@ class LocationService : Service() {
         private const val MIN_DISTANCE_DELTA = 15.0f     // metros (Capa 1: distancia mínima con time delta)
         private const val MAX_VALID_SPEED_MPS = 4.5f     // m/s (~16 km/h, Capa 2: velocidad máxima creíble)
         private const val MAX_ACCEPTABLE_ACCURACY = 30.0f // metros (Capa 2: precisión mínima aceptable)
+
+        // Activity Mode: tiempos de inercia
+        private const val TIME_TO_UPGRADE = 10_000L   // 10s para subir de intensidad (inicio rápido)
+        private const val TIME_TO_DOWNGRADE = 120_000L // 2min para bajar de intensidad
 
         // Acciones de control del servicio
         const val ACTION_START = "ACTION_START"
@@ -110,6 +121,9 @@ class LocationService : Service() {
 
         private val _currentDistanceMeters = MutableStateFlow(0.0)
         val currentDistanceMeters = _currentDistanceMeters.asStateFlow()
+
+        private val _currentActivityMode = MutableStateFlow(ActivityMode.STOPPED)
+        val currentActivityMode = _currentActivityMode.asStateFlow()
     }
 
     override fun onCreate() {
@@ -292,6 +306,16 @@ class LocationService : Service() {
         val isAutoModeActive = sharedPrefs.getBoolean("auto_mode", false)
         val isNearMeEnabled = sharedPrefs.getBoolean("near_me_enabled", false)
 
+        // Calcular velocidad entre puntos usando lastValidLocation (más fiable que location.speed)
+        lastComputedSpeedMps = if (lastValidLocation != null) {
+            val dist = lastValidLocation!!.distanceTo(location)
+            val time = location.time - lastValidLocation!!.time
+            if (time > 0) dist / (time / 1000f) else 0f
+        } else 0f
+
+        // Actualizar Activity Mode con la velocidad computada
+        updateActivityMode(lastComputedSpeedMps * 3.6f)
+
         // --- LÓGICA "CERCA DE MÍ" ---
         if (isNearMeEnabled) {
             checkProximityToFavorites(location)
@@ -330,12 +354,19 @@ class LocationService : Service() {
                 }
             } else {
                 val distFromStop = lastStopLocation!!.distanceTo(location)
-                val currentSpeedKmh = location.speed * 3.6f
+                val speedKmh = lastComputedSpeedMps * 3.6f
+
+                // Umbral dinámico según modo actual
+                val minSpeedForMovement = when (currentMode) {
+                    ActivityMode.STOPPED -> 1.5f
+                    ActivityMode.WALKING -> 0.5f
+                    else -> 3.0f
+                }
                 
-                // Si nos alejamos más de 30 metros Y tenemos velocidad real (> 1.5 km/h)
-                if (distFromStop > 30f && currentSpeedKmh > 1.5f && location.accuracy < 30f) {
+                // Si nos alejamos más de 30 metros Y tenemos velocidad real según modo
+                if (distFromStop > 30f && speedKmh > minSpeedForMovement && location.accuracy < 30f) {
                     consecutiveMovements++
-                    Log.d(TAG, "Movimiento real detectado: $distFromStop m, $currentSpeedKmh km/h. Confirmación $consecutiveMovements/$REQUIRED_CONFIRMATIONS")
+                    Log.d(TAG, "Movimiento detectado ($currentMode): $distFromStop m, $speedKmh km/h. Confirmación $consecutiveMovements/$REQUIRED_CONFIRMATIONS")
                     
                     if (consecutiveMovements >= REQUIRED_CONFIRMATIONS) {
                         Log.d(TAG, "Movimiento confirmado. Iniciando grabación automática con buffer de ${preStartBuffer.size} puntos.")
@@ -388,6 +419,7 @@ class LocationService : Service() {
                     // ── CAPA 2: Quality validation ──
                     if (timeDelta > 0) {
                         val speedMps = distanceStep / (timeDelta / 1000f)
+                        lastComputedSpeedMps = speedMps
                         if (speedMps > MAX_VALID_SPEED_MPS) {
                             Log.w(TAG, "Punto descartado: Velocidad irreal de $speedMps m/s (${speedMps * 3.6f} km/h)")
                             return@launch
@@ -428,6 +460,32 @@ class LocationService : Service() {
             } catch (e: Exception) {
                 Log.e(TAG, "Error procesando ubicación en base de datos: ${e.message}")
             }
+        }
+    }
+
+    private fun updateActivityMode(speedKmh: Float) {
+        val newMode = when {
+            speedKmh < 1.0f -> ActivityMode.STOPPED
+            speedKmh <= 7.0f -> ActivityMode.WALKING
+            speedKmh <= 13.0f -> ActivityMode.BIKING
+            else -> ActivityMode.DRIVING
+        }
+
+        if (newMode != currentMode) {
+            val currentTime = System.currentTimeMillis()
+            val isUpgrade = newMode.ordinal > currentMode.ordinal
+            val requiredTime = if (isUpgrade) TIME_TO_UPGRADE else TIME_TO_DOWNGRADE
+
+            if (lastModeChangeTime == 0L) {
+                lastModeChangeTime = currentTime
+            } else if (currentTime - lastModeChangeTime >= requiredTime) {
+                currentMode = newMode
+                lastModeChangeTime = 0L
+                _currentActivityMode.value = newMode
+                Log.d(TAG, "Modo actividad: $currentMode (${speedKmh} km/h)")
+            }
+        } else {
+            lastModeChangeTime = 0L
         }
     }
 
