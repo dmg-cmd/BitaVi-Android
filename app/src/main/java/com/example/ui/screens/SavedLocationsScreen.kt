@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.ui.components.FullScreenPhotoDialog
+import com.example.ui.components.TourOverlay
 import kotlinx.coroutines.launch
 import com.example.data.model.SavedLocation
 import com.example.ui.RouteViewModel
@@ -61,6 +62,8 @@ fun SavedLocationsScreen(
     var capturedPhotoUri by remember { mutableStateOf<android.net.Uri?>(null) }
     var photoGpsLocation by remember { mutableStateOf<Pair<Double, Double>?>(null) }
     var usePhotoGps by remember { mutableStateOf(false) }
+    var photoToZoom by remember { mutableStateOf<String?>(null) }
+    var showTourFotos by remember { mutableStateOf(!viewModel.esTourVisto("fotos")) }
 
     val cameraLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.TakePicture()
@@ -306,6 +309,7 @@ fun SavedLocationsScreen(
                             model = capturedPhotoUri,
                             contentDescription = "Foto",
                             modifier = Modifier.fillMaxWidth().height(150.dp).background(Color.Gray, RoundedCornerShape(8.dp))
+                                .clickable { photoToZoom = capturedPhotoUri?.toString() }
                         )
                         
                         if (photoGpsLocation != null) {
@@ -551,6 +555,21 @@ fun SavedLocationsScreen(
             },
             dismissButton = {
                 TextButton(onClick = { locationToEdit = null }) { Text("Cancelar") }
+            }
+        )
+    }
+
+    FullScreenPhotoDialog(
+        photoUri = photoToZoom,
+        onDismiss = { photoToZoom = null }
+    )
+
+    if (showTourFotos) {
+        TourOverlay(
+            message = "¡Toca cualquier foto para verla a pantalla completa!",
+            onDismiss = {
+                showTourFotos = false
+                viewModel.marcarTourVisto("fotos")
             }
         )
     }

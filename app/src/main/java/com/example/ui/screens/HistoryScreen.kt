@@ -65,6 +65,13 @@ fun HistoryScreen(
         }
     )
 
+    val zipPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument(),
+        onResult = { uri: Uri? ->
+            uri?.let { viewModel.importarRutaZip(it) }
+        }
+    )
+
     Box(modifier = modifier.fillMaxSize()) {
         if (viewModel.isImporting) {
             Box(
@@ -125,6 +132,11 @@ fun HistoryScreen(
                         Spacer(modifier = Modifier.width(8.dp))
                         Text("Importar GPX")
                     }
+                    OutlinedButton(onClick = { zipPickerLauncher.launch(arrayOf("application/zip", "application/x-zip-compressed")) }) {
+                        Icon(Icons.Default.Unarchive, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Importar ZIP")
+                    }
                 }
             }
         } else {
@@ -164,6 +176,9 @@ fun HistoryScreen(
                         } else {
                             IconButton(onClick = { gpxPickerLauncher.launch(arrayOf("*/*")) }) {
                                 Icon(Icons.Default.FileUpload, contentDescription = "Importar GPX", tint = MaterialTheme.colorScheme.primary)
+                            }
+                            IconButton(onClick = { zipPickerLauncher.launch(arrayOf("application/zip", "application/x-zip-compressed")) }) {
+                                Icon(Icons.Default.Unarchive, contentDescription = "Importar ZIP", tint = Color(0xFFFF6F00))
                             }
                         }
                     }

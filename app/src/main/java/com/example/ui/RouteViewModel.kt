@@ -28,6 +28,7 @@ import com.example.data.api.GroqApi
 import com.example.data.api.GroqRequest
 import com.example.data.api.GroqMessage
 import com.example.data.api.RetrofitClient
+import com.example.data.export.RouteExchanger
 import com.example.data.repository.RouteRepository
 import com.example.location.ActivityMode
 import com.example.location.LocationService
@@ -58,7 +59,8 @@ sealed interface Screen {
 class RouteViewModel(application: Application, private val repository: RouteRepository) : AndroidViewModel(application) {
 
     private val context: Context get() = getApplication<Application>().applicationContext
- 
+    private val exchanger: RouteExchanger by lazy { RouteExchanger(context, repository) }
+
     // A13: Cache de SharedPreferences para evitar I/O repetitivo y múltiples instancias
     private val sharedPrefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(context)
 
@@ -171,6 +173,14 @@ class RouteViewModel(application: Application, private val repository: RouteRepo
         viewModelScope.launch(Dispatchers.IO) {
             cleanDuplicateFavorites()
         }
+    }
+
+    // ── Tour / Onboarding ──
+    fun esTourVisto(key: String): Boolean =
+        sharedPrefs.getBoolean("tour_v2_$key", false)
+
+    fun marcarTourVisto(key: String) {
+        sharedPrefs.edit().putBoolean("tour_v2_$key", true).apply()
     }
 
     fun navigateTo(screen: Screen) { currentScreen = screen }
@@ -557,6 +567,54 @@ class RouteViewModel(application: Application, private val repository: RouteRepo
                 }
                 withContext(Dispatchers.Main) { navigateTo(Screen.History) }
             } catch (e: Exception) { } finally { withContext(Dispatchers.Main) { isImporting = false } }
+        }
+    }
+
+    fun exportarRutaZip(routeId: Int) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
+                val zipFile = File(context.cacheDir, "ruta_${routeId}_$timestamp.zip")
+                FileOutputStream(zipFile).use { fos ->
+                    exchanger.exportarRutaCompleta(routeId, fos)
+                }
+                val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", zipFile)
+                val intent = Intent(Intent.ACTION_SEND).apply {
+                    type = "application/zip"
+                    putExtra(Intent.EXTRA_STREAM, uri)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                val chooser = Intent.createChooser(intent, "Exportar ruta")
+                chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                context.startActivity(chooser)
+            } catch (e: Exception) {
+                e.printStackTrace()
+                withContext(Dispatchers.Main) {
+                    android.widget.Toast.makeText(context, "Error al exportar: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
+    fun importarRutaZip(uri: Uri) {
+        viewModelScope.launch(Dispatchers.IO) {
+            withContext(Dispatchers.Main) { isImporting = true }
+            try {
+                context.contentResolver.openInputStream(uri)?.use { inputStream ->
+                    exchanger.importarRuta(inputStream)
+                }
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "Ruta importada correctamente", Toast.LENGTH_SHORT).show()
+                    navigateTo(Screen.History)
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "Error al importar: ${e.message}", Toast.LENGTH_LONG).show()
+                }
+            } finally {
+                withContext(Dispatchers.Main) { isImporting = false }
+            }
         }
     }
 

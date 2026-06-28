@@ -18,6 +18,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import coil.load
 import coil.transform.CircleCropTransformation
+import com.example.ui.components.FullScreenPhotoDialog
 import com.example.ui.RouteViewModel
 import com.example.R
 import com.example.ui.Screen
@@ -44,6 +45,7 @@ fun ExperienceMapScreen(
     val linkedFavorites by viewModel.getFavoritesForRouteFlow(routeId).collectAsState(initial = emptyList())
 
     val mapView = remember { MapView(context) }
+    var photoToZoom by remember { mutableStateOf<String?>(null) }
 
     DisposableEffect(mapView) {
         mapView.onResume()
@@ -142,7 +144,10 @@ fun ExperienceMapScreen(
                             marker.title = fav.name
                             marker.icon = getCachedIcon(android.R.drawable.btn_star_big_on, fav.color)
                             marker.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
-                            marker.infoWindow = PhotoInfoWindow(mapView).apply {
+                            marker.infoWindow = PhotoInfoWindow(
+                                mapView,
+                                onPhotoClick = { path -> photoToZoom = path }
+                            ).apply {
                                 if (!fav.photoPath.isNullOrEmpty()) {
                                     setPhoto(fav.photoPath)
                                 }
@@ -156,9 +161,17 @@ fun ExperienceMapScreen(
             }
         }
     }
+
+    FullScreenPhotoDialog(
+        photoUri = photoToZoom,
+        onDismiss = { photoToZoom = null }
+    )
 }
 
-class PhotoInfoWindow(mapView: MapView) : InfoWindow(R.layout.info_window_layout, mapView) {
+class PhotoInfoWindow(
+    mapView: MapView,
+    private val onPhotoClick: ((String) -> Unit)? = null
+) : InfoWindow(R.layout.info_window_layout, mapView) {
 
     private var pendingPhotoPath: String? = null
 
@@ -204,6 +217,9 @@ class PhotoInfoWindow(mapView: MapView) : InfoWindow(R.layout.info_window_layout
                 load(path) {
                     crossfade(true)
                     transformations(CircleCropTransformation())
+                }
+                setOnClickListener {
+                    onPhotoClick?.invoke(path)
                 }
                 layout.addView(this)
             }

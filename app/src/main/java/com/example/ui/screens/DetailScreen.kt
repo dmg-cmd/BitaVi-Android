@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import coil.compose.AsyncImage
 import com.example.ui.components.FullScreenPhotoDialog
+import com.example.ui.components.TourOverlay
 import com.example.ui.RouteViewModel
 import com.example.ui.Screen
 import com.github.mikephil.charting.charts.LineChart
@@ -63,6 +64,7 @@ fun DetailScreen(
     var showSheet by remember { mutableStateOf(false) }
     var editedName by remember { mutableStateOf("") }
     var photoToZoom by remember { mutableStateOf<String?>(null) }
+    var showTourFotos by remember { mutableStateOf(!viewModel.esTourVisto("fotos")) }
 
     val mapView = remember { MapView(context) }
 
@@ -114,6 +116,9 @@ fun DetailScreen(
                     }
                     IconButton(onClick = { viewModel.exportRoutesAsCSV(routeId) }) {
                         Icon(Icons.Default.TableChart, "Exportar Excel", tint = Color(0xFF2E7D32))
+                    }
+                    IconButton(onClick = { viewModel.exportarRutaZip(routeId) }) {
+                        Icon(Icons.Default.Archive, "Exportar ZIP", tint = Color(0xFFFF6F00))
                     }
                     IconButton(onClick = { showSheet = true }) {
                         Icon(Icons.Default.BookmarkBorder, "Favoritos")
@@ -220,12 +225,18 @@ fun DetailScreen(
                         ) {
                             Column {
                                 if (wp.photoPath != null) {
-                                    AsyncImage(
-                                        model = wp.photoPath,
-                                        contentDescription = wp.name,
-                                        modifier = Modifier.fillMaxWidth().height(120.dp).background(Color.LightGray)
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(120.dp)
                                             .clickable { photoToZoom = wp.photoPath }
-                                    )
+                                    ) {
+                                        AsyncImage(
+                                            model = wp.photoPath,
+                                            contentDescription = wp.name,
+                                            modifier = Modifier.fillMaxSize().background(Color.LightGray)
+                                        )
+                                    }
                                 }
                                 Column(modifier = Modifier.padding(12.dp)) {
                                     Text(text = wp.name, fontWeight = FontWeight.Bold, maxLines = 1)
@@ -348,6 +359,16 @@ fun DetailScreen(
         photoUri = photoToZoom,
         onDismiss = { photoToZoom = null }
     )
+
+    if (showTourFotos) {
+        TourOverlay(
+            message = "¡Toca cualquier foto para verla a pantalla completa!",
+            onDismiss = {
+                showTourFotos = false
+                viewModel.marcarTourVisto("fotos")
+            }
+        )
+    }
 }
 
 @Composable

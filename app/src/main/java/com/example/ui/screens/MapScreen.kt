@@ -37,6 +37,7 @@ import coil.compose.AsyncImage
 import kotlinx.coroutines.launch
 import com.example.location.ActivityMode
 import com.example.ui.components.FullScreenPhotoDialog
+import com.example.ui.components.TourOverlay
 import com.example.ui.RouteViewModel
 import com.example.ui.Screen
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
@@ -87,6 +88,7 @@ fun MapScreen(viewModel: RouteViewModel, modifier: Modifier = Modifier) {
     var photoGpsLocation by remember { mutableStateOf<Pair<Double, Double>?>(null) }
     var usePhotoGps by remember { mutableStateOf(false) }
     var photoToZoom by remember { mutableStateOf<String?>(null) }
+    var showTourMapa by remember { mutableStateOf(!viewModel.esTourVisto("actividad")) }
 
     val cameraLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.TakePicture()
@@ -991,4 +993,14 @@ fun MapScreen(viewModel: RouteViewModel, modifier: Modifier = Modifier) {
         photoUri = photoToZoom,
         onDismiss = { photoToZoom = null }
     )
+
+    if (showTourMapa) {
+        TourOverlay(
+            message = "¡Ahora detecto si caminas, vas en bici o en coche automáticamente!",
+            onDismiss = {
+                showTourMapa = false
+                viewModel.marcarTourVisto("actividad")
+            }
+        )
+    }
 }
