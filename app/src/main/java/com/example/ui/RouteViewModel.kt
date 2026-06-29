@@ -12,6 +12,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.content.FileProvider
+import androidx.core.content.edit
 import androidx.exifinterface.media.ExifInterface
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
@@ -101,7 +102,7 @@ class RouteViewModel(application: Application, private val repository: RouteRepo
 
     fun toggleBiometric(enabled: Boolean) {
         isBiometricEnabled = enabled
-        sharedPrefs.edit().putBoolean("biometric_enabled", enabled).apply()
+        sharedPrefs.edit { putBoolean("biometric_enabled", enabled) }
     }
 
     var groqApiKey by mutableStateOf<String?>(null)
@@ -131,18 +132,18 @@ class RouteViewModel(application: Application, private val repository: RouteRepo
     fun updateDefaultLocation(lat: Double, lon: Double) { defaultLatitude = lat; defaultLongitude = lon }
     fun updateDefaultLocationPersistently(lat: Double, lon: Double) {
         updateDefaultLocation(lat, lon)
-        sharedPrefs.edit().putFloat("default_lat", lat.toFloat()).putFloat("default_lon", lon.toFloat()).apply()
+        sharedPrefs.edit { putFloat("default_lat", lat.toFloat()); putFloat("default_lon", lon.toFloat()) }
     }
 
     fun toggleAirplaneMode() { 
         isAirplaneMode = !isAirplaneMode 
         // M08: Persistir el cambio para que el LocationService lo detecte
-        sharedPrefs.edit().putBoolean("airplane_mode", isAirplaneMode).apply()
+        sharedPrefs.edit { putBoolean("airplane_mode", isAirplaneMode) }
     }
 
     fun toggleAutoMode() {
         isAutoMode = !isAutoMode
-        sharedPrefs.edit().putBoolean("auto_mode", isAutoMode).apply()
+        sharedPrefs.edit { putBoolean("auto_mode", isAutoMode) }
     }
     fun toggleOfflineMode() { isOfflineMode = !isOfflineMode }
 
@@ -152,7 +153,7 @@ class RouteViewModel(application: Application, private val repository: RouteRepo
     fun toggleNearMe() {
         val newState = !_isNearMeEnabled.value
         _isNearMeEnabled.value = newState
-        sharedPrefs.edit().putBoolean("near_me_enabled", newState).apply()
+        sharedPrefs.edit { putBoolean("near_me_enabled", newState) }
         
         // Notificar al servicio que ha cambiado el ajuste
         val intent = Intent(context, LocationService::class.java).apply {
@@ -192,7 +193,7 @@ class RouteViewModel(application: Application, private val repository: RouteRepo
         sharedPrefs.getBoolean("tour_v2_$key", false)
 
     fun marcarTourVisto(key: String) {
-        sharedPrefs.edit().putBoolean("tour_v2_$key", true).apply()
+        sharedPrefs.edit { putBoolean("tour_v2_$key", true) }
     }
 
     fun navigateTo(screen: Screen) { currentScreen = screen }
@@ -302,7 +303,7 @@ class RouteViewModel(application: Application, private val repository: RouteRepo
                 val geocoder = android.location.Geocoder(context, Locale.getDefault())
                 val addresses = geocoder.getFromLocation(location.latitude, location.longitude, 1)
                 if (!addresses.isNullOrEmpty()) withContext(Dispatchers.Main) { currentAddress = formatAddress(addresses[0], "Calle desconocida") }
-            } catch (e: Exception) { }
+            } catch (_: Exception) { }
         }
     }
 
@@ -324,7 +325,7 @@ class RouteViewModel(application: Application, private val repository: RouteRepo
                 val geocoder = android.location.Geocoder(context, Locale.getDefault())
                 val addresses = geocoder.getFromLocation(lat, lon, 1)
                 if (!addresses.isNullOrEmpty()) withContext(Dispatchers.Main) { selectedPointAddress = formatAddress(addresses[0], "Desconocida") }
-            } catch (e: Exception) { withContext(Dispatchers.Main) { selectedPointAddress = null } }
+            } catch (_: Exception) { withContext(Dispatchers.Main) { selectedPointAddress = null } }
         }
     }
 
@@ -445,7 +446,7 @@ class RouteViewModel(application: Application, private val repository: RouteRepo
                 val addr = addresses[0]
                 Triple(formatAddress(addr, coordFallback), addr.countryName ?: "Desconocido", addr.locality ?: addr.adminArea ?: "Desconocida")
             } else Triple(coordFallback, "Desconocido", "Desconocida")
-        } catch (e: Exception) { Triple(coordFallback, "Desconocido", "Desconocida") }
+        } catch (_: Exception) { Triple(coordFallback, "Desconocido", "Desconocida") }
     }
 
     fun getPhotoLocation(uri: Uri): Pair<Double, Double>? {
@@ -456,7 +457,7 @@ class RouteViewModel(application: Application, private val repository: RouteRepo
                 val latLong = FloatArray(2)
                 if (exif.getLatLong(latLong)) Pair(latLong[0].toDouble(), latLong[1].toDouble()) else null
             }
-        } catch (e: Exception) { null }
+        } catch (_: Exception) { null }
     }
 
     fun analyzeRouteWithAI(routeId: Int) {
@@ -533,7 +534,7 @@ class RouteViewModel(application: Application, private val repository: RouteRepo
             val chooser = Intent.createChooser(intent, "Exportar")
             chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             context.startActivity(chooser)
-        } catch (e: Exception) { }
+        } catch (_: Exception) { }
     }
 
     fun exportRoutesAsGPX(routeIds: Set<Int>) {
@@ -561,7 +562,7 @@ class RouteViewModel(application: Application, private val repository: RouteRepo
             val chooser = Intent.createChooser(intent, "Exportar")
             chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             context.startActivity(chooser)
-        } catch (e: Exception) { }
+        } catch (_: Exception) { }
     }
 
     fun importGpxFile(uri: Uri) {
@@ -590,7 +591,7 @@ class RouteViewModel(application: Application, private val repository: RouteRepo
                     eventType = parser.next()
                 }
                 withContext(Dispatchers.Main) { navigateTo(Screen.History) }
-            } catch (e: Exception) { } finally { withContext(Dispatchers.Main) { isImporting = false } }
+            } catch (_: Exception) { } finally { withContext(Dispatchers.Main) { isImporting = false } }
         }
     }
 
@@ -666,7 +667,7 @@ class RouteViewModel(application: Application, private val repository: RouteRepo
             if (!storageDir.exists()) storageDir.mkdirs()
             val file = File.createTempFile("IMG_${System.currentTimeMillis()}_", ".jpg", storageDir)
             FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
-        } catch (e: Exception) { null }
+        } catch (_: Exception) { null }
     }
     suspend fun saveImageToInternalStorage(uri: Uri): Uri? {
         return withContext(Dispatchers.IO) {
@@ -676,7 +677,7 @@ class RouteViewModel(application: Application, private val repository: RouteRepo
                 val file = File(storageDir, "IMG_GALLERY_${System.currentTimeMillis()}.jpg")
                 context.contentResolver.openInputStream(uri)?.use { input -> file.outputStream().use { output -> input.copyTo(output) } }
                 FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
-            } catch (e: Exception) { null }
+            } catch (_: Exception) { null }
         }
     }
     suspend fun prepareBackupFile(): File? {
@@ -1029,7 +1030,7 @@ class RouteViewModel(application: Application, private val repository: RouteRepo
                             currentTime = try {
                                 val sdf = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US)
                                 sdf.parse(timeStr)?.time ?: System.currentTimeMillis()
-                            } catch (e: Exception) { System.currentTimeMillis() }
+                            } catch (_: Exception) { System.currentTimeMillis() }
                         }
                     }
                 } else if (eventType == XmlPullParser.END_TAG && tag == "trkpt") {
@@ -1211,7 +1212,7 @@ class RouteViewModel(application: Application, private val repository: RouteRepo
                     try {
                         val uri = Uri.parse(path)
                         imageUris.add(uri)
-                    } catch (e: Exception) { }
+                    } catch (_: Exception) { }
                 }
             }
 
