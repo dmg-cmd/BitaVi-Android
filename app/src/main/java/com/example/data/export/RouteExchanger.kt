@@ -274,6 +274,7 @@ class RouteExchanger(
             val savedId = if (result > 0) {
                 result.toInt()
             } else {
+                repository.updatePhotoPathByLatLon(location.latitude, location.longitude, location.photoPath)
                 repository.getAllSavedLocationsSync()
                     .find { it.latitude == location.latitude && it.longitude == location.longitude }
                     ?.id

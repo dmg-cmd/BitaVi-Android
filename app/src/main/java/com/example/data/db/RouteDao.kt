@@ -65,6 +65,12 @@ interface RouteDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertWaypoint(waypoint: Waypoint): Long
 
+    @Query("UPDATE waypoints SET photoPath = NULL WHERE id = :waypointId")
+    suspend fun clearWaypointPhoto(waypointId: Int)
+
+    @Query("UPDATE saved_locations SET photoPath = NULL WHERE id = :favoriteId")
+    suspend fun clearFavoritePhoto(favoriteId: Int)
+
     @Query("SELECT * FROM waypoints WHERE routeId = :routeId ORDER BY timestamp ASC")
     fun getWaypointsForRouteFlow(routeId: Int): Flow<List<Waypoint>>
 
@@ -78,6 +84,9 @@ interface RouteDao {
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertIfNew(location: com.example.data.model.SavedLocation): Long
+
+    @Query("UPDATE saved_locations SET photoPath = :photoPath WHERE latitude = :lat AND longitude = :lon")
+    suspend fun updatePhotoPathByLatLon(lat: Double, lon: Double, photoPath: String?)
 
     @Query("""
         DELETE FROM saved_locations

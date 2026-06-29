@@ -389,6 +389,7 @@ fun MainContainer(viewModel: RouteViewModel, encryptedPrefs: SharedPreferences) 
 
     ModalNavigationDrawer(
         drawerState = drawerState,
+        gesturesEnabled = currentScreen !is Screen.Detail && currentScreen !is Screen.ExperienceMap,
         drawerContent = {
             ModalDrawerSheet {
                 Spacer(Modifier.height(12.dp))

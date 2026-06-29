@@ -264,6 +264,18 @@ class RouteViewModel(application: Application, private val repository: RouteRepo
             repository.deleteRoutes(routeIds.toList()) 
         } 
     }
+    fun removeWaypointPhoto(waypointId: Int, routeId: Int) {
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.removeWaypointPhoto(waypointId)
+        }
+    }
+
+    fun removeFavoritePhoto(favoriteId: Int) {
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.removeFavoritePhoto(favoriteId)
+        }
+    }
+
     fun renameRoute(routeId: Int, newName: String) {
         viewModelScope.launch {
             val route = repository.getRouteById(routeId)
@@ -591,6 +603,24 @@ class RouteViewModel(application: Application, private val repository: RouteRepo
                 e.printStackTrace()
                 withContext(Dispatchers.Main) {
                     android.widget.Toast.makeText(context, "Error al exportar: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
+    fun saveRouteZipToUri(routeId: Int, uri: Uri) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                context.contentResolver.openOutputStream(uri)?.use { outputStream ->
+                    exchanger.exportarRutaCompleta(routeId, outputStream)
+                }
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "ZIP guardado correctamente", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "Error al guardar ZIP: ${e.message}", Toast.LENGTH_SHORT).show()
                 }
             }
         }

@@ -168,6 +168,14 @@ class RouteRepository(private val routeDao: RouteDao) {
         return routeDao.getWaypointsForRoute(routeId)
     }
 
+    suspend fun removeWaypointPhoto(waypointId: Int) {
+        routeDao.clearWaypointPhoto(waypointId)
+    }
+
+    suspend fun removeFavoritePhoto(favoriteId: Int) {
+        routeDao.clearFavoritePhoto(favoriteId)
+    }
+
     // --- Operaciones de Lugares Guardados (Favoritos) ---
 
     val allSavedLocations: Flow<List<com.example.data.model.SavedLocation>> = routeDao.getAllSavedLocationsFlow()
@@ -223,6 +231,10 @@ class RouteRepository(private val routeDao: RouteDao) {
 
     suspend fun insertIfNew(location: com.example.data.model.SavedLocation): Long {
         return routeDao.insertIfNew(location)
+    }
+
+    suspend fun updatePhotoPathByLatLon(lat: Double, lon: Double, photoPath: String?) {
+        routeDao.updatePhotoPathByLatLon(lat, lon, photoPath)
     }
 
     suspend fun deleteDuplicateFavorites() {
