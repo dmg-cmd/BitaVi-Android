@@ -31,7 +31,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
-import androidx.core.content.FileProvider
 import androidx.core.graphics.drawable.toBitmap
 import coil.compose.AsyncImage
 import kotlinx.coroutines.launch
@@ -39,12 +38,9 @@ import com.example.location.ActivityMode
 import com.example.ui.components.FullScreenPhotoDialog
 import com.example.ui.components.TourOverlay
 import com.example.ui.RouteViewModel
-import com.example.ui.Screen
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
-import org.osmdroid.util.BoundingBox
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
-import org.osmdroid.tileprovider.cachemanager.CacheManager
 import org.osmdroid.views.CustomZoomButtonsController
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.Polyline
@@ -419,7 +415,7 @@ fun MapScreen(viewModel: RouteViewModel, modifier: Modifier = Modifier) {
                     }
 
                     if (needsInvalidate) view.invalidate()
-                } catch (e: Exception) { }
+                } catch (_: Exception) { }
             }
         )
 
