@@ -94,6 +94,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.core.content.edit
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.ViewModelProvider
 import androidx.preference.PreferenceManager
@@ -167,7 +168,7 @@ class MainActivity : FragmentActivity() {
         var pass = encryptedPrefs.getString(key, null)
         if (pass == null) {
             pass = UUID.randomUUID().toString()
-            encryptedPrefs.edit().putString(key, pass).apply()
+            encryptedPrefs.edit { putString(key, pass) }
         }
         return pass.toByteArray()
     }
@@ -222,7 +223,7 @@ class MainActivity : FragmentActivity() {
                 EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
                 EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
             )
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             // Si el hardware falla, limpiamos de raíz tanto el archivo como el alias del chip
             deleteSharedPreferences(fileName)
             try {
@@ -275,7 +276,7 @@ class MainActivity : FragmentActivity() {
             // Forzamos una operación de lectura simple para validar la clave inmediatamente
             db.openHelper.writableDatabase
             db
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             // Si la clave no coincide (ej. tras reset de Keystore) o el archivo está corrupto (Code 26)
             AppDatabase.destroyInstance()
             applicationContext.deleteDatabase("localizador_database")
@@ -310,7 +311,7 @@ class MainActivity : FragmentActivity() {
                     viewModel.updateGroqApiKey(decryptedKey)
                     Toast.makeText(this, "IA Desbloqueada", Toast.LENGTH_SHORT).show()
                 }
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 Toast.makeText(this, "Error de seguridad Keystore: Reconfigure su clave", Toast.LENGTH_LONG).show()
             }
         }
@@ -342,13 +343,12 @@ fun MainContainer(viewModel: RouteViewModel, encryptedPrefs: SharedPreferences) 
             context.packageManager.getPackageInfo(context.packageName, 0)
         }
         packageInfo.versionName ?: "1.0.0"
-    } catch (e: Exception) {
+    } catch (_: Exception) {
         "1.0.0"
     }
 
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
-    val sharedPrefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(context)
     
     // Diálogos de ajustes
     var showApiKeyDialog by remember { mutableStateOf(false) }
@@ -468,7 +468,7 @@ fun MainContainer(viewModel: RouteViewModel, encryptedPrefs: SharedPreferences) 
                                     isKeyUnlocked = true
                                     showApiKeyDialog = true
                                 }
-                            } catch (e: Exception) {
+                            } catch (_: Exception) {
                                 // Si la clave del Keystore fue invalidada (nuevas huellas) o error
                                 Toast.makeText(context, "Error de hardware seguro. Reintroduzca la clave.", Toast.LENGTH_LONG).show()
                                 tempKey = ""
@@ -684,10 +684,10 @@ fun MainContainer(viewModel: RouteViewModel, encryptedPrefs: SharedPreferences) 
                                 mainActivity.authenticateWithCrypto(encryptCipher, "Cifrar API Key") { authorizedCipher ->
                                     val (iv, encrypted) = BiometricCipherHelper.encryptText(tempKey, authorizedCipher)
                                     
-                                    encryptedPrefs.edit()
-                                        .putString("groq_api_key_v2", encrypted)
-                                        .putString("groq_api_key_iv", iv)
-                                        .apply()
+                                    encryptedPrefs.edit {
+                                        putString("groq_api_key_v2", encrypted)
+                                        putString("groq_api_key_iv", iv)
+                                    }
                                     
                                     viewModel.updateGroqApiKey(tempKey)
                                     showApiKeyDialog = false 
