@@ -36,6 +36,7 @@ object BiometricCipherHelper {
             .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
             .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
             .setUserAuthenticationRequired(true) // Requisito crítico para biometría real
+            .setUserAuthenticationValidityDurationSeconds(5) // Ventana de gracia para evitar re-autenticación inmediata
             .setInvalidatedByBiometricEnrollment(true) // Seguridad adicional si cambian huellas
             .build()
 
@@ -79,5 +80,15 @@ object BiometricCipherHelper {
     fun decryptText(cipher: Cipher, encryptedText: String): String {
         val decodedBytes = Base64.decode(encryptedText, Base64.DEFAULT)
         return String(cipher.doFinal(decodedBytes), Charsets.UTF_8)
+    }
+
+    /**
+     * Elimina la clave maestra del Keystore para forzar su recreación.
+     * Necesario cuando KeyPermanentlyInvalidatedException indica que la
+     * configuración biométrica del dispositivo cambió (nuevas huellas, PIN, etc.)
+     */
+    fun regenerateMasterKey() {
+        val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
+        keyStore.deleteEntry(KEY_NAME)
     }
 }

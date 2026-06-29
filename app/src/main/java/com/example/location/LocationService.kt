@@ -1,8 +1,10 @@
 package com.example.location
 
 import android.app.*
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.SharedPreferences
 import android.content.pm.ServiceInfo
 import android.location.Location
@@ -13,8 +15,13 @@ import android.os.Looper
 import android.os.PowerManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import com.example.MainActivity
 import com.example.data.db.AppDatabase
+import com.example.ui.ContactUseCase
+import com.example.util.AlertNotifier
+import com.example.util.AppConstants
+import com.example.util.ContactHashHelper
 import com.example.data.model.LocationPoint
 import com.example.data.model.Route
 import com.example.data.repository.RouteRepository
@@ -23,6 +30,7 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import java.util.concurrent.ConcurrentLinkedDeque
 import java.util.concurrent.TimeUnit
 
 enum class ActivityMode { STOPPED, WALKING, BIKING, DRIVING }
@@ -42,6 +50,13 @@ class LocationService : Service() {
 
     private lateinit var fusedLocationClient: FusedLocationProviderClient
     private lateinit var locationCallback: LocationCallback
+    private val screenStateReceiver: BroadcastReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (intent.action == Intent.ACTION_SCREEN_ON) {
+                lastUserActivityTimeMillis = System.currentTimeMillis()
+            }
+        }
+    }
 
     private var activeRouteId: Int = -1
     private var totalDistanceMeters: Double = 0.0
@@ -51,18 +66,52 @@ class LocationService : Service() {
     private var timerJob: Job? = null
     private var startTimeMillis: Long = 0L
     private var lastMovementTimeMillis: Long = System.currentTimeMillis()
+    private var lastGpsUpdateTimeMillis: Long = System.currentTimeMillis()
     private var routeStartTimeMillis: Long = 0L
     private var isWaitingForMovement: Boolean = false
     private var activeRouteName: String = "Ruta"
     
-    // Buffer para no perder los primeros metros (Pre-grabación)
-    private val preStartBuffer = mutableListOf<LocationPoint>()
-    private val BUFFER_MAX_TIME_MS = 30 * 60 * 1000L // 30 minutos
+    // Buffer elástico de pre-grabación (Fase 3A)
+    private val preRecordingBuffer = ConcurrentLinkedDeque<Location>()
+
+    private fun handlePreRecording(newLocation: Location) {
+        preRecordingBuffer.addLast(newLocation)
+        val newestTime = preRecordingBuffer.peekLast()?.time ?: return
+        while (!preRecordingBuffer.isEmpty() &&
+            (newestTime - preRecordingBuffer.peekFirst().time) > AppConstants.Location.PRE_RECORDING_BUFFER_DURATION_MILLIS
+        ) {
+            preRecordingBuffer.removeFirst()
+        }
+    }
+
+    private fun flushPreRecordingBuffer(): List<Location> {
+        val snapshot = mutableListOf<Location>()
+        var loc = preRecordingBuffer.pollFirst()
+        while (loc != null) {
+            snapshot.add(loc)
+            loc = preRecordingBuffer.pollFirst()
+        }
+        return snapshot
+    }
+
+    private fun Location.toBufferPoint(routeId: Int) = LocationPoint(
+        routeId = routeId,
+        latitude = latitude,
+        longitude = longitude,
+        altitude = altitude,
+        speed = speed,
+        timestamp = time
+    )
 
     // Variables para refinamiento de Modo Automático
     private var consecutiveMovements = 0
     private val REQUIRED_CONFIRMATIONS = 3 // Subimos a 3 lecturas seguidas para mayor seguridad
     private var lastAutoStartTimeMillis: Long = 0L // Para evitar reinicios infinitos rápidos
+
+    // Velocidad sostenida para auto-arranque (Módulo 3C)
+    @Volatile private var movementSustainedStartTime = 0L
+    @Volatile private var lastSpeedCheckTime = 0L
+    @Volatile private var lastRealMovementTime = System.currentTimeMillis()
 
     // Activity Mode con inercia (histeresis)
     private var currentMode = ActivityMode.STOPPED
@@ -75,18 +124,24 @@ class LocationService : Service() {
     private val PROXIMITY_THRESHOLD_METERS = 100f
     private val NOTIFICATION_COOLDOWN_MS = 10 * 60 * 1000L // 10 minutos para repetir aviso
 
+    // BLE Proximity (Módulo 3B)
+    private var alertNotifier: AlertNotifier? = null
+    private var proximityManager: ProximityManager? = null
+    private var isBleActive = false
+    private var lastBleNotificationTime: Long = 0L
+    private var contactUseCase: ContactUseCase? = null
+
     companion object {
         private const val TAG = "LocationService"
         private const val CHANNEL_ID = "location_tracking_channel"
         private const val NOTIFICATION_ID = 1205
 
-        // Filtro de ruido GPS inteligente
-        private const val MIN_DISTANCE_THRESHOLD = 10.0f // metros (Capa 1: distancia mínima para muestrear)
-        private const val ABSOLUTE_MAX_ACCURACY = 50.0f  // metros (Pre-filtro: error máximo absoluto)
-        private const val MIN_TIME_DELTA_MS = 5000L      // milisegundos (Capa 1: evita ruido de alta frecuencia)
-        private const val MIN_DISTANCE_DELTA = 15.0f     // metros (Capa 1: distancia mínima con time delta)
-        private const val MAX_VALID_SPEED_MPS = 4.5f     // m/s (~16 km/h, Capa 2: velocidad máxima creíble)
-        private const val MAX_ACCEPTABLE_ACCURACY = 30.0f // metros (Capa 2: precisión mínima aceptable)
+        // Filtro de ruido GPS inteligente (valores centralizados en AppConstants)
+        private const val MIN_DISTANCE_THRESHOLD = AppConstants.Location.MIN_DISTANCE_THRESHOLD_METERS
+        private const val MIN_TIME_DELTA_MS = AppConstants.Location.MIN_TIME_DELTA_MILLIS
+        private const val MIN_DISTANCE_DELTA = AppConstants.Location.MOVEMENT_TRIGGER_THRESHOLD_METERS
+        private const val MAX_VALID_SPEED_MPS = AppConstants.Location.MAX_SPEED_METERS_PER_SECOND
+        private const val MAX_GPS_ACCURACY = AppConstants.Location.MAX_GPS_ACCURACY_METERS
 
         // Activity Mode: tiempos de inercia
         private const val TIME_TO_UPGRADE = 10_000L   // 10s para subir de intensidad (inicio rápido)
@@ -106,6 +161,15 @@ class LocationService : Service() {
         const val EXTRA_UPDATE_INTERVAL = "EXTRA_UPDATE_INTERVAL"
         const val EXTRA_UPDATE_DISTANCE = "EXTRA_UPDATE_DISTANCE"
 
+        // Última actividad conocida del usuario (toques en pantalla, screen on)
+        @Volatile
+        var lastUserActivityTimeMillis: Long = System.currentTimeMillis()
+            private set
+
+        fun reportUserActivity() {
+            lastUserActivityTimeMillis = System.currentTimeMillis()
+        }
+
         // Estado global expuesto en tiempo real para Compose
         private val _isTracking = MutableStateFlow(false)
         val isTracking = _isTracking.asStateFlow()
@@ -115,6 +179,9 @@ class LocationService : Service() {
 
         private val _latestLocation = MutableStateFlow<Location?>(null)
         val latestLocation = _latestLocation.asStateFlow()
+
+        private val _currentAccuracy = MutableStateFlow(Float.MAX_VALUE)
+        val currentAccuracy = _currentAccuracy.asStateFlow()
 
         private val _elapsedTimeSeconds = MutableStateFlow(0L)
         val elapsedTimeSeconds = _elapsedTimeSeconds.asStateFlow()
@@ -155,7 +222,27 @@ class LocationService : Service() {
             }
         }
 
+        // Inicializar BLE Proximity (Módulo 3B)
+        alertNotifier = AlertNotifier(this)
+        contactUseCase = ContactUseCase(this)
+        ProximityManager(this) { contactName, rssi, distance ->
+            onBleContactDetected(contactName, rssi, distance)
+        }.let { pm ->
+            if (pm.init()) proximityManager = pm
+        }
+
         createNotificationChannel()
+
+        // Registrar receiver para detectar encendido de pantalla (actividad de usuario)
+        val screenFilter = IntentFilter(Intent.ACTION_SCREEN_ON).apply {
+            addAction(Intent.ACTION_SCREEN_OFF)
+        }
+        ContextCompat.registerReceiver(
+            applicationContext,
+            screenStateReceiver,
+            screenFilter,
+            ContextCompat.RECEIVER_NOT_EXPORTED
+        )
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -230,7 +317,7 @@ class LocationService : Service() {
         }
 
         // Limpiar buffer de pre-grabación si el usuario inicia manualmente
-        preStartBuffer.clear()
+        preRecordingBuffer.clear()
 
         _isTracking.value = true
         activeRouteId = routeId
@@ -302,6 +389,10 @@ class LocationService : Service() {
     private fun processNewLocation(location: Location) {
         // Actualizamos siempre la ubicación "Live" para la UI
         _latestLocation.value = location
+        _currentAccuracy.value = location.accuracy
+
+        // Marcar que el GPS sigue activo (antes de cualquier filtro)
+        lastGpsUpdateTimeMillis = System.currentTimeMillis()
 
         val isAutoModeActive = sharedPrefs.getBoolean("auto_mode", false)
         val isNearMeEnabled = sharedPrefs.getBoolean("near_me_enabled", false)
@@ -313,6 +404,11 @@ class LocationService : Service() {
             if (time > 0) dist / (time / 1000f) else 0f
         } else 0f
 
+        // Actualizar lastRealMovementTime solo cuando hay velocidad real (Módulo 3C)
+        if (lastComputedSpeedMps > AppConstants.Location.AUTO_STOP_SPEED_MPS) {
+            lastRealMovementTime = System.currentTimeMillis()
+        }
+
         // Actualizar Activity Mode con la velocidad computada
         updateActivityMode(lastComputedSpeedMps * 3.6f)
 
@@ -321,70 +417,54 @@ class LocationService : Service() {
             checkProximityToFavorites(location)
         }
 
-        // Lógica de detección de movimiento para auto-reinicio (REFINADA con Buffer)
+        // --- BLE PROXIMITY (Módulo 3B) ---
+        ensureBleProximity()
+
+        // Lógica de detección de movimiento para auto-reinicio por VELOCIDAD SOSTENIDA (Módulo 3C)
         if (isAutoModeActive && !_isTracking.value) {
             val now = System.currentTimeMillis()
-            
-            // 1. Guardar punto en el buffer temporal (Pre-grabación)
-            if (location.accuracy < 50f) {
-                val tempPoint = LocationPoint(
-                    routeId = 0, // Aún no tiene ID real
-                    latitude = location.latitude,
-                    longitude = location.longitude,
-                    altitude = location.altitude,
-                    speed = location.speed,
-                    timestamp = now
-                )
-                preStartBuffer.add(tempPoint)
-                
-                // 2. Limpiar buffer de puntos viejos (>30 min)
-                val cutoff = now - BUFFER_MAX_TIME_MS
-                preStartBuffer.removeAll { p -> p.timestamp < cutoff }
+
+            // Guardar punto en el buffer elástico de pre-grabación (Fase 3A)
+            if (location.accuracy < MAX_GPS_ACCURACY) {
+                handlePreRecording(location)
             }
 
             // Evitar reinicios demasiado frecuentes (mínimo 30 segundos entre intentos)
             if (now - lastAutoStartTimeMillis < 30000) return
 
             if (lastStopLocation == null) {
-                // Anclaje inicial: requerimos buena precisión para tener un punto de referencia sólido
                 if (location.accuracy < 20f) {
                     lastStopLocation = location
-                    consecutiveMovements = 0
-                    Log.d(TAG, "Anclaje inicial establecido para Modo Automático: Acc=${location.accuracy}")
+                    movementSustainedStartTime = 0L
+                    lastSpeedCheckTime = now
+                    Log.d(TAG, "Anclaje inicial establecido para velocidad sostenida: Acc=${location.accuracy}")
                 }
             } else {
-                val distFromStop = lastStopLocation!!.distanceTo(location)
                 val speedKmh = lastComputedSpeedMps * 3.6f
 
-                // Umbral dinámico según modo actual
-                val minSpeedForMovement = when (currentMode) {
-                    ActivityMode.STOPPED -> 1.5f
-                    ActivityMode.WALKING -> 0.5f
-                    else -> 3.0f
-                }
-                
-                // Si nos alejamos más de 30 metros Y tenemos velocidad real según modo
-                if (distFromStop > 30f && speedKmh > minSpeedForMovement && location.accuracy < 30f) {
-                    consecutiveMovements++
-                    Log.d(TAG, "Movimiento detectado ($currentMode): $distFromStop m, $speedKmh km/h. Confirmación $consecutiveMovements/$REQUIRED_CONFIRMATIONS")
-                    
-                    if (consecutiveMovements >= REQUIRED_CONFIRMATIONS) {
-                        Log.d(TAG, "Movimiento confirmado. Iniciando grabación automática con buffer de ${preStartBuffer.size} puntos.")
-                        lastStopLocation = null 
-                        consecutiveMovements = 0
-                        lastAutoStartTimeMillis = now
-                        
-                        val pointsToBackfill = preStartBuffer.toList()
-                        preStartBuffer.clear()
-                        startAutoNewRoute(pointsToBackfill)
-                        return
+                if (speedKmh > AppConstants.Location.AUTO_START_MIN_SPEED_KMH && location.accuracy < 30f) {
+                    if (movementSustainedStartTime == 0L) {
+                        movementSustainedStartTime = now
+                        lastSpeedCheckTime = now
+                        Log.d(TAG, "Inicio de ventana de velocidad sostenida: ${speedKmh} km/h")
+                    } else {
+                        val sustained = now - movementSustainedStartTime
+                        if (sustained >= AppConstants.Location.AUTO_START_SUSTAINED_MS) {
+                            val bufferedLocations = flushPreRecordingBuffer()
+                            Log.d(TAG, "Movimiento sostenido ${sustained}ms. Iniciando grabación automática con buffer de ${bufferedLocations.size} puntos.")
+                            lastStopLocation = null
+                            movementSustainedStartTime = 0L
+                            lastAutoStartTimeMillis = now
+                            val pointsToBackfill = bufferedLocations.map { it.toBufferPoint(0) }
+                            startAutoNewRoute(pointsToBackfill)
+                            return
+                        }
                     }
-                } else if (distFromStop < 15f && location.accuracy < 25f) {
-                    // Si volvemos a estar cerca del punto de parada con buena precisión, reseteamos contador
-                    if (consecutiveMovements > 0) {
-                        Log.d(TAG, "Movimiento descartado (regreso a zona de calma).")
-                        consecutiveMovements = 0
+                } else {
+                    if (movementSustainedStartTime != 0L) {
+                        Log.d(TAG, "Velocidad insuficiente (${speedKmh} km/h). Reiniciando ventana.")
                     }
+                    movementSustainedStartTime = 0L
                 }
             }
         }
@@ -394,48 +474,16 @@ class LocationService : Service() {
                 val routeId = activeRouteId
                 if (routeId == -1) return@launch
 
-                // PRE-FILTER: Error de GPS absoluto
-                if (location.accuracy > ABSOLUTE_MAX_ACCURACY) {
-                    Log.d(TAG, "Punto descartado: Precisión pésima (${location.accuracy}m)")
+                if (!isLocationValid(location)) {
+                    Log.d(TAG, "Punto descartado por filtro de validación")
                     return@launch
                 }
 
-                var distanceStep = 0f
+                val distanceStep = lastValidLocation?.distanceTo(location) ?: 0f
 
-                lastValidLocation?.let { last ->
-                    distanceStep = last.distanceTo(location)
-                    val timeDelta = location.time - last.time
-
-                    // ── CAPA 1: Sampling optimization ──
-                    if (timeDelta < MIN_TIME_DELTA_MS && distanceStep < MIN_DISTANCE_DELTA) {
-                        Log.d(TAG, "Punto descartado por Time Delta (ruido alta frecuencia): $distanceStep m en ${timeDelta}ms")
-                        return@launch
-                    }
-                    if (distanceStep < MIN_DISTANCE_THRESHOLD) {
-                        Log.d(TAG, "Punto descartado por ruido (distancia insuficiente): $distanceStep m")
-                        return@launch
-                    }
-
-                    // ── CAPA 2: Quality validation ──
-                    if (timeDelta > 0) {
-                        val speedMps = distanceStep / (timeDelta / 1000f)
-                        lastComputedSpeedMps = speedMps
-                        if (speedMps > MAX_VALID_SPEED_MPS) {
-                            Log.w(TAG, "Punto descartado: Velocidad irreal de $speedMps m/s (${speedMps * 3.6f} km/h)")
-                            return@launch
-                        }
-                    }
-                    if (location.accuracy > MAX_ACCEPTABLE_ACCURACY) {
-                        Log.d(TAG, "Punto descartado por precisión baja: ${location.accuracy}m")
-                        return@launch
-                    }
-                }
-
-                // Si el punto es válido, actualizamos la referencia y persistimos
                 lastValidLocation = location
                 lastMovementTimeMillis = System.currentTimeMillis()
 
-                // Acumular distancia total
                 if (distanceStep > 0) {
                     totalDistanceMeters += distanceStep
                     _currentDistanceMeters.value = totalDistanceMeters
@@ -446,7 +494,6 @@ class LocationService : Service() {
                     }
                 }
 
-                // Guardar punto GPS en base de datos local
                 repository.addLocationPoint(
                     routeId = routeId,
                     latitude = location.latitude,
@@ -455,12 +502,32 @@ class LocationService : Service() {
                     speed = location.speed
                 )
 
-                // Actualizar notificación con estadísticas en vivo
                 updateNotification(routeId)
             } catch (e: Exception) {
                 Log.e(TAG, "Error procesando ubicación en base de datos: ${e.message}")
             }
         }
+    }
+
+    private fun isLocationValid(location: Location): Boolean {
+        if (location.accuracy > MAX_GPS_ACCURACY) return false
+
+        val last = lastValidLocation ?: return true
+
+        val timeDelta = location.time - last.time
+        val distanceStep = last.distanceTo(location)
+
+        if (timeDelta < MIN_TIME_DELTA_MS && distanceStep < MIN_DISTANCE_DELTA) return false
+        if (distanceStep < MIN_DISTANCE_THRESHOLD) return false
+
+        if (timeDelta > 0) {
+            val speedMps = distanceStep / (timeDelta / 1000f)
+            if (speedMps > MAX_VALID_SPEED_MPS) return false
+        }
+
+        if (location.accuracy > MAX_GPS_ACCURACY) return false
+
+        return true
     }
 
     private fun updateActivityMode(speedKmh: Float) {
@@ -537,6 +604,61 @@ class LocationService : Service() {
         notificationManager.notify(favorite.id + 2000, notification)
     }
 
+    // ─── BLE Proximity (Módulo 3B) ─────────────────────────────────
+
+    private fun ensureBleProximity() {
+        val isNearMe = sharedPrefs.getBoolean("near_me_enabled", false)
+        val isBleEnabled = sharedPrefs.getBoolean("ble_enabled", false)
+        val pm = proximityManager ?: return
+
+        if (isNearMe && isBleEnabled && pm.isBluetoothEnabled()) {
+            if (!isBleActive) {
+                isBleActive = true
+                val myPhone = sharedPrefs.getString("my_phone", "").orEmpty()
+                if (myPhone.isNotBlank()) {
+                    pm.startAdvertising(ContactHashHelper.hashPhoneNumber(myPhone))
+                }
+                serviceScope.launch(Dispatchers.IO) {
+                    val contacts = contactUseCase?.getAllContactPhones().orEmpty()
+                    val contactHashes = contacts.map { (_, phone) ->
+                        ContactHashHelper.hashPhoneNumber(phone)
+                    }.toSet()
+                    pm.updateScanHashes(contactHashes)
+                    pm.startScanning()
+                }
+            }
+        } else {
+            if (isBleActive) {
+                isBleActive = false
+                pm.stop()
+            }
+        }
+    }
+
+    private fun onBleContactDetected(contactName: String, rssi: Int, distance: Double) {
+        val now = System.currentTimeMillis()
+        if (now - lastBleNotificationTime < AppConstants.Ble.NOTIFICATION_COOLDOWN_MILLIS) return
+        lastBleNotificationTime = now
+
+        alertNotifier?.triggerProximityAlert()
+
+        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel("proximity_alerts", "Alertas de Proximidad", NotificationManager.IMPORTANCE_HIGH)
+            nm.createNotificationChannel(channel)
+        }
+
+        val notification = NotificationCompat.Builder(this, "proximity_alerts")
+            .setContentTitle("👤 Contacto cercano")
+            .setContentText("$contactName está a ~${distance.toInt()}m")
+            .setSmallIcon(android.R.drawable.ic_dialog_map)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+            .build()
+
+        nm.notify(3001, notification)
+    }
+
     private fun updateNotification(routeId: Int) {
         serviceScope.launch {
             val route = repository.getRouteById(routeId) ?: return@launch
@@ -564,7 +686,8 @@ class LocationService : Service() {
                 // COMPROBACIÓN 1: Inactividad (15 minutos) - SOLO SI EL USUARIO QUIERE AUTO-MODE
                 val isAutoModeActive = sharedPrefs.getBoolean("auto_mode", false)
 
-                if (isAutoModeActive && _isTracking.value && (now - lastMovementTimeMillis) > 15 * 60 * 1000) {
+                val effectiveLastActivity = maxOf(lastRealMovementTime, lastUserActivityTimeMillis)
+                if (isAutoModeActive && _isTracking.value && (now - effectiveLastActivity) > AppConstants.Location.INACTIVITY_THRESHOLD_MILLIS) {
                     Log.d(TAG, "Inactividad detectada. Auto-guardando ruta.")
                     stopTrackingWithAutoRestart()
                 }
@@ -583,6 +706,7 @@ class LocationService : Service() {
     private fun stopTrackingWithAutoRestart() {
         lastStopLocation = _latestLocation.value
         isWaitingForMovement = true
+        lastUserActivityTimeMillis = System.currentTimeMillis()
         stopTracking()
     }
 
@@ -590,7 +714,7 @@ class LocationService : Service() {
         serviceScope.launch {
             // Guardar la actual
             if (activeRouteId != -1) {
-                repository.stopActiveRoute(activeRouteId, totalDistanceMeters)
+                repository.stopActiveRoute(activeRouteId, totalDistanceMeters, currentMode.name)
             }
             // Iniciar una nueva inmediatamente
             startAutoNewRoute()
@@ -655,7 +779,7 @@ class LocationService : Service() {
 
         serviceScope.launch {
             if (activeRouteId != -1) {
-                repository.stopActiveRoute(activeRouteId, totalDistanceMeters)
+                repository.stopActiveRoute(activeRouteId, totalDistanceMeters, currentMode.name)
             }
 
             // Reiniciar estados una vez confirmado el guardado
@@ -684,7 +808,7 @@ class LocationService : Service() {
 
         serviceScope.launch {
             if (activeRouteId != -1) {
-                repository.stopActiveRoute(activeRouteId, totalDistanceMeters)
+                repository.stopActiveRoute(activeRouteId, totalDistanceMeters, currentMode.name)
             }
             withContext(Dispatchers.Main) {
                 _isTracking.value = false
@@ -780,6 +904,13 @@ class LocationService : Service() {
         // Liberar el HandlerThread para evitar fugas de memoria
         locationHandlerThread?.quitSafely()
         locationHandlerThread = null
+
+        // Liberar BLE Proximity (Módulo 3B)
+        proximityManager?.stop()
+        alertNotifier?.release()
+
+        // Desregistrar receiver de pantalla
+        try { unregisterReceiver(screenStateReceiver) } catch (_: Exception) { }
 
         super.onDestroy()
     }

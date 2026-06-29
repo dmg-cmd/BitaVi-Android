@@ -65,7 +65,6 @@ import coil.request.ImageRequest
 import coil.transform.CircleCropTransformation
 import com.example.R
 import com.example.ui.RouteViewModel
-import com.example.ui.Screen
 import com.example.ui.components.FullScreenPhotoDialog
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.util.BoundingBox
@@ -78,6 +77,9 @@ import org.osmdroid.views.overlay.Polyline
 import org.osmdroid.views.overlay.infowindow.InfoWindow
 import java.io.File
 import java.io.FileOutputStream
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 data class PhotoItem(
     val id: Int,
@@ -93,6 +95,7 @@ data class PhotoItem(
 fun ExperienceMapScreen(
     viewModel: RouteViewModel,
     routeId: Int,
+    onBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     android.util.Log.d("EXPERIENCE_MAP", "Screen composed, routeId=$routeId")
@@ -190,7 +193,7 @@ fun ExperienceMapScreen(
             TopAppBar(
                 title = { Text(text = route?.name ?: "Experience Map", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
-                    IconButton(onClick = { viewModel.navigateTo(Screen.History) }) {
+                    IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, null)
                     }
                 },
@@ -198,7 +201,17 @@ fun ExperienceMapScreen(
                     IconButton(onClick = { shareScreenshot() }) {
                         Icon(Icons.Default.Share, contentDescription = "Compartir pantalla")
                     }
-                    IconButton(onClick = { saveZipLauncher.launch("${route?.name ?: "ruta_$routeId"}.zip") }) {
+                    IconButton(onClick = { 
+                val ts = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+                val currentRoute = route
+                val exportName = if (currentRoute != null) {
+                    val sanitizedRouteName = currentRoute.name.trim().replace(Regex("[\\s/\\\\?%*:|\"<>]"), "_")
+                    "ROUTE_${currentRoute.id}_${sanitizedRouteName}_$ts"
+                } else {
+                    "ROUTE_${routeId}_ruta_$ts"
+                }
+                saveZipLauncher.launch("$exportName.zip")
+            }) {
                         Icon(Icons.Default.Save, contentDescription = "Guardar como ZIP")
                     }
                 }

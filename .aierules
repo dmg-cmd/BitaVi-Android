@@ -7,10 +7,17 @@
 ## Protocolo de Documentación (MANDATORIO)
 Al finalizar cada tarea o antes de cerrar la sesión, el agente DEBE:
 1. **Respaldar archivos clave**: Antes de cambios profundos, copiar la versión actual en `RESPALDO_ANTERIOR/` con prefijo de fecha (ej: `20240614_LocationService.kt`).
-2. **Actualizar `HISTORIAL_CAMBIOS.md`**: Registrar los cambios técnicos realizados.
-3. **Actualizar `DOCUMENTACION.md`**: Reflejar cambios en la funcionalidad para el usuario.
-4. **Actualizar `SUGERENCIAS.md`**: Marcar tareas completadas.
-5. **Actualizar `SUGERENCIAS_COMPLETADAS.md`**: Mover las tareas finalizadas aquí.
+2. **Actualizar `Documentacion/HISTORIAL_CAMBIOS.md`**: Registrar los cambios técnicos realizados.
+3. **Actualizar `Documentacion/DOCUMENTACION.md`**: Reflejar cambios en la funcionalidad para el usuario.
+4. **Actualizar `Documentacion/SUGERENCIAS.md`**: Marcar tareas completadas.
+5. **Actualizar `Documentacion/SUGERENCIAS_COMPLETADAS.md`**: Mover las tareas finalizadas aquí.
+
+
+## Protocolo de Autorización
+- **Órden "implementa"**: Una vez autorizado el plan, la palabra "implementa" faculta a ejecutar **todo** sin pedir aprobación intermedia: respaldos, edición de código, actualización de documentación y deploy. No se requiere confirmación para añadir contenido a archivos de documentación existentes.
+
+- La autorización de un plan faculta a **modificar y crear** los archivos especificados en dicho plan.
+- **No está permitido borrar/eliminar archivos del proyecto** sin un permiso explícito y específico del usuario para esa eliminación en concreto.
 
 ## Contexto de Desarrollo
 - Proyecto: Android (Kotlin + Compose + Room).
@@ -18,7 +25,12 @@ Al finalizar cada tarea o antes de cerrar la sesión, el agente DEBE:
 - Arquitectura: MVVM.
 - IA: Groq (Llama 3.3) para análisis de rutas.
 
+
+## Permiso para Shell Commands
+- **Ejecucion sin restriccion**: El agente tiene permiso continuo y permanente para ejecutar cualquier comando shell (bash, gradlew, adb, git, etc.) sin necesidad de solicitar aprobacion explicita, siempre y cuando el comando este directamente relacionado con la tarea en curso. Esto incluye compilar, instalar (installDebug), ejecutar tests y operaciones de red.
 ## Pauta de Estilo
 - Ser conciso pero técnicamente preciso.
 - Siempre desplegar la app en el dispositivo (`deploy`) tras cambios significativos.
 - No borrar historial previo en los archivos de texto; siempre añadir al final o principio según el formato.
+
+

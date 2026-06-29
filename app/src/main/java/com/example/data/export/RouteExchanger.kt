@@ -9,6 +9,11 @@ import com.example.data.model.RouteFavoriteCrossRef
 import com.example.data.model.SavedLocation
 import com.example.data.model.Waypoint
 import com.example.data.repository.RouteRepository
+import com.example.util.AppConstants
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -32,6 +37,7 @@ class RouteExchanger(
     private val imagesDir: File
         get() = File(context.filesDir, "images").also { it.mkdirs() }
 
+    @Deprecated("Usa exportRouteAsZip() en su lugar", ReplaceWith("exportRouteAsZip(routeId, outputStream)"))
     suspend fun exportarRutaCompleta(routeId: Int, outputStream: OutputStream) = withContext(Dispatchers.IO) {
         val route = repository.getRouteById(routeId) ?: return@withContext
         val points = repository.getLocationPointsSync(routeId)
@@ -65,6 +71,32 @@ class RouteExchanger(
                     }
                 }
                 zos.closeEntry()
+            }
+        }
+    }
+
+    suspend fun exportRouteAsZip(routeId: Int, outputStream: OutputStream): Result<Unit> = runCatching {
+        val route = repository.getRouteById(routeId) ?: throw Exception("Ruta no encontrada")
+        val points = repository.getLocationPointsSync(routeId)
+        val waypoints = repository.getWaypointsSync(routeId)
+        val favorites = repository.getFavoritesForRoute(routeId)
+
+        ZipOutputStream(outputStream).use { zipOut ->
+            zipOut.putNextEntry(ZipEntry("track.gpx"))
+            zipOut.write(buildGpxString(route.name, points).toByteArray(Charsets.UTF_8))
+            zipOut.closeEntry()
+
+            zipOut.putNextEntry(ZipEntry("telemetry.csv"))
+            zipOut.write(buildCsvString(route, points).toByteArray(Charsets.UTF_8))
+            zipOut.closeEntry()
+
+            val photoFiles = collectPhotoFilenames(waypoints, favorites)
+            for ((filename, sourcePath) in photoFiles) {
+                val file = resolvePhotoFile(sourcePath) ?: continue
+                if (!file.exists()) continue
+                zipOut.putNextEntry(ZipEntry("media/$filename"))
+                file.inputStream().use { it.copyTo(zipOut) }
+                zipOut.closeEntry()
             }
         }
     }
@@ -108,6 +140,49 @@ class RouteExchanger(
         } finally {
             tempDir.deleteRecursively()
         }
+    }
+
+    // ─── Construcción de GPX y CSV para el Súper ZIP Social ───
+
+    private fun buildGpxString(name: String, points: List<LocationPoint>): String {
+        val dateFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).apply {
+            timeZone = TimeZone.getTimeZone("UTC")
+        }
+        val sb = StringBuilder()
+        sb.appendLine("<?xml version=\"1.0\" encoding=\"UTF-8\"?>")
+        sb.appendLine("<gpx version=\"1.1\" creator=\"LocalizadorPro\" xmlns=\"http://www.topografix.com/GPX/1/1\">")
+        sb.appendLine("<trk><name>${name.escapeXml()}</name><trkseg>")
+        points.forEach { p ->
+            sb.appendLine("<trkpt lat=\"${p.latitude}\" lon=\"${p.longitude}\">")
+            sb.appendLine("<ele>${p.altitude}</ele>")
+            sb.appendLine("<speed>${p.speed}</speed>")
+            sb.appendLine("<time>${dateFormat.format(Date(p.timestamp))}</time>")
+            sb.appendLine("</trkpt>")
+        }
+        sb.appendLine("</trkseg></trk>")
+        sb.appendLine("</gpx>")
+        return sb.toString()
+    }
+
+    private fun buildCsvString(route: Route, points: List<LocationPoint>): String {
+        val sb = StringBuilder()
+        sb.appendLine("# Route: ${route.name}")
+        sb.appendLine("# Activity Mode: ${route.activityMode}")
+        sb.appendLine("# Total Points: ${points.size}")
+        sb.appendLine("timestamp_ms,latitude,longitude,altitude_m,speed_ms,speed_kmh,activity_mode")
+        points.forEach { p ->
+            val speedKmh = String.format(Locale.US, "%.2f", p.speed * 3.6f)
+            sb.appendLine("${p.timestamp},${p.latitude},${p.longitude},${p.altitude},${p.speed},$speedKmh,${route.activityMode}")
+        }
+        return sb.toString()
+    }
+
+    private fun String.escapeXml(): String {
+        return this.replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace("\"", "&quot;")
+            .replace("'", "&apos;")
     }
 
     // ─── Construcción de JSON ───

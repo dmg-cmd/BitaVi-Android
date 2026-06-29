@@ -30,16 +30,17 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.ui.components.FullScreenPhotoDialog
 import com.example.ui.components.TourOverlay
+import com.example.ui.dialogs.DeleteConfirmationDialog
 import kotlinx.coroutines.launch
 import com.example.data.model.SavedLocation
 import com.example.ui.RouteViewModel
-import com.example.ui.Screen
 import org.osmdroid.util.GeoPoint
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SavedLocationsScreen(
     viewModel: RouteViewModel,
+    onNavigateToMap: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val locations by viewModel.allSavedLocations.collectAsState()
@@ -60,6 +61,8 @@ fun SavedLocationsScreen(
     var photoGpsLocation by remember { mutableStateOf<Pair<Double, Double>?>(null) }
     var usePhotoGps by remember { mutableStateOf(false) }
     var photoToZoom by remember { mutableStateOf<String?>(null) }
+    var showDeleteConfirmation by remember { mutableStateOf(false) }
+    var favoriteToDelete by remember { mutableStateOf<SavedLocation?>(null) }
     var showTourFotos by remember { mutableStateOf(!viewModel.esTourVisto("fotos")) }
 
     val cameraLauncher = rememberLauncherForActivityResult(
@@ -185,12 +188,15 @@ fun SavedLocationsScreen(
                             items(locs) { location ->
                                 LocationCard(
                                     location = location,
-                                    onDelete = { viewModel.deleteSavedLocation(location) },
+                                    onDelete = {
+                                        favoriteToDelete = location
+                                        showDeleteConfirmation = true
+                                    },
                                     onEdit = { locationToEdit = location },
                                     onShowOnMap = {
-                                        // LOG TÉCNICO para verificar que enviamos las coordenadas correctas
                                         android.util.Log.d("Navegacion", "Yendo a: ${location.name} en ${location.latitude}, ${location.longitude}")
                                         viewModel.setMapTarget(location.latitude, location.longitude)
+                                        onNavigateToMap()
                                     },
                                     onShare = { viewModel.shareLocation(location) }
                                 )
@@ -552,6 +558,22 @@ fun SavedLocationsScreen(
             },
             dismissButton = {
                 TextButton(onClick = { locationToEdit = null }) { Text("Cancelar") }
+            }
+        )
+    }
+
+    if (showDeleteConfirmation && favoriteToDelete != null) {
+        DeleteConfirmationDialog(
+            title = "¿Eliminar de favoritos?",
+            message = "Esta acción eliminará el elemento seleccionado de tus favoritos de forma permanente. ¿Deseas continuar?",
+            onConfirm = {
+                favoriteToDelete?.let { viewModel.deleteSavedLocation(it) }
+                showDeleteConfirmation = false
+                favoriteToDelete = null
+            },
+            onDismiss = {
+                showDeleteConfirmation = false
+                favoriteToDelete = null
             }
         )
     }

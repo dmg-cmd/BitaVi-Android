@@ -15,5 +15,6 @@ data class Route(
     val distanceMeters: Double = 0.0,
     val isActive: Boolean = false,
     val maxSpeed: Float = 0f,
-    val avgSpeed: Float = 0f
+    val avgSpeed: Float = 0f,
+    val activityMode: String = "WALKING"
 )

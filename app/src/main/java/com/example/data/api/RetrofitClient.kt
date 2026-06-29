@@ -10,7 +10,8 @@ import java.util.concurrent.TimeUnit
  * Evita la duplicación de sockets e hilos de red.
  */
 object RetrofitClient {
-    private const val BASE_URL = "https://api.groq.com/"
+    private const val GROQ_BASE_URL = "https://api.groq.com/"
+    private const val GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/"
 
     private val okHttpClient: OkHttpClient by lazy {
         OkHttpClient.Builder()
@@ -20,15 +21,27 @@ object RetrofitClient {
             .build()
     }
 
-    private val retrofit: Retrofit by lazy {
+    private val groqRetrofit: Retrofit by lazy {
         Retrofit.Builder()
-            .baseUrl(BASE_URL)
+            .baseUrl(GROQ_BASE_URL)
+            .client(okHttpClient)
+            .addConverterFactory(MoshiConverterFactory.create())
+            .build()
+    }
+
+    private val geminiRetrofit: Retrofit by lazy {
+        Retrofit.Builder()
+            .baseUrl(GEMINI_BASE_URL)
             .client(okHttpClient)
             .addConverterFactory(MoshiConverterFactory.create())
             .build()
     }
 
     val groqApi: GroqApi by lazy {
-        retrofit.create(GroqApi::class.java)
+        groqRetrofit.create(GroqApi::class.java)
+    }
+
+    val geminiApi: GeminiApi by lazy {
+        geminiRetrofit.create(GeminiApi::class.java)
     }
 }

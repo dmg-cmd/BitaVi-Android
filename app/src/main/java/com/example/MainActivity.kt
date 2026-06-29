@@ -97,26 +97,41 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.edit
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.withStateAtLeast
 import androidx.preference.PreferenceManager
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import com.example.data.db.AppDatabase
 import com.example.data.repository.RouteRepository
+import androidx.navigation.NavType
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import com.example.ui.RouteViewModel
 import com.example.ui.RouteViewModelFactory
-import com.example.ui.Screen
+import com.example.ui.navigation.NavRoutes
 import com.example.ui.screens.DetailScreen
 import com.example.ui.screens.ExperienceMapScreen
 import com.example.ui.screens.HistoryScreen
 import com.example.ui.screens.MapScreen
 import com.example.ui.screens.SavedLocationsScreen
+import com.example.ui.dialogs.ApiKeyDialog
+import com.example.ui.dialogs.DeleteAllConfirmDialog
+import com.example.ui.dialogs.HelpDialog
+import com.example.ui.dialogs.LocationDialog
 import com.example.ui.theme.MyApplicationTheme
+import com.example.util.AppConstants
 import com.example.util.BiometricCipherHelper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.osmdroid.config.Configuration
 import java.util.UUID
+import android.security.keystore.KeyPermanentlyInvalidatedException
 import javax.crypto.Cipher
 
 /**
@@ -164,7 +179,7 @@ class MainActivity : FragmentActivity() {
 
     // --- GENERACIÓN DE CLAVE PARA CIFRADO (Hallazgo A01) ---
     private fun getOrCreateDbPassphrase(): ByteArray {
-        val key = "room_sqlcipher_key"
+        val key = AppConstants.Preferences.DB_PASSPHRASE_KEY
         var pass = encryptedPrefs.getString(key, null)
         if (pass == null) {
             pass = UUID.randomUUID().toString()
@@ -203,16 +218,41 @@ class MainActivity : FragmentActivity() {
         biometricPrompt.authenticate(promptInfo, BiometricPrompt.CryptoObject(cipher))
     }
 
+    fun authenticateSimple(
+        title: String = "Autenticación Requerida",
+        subtitle: String = "Confirme su identidad",
+        onSuccess: () -> Unit
+    ) {
+        val executor = ContextCompat.getMainExecutor(this)
+        val biometricPrompt = BiometricPrompt(this, executor,
+            object : BiometricPrompt.AuthenticationCallback() {
+                override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                    super.onAuthenticationSucceeded(result)
+                    onSuccess()
+                }
+                override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                    super.onAuthenticationError(errorCode, errString)
+                    Toast.makeText(this@MainActivity, "Error: $errString", Toast.LENGTH_SHORT).show()
+                }
+            })
+        val promptInfo = BiometricPrompt.PromptInfo.Builder()
+            .setTitle(title)
+            .setSubtitle(subtitle)
+            .setNegativeButtonText("Cancelar")
+            .build()
+        biometricPrompt.authenticate(promptInfo)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         // Configuración necesaria para osmdroid ANTES de super.onCreate
         val sharedPrefs = PreferenceManager.getDefaultSharedPreferences(this)
         
         // --- INICIALIZACIÓN ROBUSTA DE ENCRYPTED SHARED PREFERENCES ---
         // 1. Cambiamos el nombre del archivo para forzar un contenedor limpio en disco
-        val fileName = "secure_api_credentials_v2" 
+        val fileName = AppConstants.Preferences.ENCRYPTED_PREFS_FILE 
         encryptedPrefs = try {
             // Usamos un alias personalizado único para evadir el alias corrupto del hardware
-            val masterKey = MasterKey.Builder(this, "localizador_pro_master_key_alias")
+            val masterKey = MasterKey.Builder(this, AppConstants.Preferences.MASTER_KEY_ALIAS)
                 .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
                 .build()
 
@@ -228,14 +268,14 @@ class MainActivity : FragmentActivity() {
             deleteSharedPreferences(fileName)
             try {
                 val keyStore = java.security.KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
-                keyStore.deleteEntry("localizador_pro_master_key_alias")
+                keyStore.deleteEntry(AppConstants.Preferences.MASTER_KEY_ALIAS)
                 keyStore.deleteEntry("_androidx_security_master_key_") // Limpieza del alias por defecto
             } catch (keystoreEx: Exception) {
                 keystoreEx.printStackTrace()
             }
             
             // Reintento final limpio
-            val masterKey = MasterKey.Builder(this, "localizador_pro_master_key_alias")
+            val masterKey = MasterKey.Builder(this, AppConstants.Preferences.MASTER_KEY_ALIAS)
                 .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
                 .build()
 
@@ -299,20 +339,38 @@ class MainActivity : FragmentActivity() {
             checkAndRequestBackgroundLocation()
         }
 
-        // --- CARGA SEGURA DE API KEY (HARDWARE BACKED) ---
-        val encryptedKey = encryptedPrefs.getString("groq_api_key_v2", null)
-        val iv = encryptedPrefs.getString("groq_api_key_iv", null)
+        // --- CARGA SEGURA DE API KEY (HARDWARE BACKED) con blindaje de ciclo de vida ---
+        lifecycleScope.launch {
+            lifecycle.withStateAtLeast(Lifecycle.State.RESUMED) {
+                val encryptedKey = encryptedPrefs.getString(AppConstants.Preferences.GROQ_API_KEY_KEY, null)
+                val iv = encryptedPrefs.getString(AppConstants.Preferences.GROQ_API_KEY_IV_KEY, null)
 
-        if (encryptedKey != null && iv != null) {
-            try {
-                val decryptCipher = BiometricCipherHelper.getDecryptCipher(Base64.decode(iv, Base64.DEFAULT))
-                authenticateWithCrypto(decryptCipher, "Inicio Seguro") { authorizedCipher ->
-                    val decryptedKey = BiometricCipherHelper.decryptText(authorizedCipher, encryptedKey)
-                    viewModel.updateGroqApiKey(decryptedKey)
-                    Toast.makeText(this, "IA Desbloqueada", Toast.LENGTH_SHORT).show()
+                if (encryptedKey != null && iv != null) {
+                    try {
+                        val rawIv = Base64.decode(iv, Base64.DEFAULT)
+                        val decryptCipher = try {
+                            BiometricCipherHelper.getDecryptCipher(rawIv)
+                        } catch (_: KeyPermanentlyInvalidatedException) {
+                            Toast.makeText(this@MainActivity, "Seguridad: llave del hardware renovada. Reingrese su API Key.", Toast.LENGTH_LONG).show()
+                            return@withStateAtLeast
+                        }
+                        authenticateWithCrypto(decryptCipher, "Inicio Seguro") { authorizedCipher ->
+                            val decryptedKey = BiometricCipherHelper.decryptText(authorizedCipher, encryptedKey!!)
+                            viewModel.updateGroqApiKey(decryptedKey)
+                            Toast.makeText(this@MainActivity, "IA y Aplicación Desbloqueadas", Toast.LENGTH_SHORT).show()
+                        }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                        Toast.makeText(this@MainActivity, "Error de seguridad: ${e.message}", Toast.LENGTH_LONG).show()
+                    }
+                } else if (viewModel.isBiometricEnabled) {
+                    authenticateSimple(
+                        title = "Acceso Seguro",
+                        subtitle = "Coloque su huella para abrir Localizador Pro"
+                    ) {
+                        // Éxito: la app sigue su curso normal
+                    }
                 }
-            } catch (_: Exception) {
-                Toast.makeText(this, "Error de seguridad Keystore: Reconfigure su clave", Toast.LENGTH_LONG).show()
             }
         }
 
@@ -331,8 +389,11 @@ class MainActivity : FragmentActivity() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainContainer(viewModel: RouteViewModel, encryptedPrefs: SharedPreferences) {
-    val currentScreen = viewModel.currentScreen
     val context = androidx.compose.ui.platform.LocalContext.current
+    val navController = rememberNavController()
+    val navBackStackEntry by navController.currentBackStackEntryAsState()
+    val currentRoute = navBackStackEntry?.destination?.route
+    val isBottomBarVisible = currentRoute in NavRoutes.bottomBarRoutes
     
     // Obtener versión de la app de forma segura
     val appVersion = try {
@@ -365,35 +426,6 @@ fun MainContainer(viewModel: RouteViewModel, encryptedPrefs: SharedPreferences) 
     var tempLon by remember { mutableStateOf(viewModel.defaultLongitude.toString()) }
 
     val mainActivity = context as MainActivity
-
-    // Función para lanzar Biometría simple (UI gating)
-    fun authenticate(onSuccess: () -> Unit) {
-        if (!viewModel.isBiometricEnabled) {
-            onSuccess()
-            return
-        }
-        
-        val executor = ContextCompat.getMainExecutor(context)
-        val biometricPrompt = BiometricPrompt(context as androidx.fragment.app.FragmentActivity, executor,
-            object : BiometricPrompt.AuthenticationCallback() {
-                override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-                    super.onAuthenticationSucceeded(result)
-                    onSuccess()
-                }
-                override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
-                    super.onAuthenticationError(errorCode, errString)
-                    Toast.makeText(context, "Error de autenticación: $errString", Toast.LENGTH_SHORT).show()
-                }
-            })
-
-        val promptInfo = BiometricPrompt.PromptInfo.Builder()
-            .setTitle("Autenticación Requerida")
-            .setSubtitle("Confirme su identidad para acceder a ajustes protegidos")
-            .setNegativeButtonText("Cancelar")
-            .build()
-
-        biometricPrompt.authenticate(promptInfo)
-    }
 
     // Selector para GUARDAR el respaldo (ZIP) en la carpeta elegida (Google Drive, etc)
     val saveBackupLauncher = rememberLauncherForActivityResult(
@@ -442,7 +474,7 @@ fun MainContainer(viewModel: RouteViewModel, encryptedPrefs: SharedPreferences) 
 
     ModalNavigationDrawer(
         drawerState = drawerState,
-        gesturesEnabled = currentScreen !is Screen.Detail && currentScreen !is Screen.ExperienceMap,
+        gesturesEnabled = isBottomBarVisible,
         drawerContent = {
             ModalDrawerSheet {
                 Spacer(Modifier.height(12.dp))
@@ -457,8 +489,8 @@ fun MainContainer(viewModel: RouteViewModel, encryptedPrefs: SharedPreferences) 
                         scope.launch { drawerState.close() }
                         
                         // Obtenemos los datos cifrados guardados
-                        val encryptedKey = encryptedPrefs.getString("groq_api_key_v2", null)
-                        val iv = encryptedPrefs.getString("groq_api_key_iv", null)
+                        val encryptedKey = encryptedPrefs.getString(AppConstants.Preferences.GROQ_API_KEY_KEY, null)
+                        val iv = encryptedPrefs.getString(AppConstants.Preferences.GROQ_API_KEY_IV_KEY, null)
 
                         if (encryptedKey != null && iv != null) {
                             try {
@@ -557,7 +589,7 @@ fun MainContainer(viewModel: RouteViewModel, encryptedPrefs: SharedPreferences) 
                             Text("Protección Biométrica")
                             Switch(checked = viewModel.isBiometricEnabled, onCheckedChange = { 
                                 val newState = it
-                                authenticate {
+                                mainActivity.authenticateSimple { 
                                     viewModel.toggleBiometric(newState) 
                                 }
                             })
@@ -567,7 +599,7 @@ fun MainContainer(viewModel: RouteViewModel, encryptedPrefs: SharedPreferences) 
                     icon = { Icon(Icons.Default.Fingerprint, null) },
                     onClick = { 
                         val newState = !viewModel.isBiometricEnabled
-                        authenticate {
+                        mainActivity.authenticateSimple {
                             viewModel.toggleBiometric(newState)
                         }
                     }
@@ -611,7 +643,7 @@ fun MainContainer(viewModel: RouteViewModel, encryptedPrefs: SharedPreferences) 
                     icon = { Icon(Icons.Default.DeleteSweep, null) },
                     onClick = { 
                         scope.launch { drawerState.close() }
-                        authenticate {
+                        mainActivity.authenticateSimple(subtitle = "Acción irreversible") {
                             showDeleteAllConfirm = true
                         }
                     }
@@ -626,170 +658,101 @@ fun MainContainer(viewModel: RouteViewModel, encryptedPrefs: SharedPreferences) 
         // --- DIÁLOGOS DE AJUSTES ---
         
         if (showApiKeyDialog) {
-            AlertDialog(
-                onDismissRequest = { 
-                    showApiKeyDialog = false 
-                    isKeyUnlocked = false
-                    keyVisible = false
-                },
-                title = { Text("Configuración de IA (Groq)") },
-                text = {
-                    Column {
-                        Text("La clave está protegida. Pulse el candado para desbloquear y editar.", style = MaterialTheme.typography.bodySmall)
-                        Spacer(Modifier.height(8.dp))
-                        OutlinedTextField(
-                            value = tempKey,
-                            onValueChange = { if (isKeyUnlocked) tempKey = it },
-                            label = { Text("Groq API Key") },
-                            modifier = Modifier.fillMaxWidth(),
-                            singleLine = true,
-                            enabled = isKeyUnlocked,
-                            visualTransformation = if (keyVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                            trailingIcon = {
-                                IconButton(onClick = { 
-                                    if (isKeyUnlocked) {
-                                        keyVisible = !keyVisible 
-                                    } else {
-                                        authenticate {
-                                            isKeyUnlocked = true
-                                        }
-                                    }
-                                }) {
-                                    Icon(
-                                        imageVector = if (!isKeyUnlocked) Icons.Default.Lock 
-                                                     else if (keyVisible) Icons.Default.VisibilityOff 
-                                                     else Icons.Default.Visibility, 
-                                        contentDescription = null
-                                    )
-                                }
+            ApiKeyDialog(
+                apiKey = tempKey,
+                isKeyUnlocked = isKeyUnlocked,
+                keyVisible = keyVisible,
+                onApiKeyChange = { tempKey = it },
+                onUnlockClick = {
+                    val encryptedKey = encryptedPrefs.getString(AppConstants.Preferences.GROQ_API_KEY_KEY, null)
+                    val iv = encryptedPrefs.getString(AppConstants.Preferences.GROQ_API_KEY_IV_KEY, null)
+                    if (encryptedKey != null && iv != null) {
+                        try {
+                            val decryptCipher = BiometricCipherHelper.getDecryptCipher(Base64.decode(iv, Base64.DEFAULT))
+                            mainActivity.authenticateWithCrypto(decryptCipher, "Desbloquear API Key") { authorizedCipher ->
+                                tempKey = BiometricCipherHelper.decryptText(authorizedCipher, encryptedKey)
+                                isKeyUnlocked = true
                             }
-                        )
-                        if (!isKeyUnlocked) {
-                            Text(
-                                "🔒 Desbloquee con Biometría para ver o editar",
-                                color = MaterialTheme.colorScheme.error,
-                                style = MaterialTheme.typography.labelSmall,
-                                modifier = Modifier.padding(top = 4.dp)
-                            )
+                        } catch (_: Exception) {
+                            Toast.makeText(context, "Error de hardware seguro. Reintroduzca la clave.", Toast.LENGTH_LONG).show()
+                            tempKey = ""
+                            isKeyUnlocked = true
                         }
+                    } else {
+                        tempKey = ""
+                        isKeyUnlocked = true
                     }
                 },
-                confirmButton = {
-                    Button(
-                        enabled = isKeyUnlocked,
-                        onClick = { 
-                            try {
-                                // A14: Ciframos la nueva clave pasando por CryptoObject para máxima seguridad hardware
-                                val encryptCipher = BiometricCipherHelper.getEncryptCipher()
-                                mainActivity.authenticateWithCrypto(encryptCipher, "Cifrar API Key") { authorizedCipher ->
-                                    val (iv, encrypted) = BiometricCipherHelper.encryptText(tempKey, authorizedCipher)
-                                    
-                                    encryptedPrefs.edit {
-                                        putString("groq_api_key_v2", encrypted)
-                                        putString("groq_api_key_iv", iv)
-                                    }
-                                    
-                                    viewModel.updateGroqApiKey(tempKey)
-                                    showApiKeyDialog = false 
-                                    isKeyUnlocked = false
-                                }
-                            } catch (e: Exception) {
-                                Toast.makeText(context, "Error al cifrar: ${e.message}", Toast.LENGTH_SHORT).show()
-                            }
+                onToggleVisibility = { keyVisible = !keyVisible },
+                onSaveClick = {
+                    try {
+                        val encryptCipher = try {
+                            BiometricCipherHelper.getEncryptCipher()
+                        } catch (_: KeyPermanentlyInvalidatedException) {
+                            BiometricCipherHelper.regenerateMasterKey()
+                            BiometricCipherHelper.getEncryptCipher()
                         }
-                    ) { Text("Guardar") }
+                        mainActivity.authenticateWithCrypto(encryptCipher, "Cifrar API Key") { authorizedCipher ->
+                            val (iv, encrypted) = BiometricCipherHelper.encryptText(tempKey, authorizedCipher)
+                            encryptedPrefs.edit {
+                                putString(AppConstants.Preferences.GROQ_API_KEY_KEY, encrypted)
+                                putString(AppConstants.Preferences.GROQ_API_KEY_IV_KEY, iv)
+                            }
+                            viewModel.updateGroqApiKey(tempKey)
+                            showApiKeyDialog = false
+                            isKeyUnlocked = false
+                            Toast.makeText(context, "API Key guardada con éxito", Toast.LENGTH_SHORT).show()
+                        }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                        Toast.makeText(context, "Error fatal del Keystore: ${e.message}", Toast.LENGTH_LONG).show()
+                    }
                 },
-                dismissButton = { 
-                    TextButton(onClick = { 
-                        showApiKeyDialog = false 
-                        isKeyUnlocked = false
-                    }) { Text("Cerrar") } 
+                onDismiss = {
+                    showApiKeyDialog = false
+                    isKeyUnlocked = false
+                    keyVisible = false
                 }
             )
         }
 
         if (showDeleteAllConfirm) {
-            AlertDialog(
-                onDismissRequest = { showDeleteAllConfirm = false },
-                icon = { Icon(Icons.Default.Warning, null, tint = Color.Red) },
-                title = { Text("¿Eliminar absolutamente todo?") },
-                text = { Text("Esta acción borrará todas las rutas y favoritos del teléfono. Asegúrese de haber hecho un respaldo antes.") },
-                confirmButton = {
-                    Button(
-                        colors = ButtonDefaults.buttonColors(containerColor = Color.Red),
-                        onClick = { 
-                            viewModel.clearAllAppData()
-                            showDeleteAllConfirm = false 
-                        }
-                    ) { Text("Eliminar definitivamente") }
-                },
-                dismissButton = {
-                    TextButton(onClick = { showDeleteAllConfirm = false }) { Text("Cancelar") }
-                }
+            DeleteAllConfirmDialog(
+                onConfirm = { viewModel.clearAllAppData() },
+                onDismiss = { showDeleteAllConfirm = false }
             )
         }
 
         if (showLocationDialog) {
-            AlertDialog(
-                onDismissRequest = { showLocationDialog = false },
-                title = { Text("Ubicación de Inicio") },
-                text = {
-                    Column {
-                        Text("Coordenadas para centrar el mapa al abrir la app:", style = MaterialTheme.typography.bodySmall)
-                        Spacer(Modifier.height(12.dp))
-                        OutlinedTextField(value = tempLat, onValueChange = { tempLat = it }, label = { Text("Latitud") }, modifier = Modifier.fillMaxWidth())
-                        Spacer(Modifier.height(8.dp))
-                        OutlinedTextField(value = tempLon, onValueChange = { tempLon = it }, label = { Text("Longitud") }, modifier = Modifier.fillMaxWidth())
-                        TextButton(onClick = {
-                            viewModel.latestLocationLive.value?.let {
-                                tempLat = it.latitude.toString()
-                                tempLon = it.longitude.toString()
-                            }
-                        }) { Text("Usar ubicación actual") }
+            LocationDialog(
+                lat = tempLat,
+                lon = tempLon,
+                onLatChange = { tempLat = it },
+                onLonChange = { tempLon = it },
+                onUseCurrentLocation = {
+                    viewModel.latestLocationLive.value?.let {
+                        tempLat = it.latitude.toString()
+                        tempLon = it.longitude.toString()
                     }
                 },
-                confirmButton = {
-                    Button(onClick = { 
-                        val lat = tempLat.toDoubleOrNull() ?: -34.6037
-                        val lon = tempLon.toDoubleOrNull() ?: -58.3816
-                        viewModel.updateDefaultLocationPersistently(lat, lon)
-                        showLocationDialog = false 
-                    }) { Text("Guardar") }
+                onSave = {
+                    val lat = tempLat.toDoubleOrNull() ?: -34.6037
+                    val lon = tempLon.toDoubleOrNull() ?: -58.3816
+                    viewModel.updateDefaultLocationPersistently(lat, lon)
+                    showLocationDialog = false
                 },
-                dismissButton = { TextButton(onClick = { showLocationDialog = false }) { Text("Cerrar") } }
+                onDismiss = { showLocationDialog = false }
             )
         }
 
         if (showHelpDialog) {
-            AlertDialog(
-                onDismissRequest = { showHelpDialog = false },
-                title = { Text("Guía de Iconos y Funciones") },
-                text = {
-                    Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
-                        Text("Barra Superior", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black, modifier = Modifier.padding(bottom = 8.dp))
-                        HelpSection(Icons.Default.Menu, "Menú lateral", "Acceso a todos los ajustes y herramientas de la app.")
-                        HelpSection(Icons.Default.VpnKey, "IA Groq (Llama 3)", "Analiza tus rutas automáticamente. Obtén tu clave en: https://console.groq.com/")
-                        HelpSection(Icons.Default.Home, "Ubicación de Inicio", "Define dónde se centra el mapa al abrir la app.")
-                        HelpSection(Icons.Default.AirplanemodeActive, "Modo Avión", "Permite grabar en vuelos comerciales (hasta 1200 km/h).")
-                        HelpSection(Icons.Default.FlashOn, "Modo Automático", "Graba solo si detecta movimiento (>25m) y para tras 15 min quieto.")
-                        HelpSection(Icons.Default.CloudOff, "Mapas Offline", "Usa solo mapas en memoria para no gastar datos.")
-                        HelpSection(Icons.Default.CloudUpload, "Respaldo en Drive", "Crea un ZIP con todo y guárdalo en tu nube. Tip: Puedes sobrescribir el archivo anterior para no llenar el Drive.")
-                        
-                        HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
-                        Text("Pantalla de Detalle", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black, modifier = Modifier.padding(bottom = 8.dp))
-                        HelpSection(Icons.Default.Share, "Exportar GPX", "Guarda el trayecto para usarlo en otras apps de mapas.")
-                        HelpSection(Icons.Default.TableChart, "Exportar Excel", "Baja un archivo CSV con todos los datos técnicos.")
-                        HelpSection(Icons.Default.Edit, "Editar", "Cambia el nombre de un recorrido ya guardado.")
-                    }
-                },
-                confirmButton = { Button(onClick = { showHelpDialog = false }) { Text("Entendido") } }
-            )
+            HelpDialog(onDismiss = { showHelpDialog = false })
         }
 
         Scaffold(
             modifier = Modifier.fillMaxSize(),
             topBar = {
-                if (currentScreen !is Screen.Detail && currentScreen !is Screen.ExperienceMap) {
+                if (isBottomBarVisible) {
                     Column {
                         TopAppBar(
                             title = {
@@ -855,7 +818,7 @@ fun MainContainer(viewModel: RouteViewModel, encryptedPrefs: SharedPreferences) 
             },
         bottomBar = {
             // Ocultamos la barra de navegación si el usuario se encuentra visualizando el detalle de un mapa estático
-            if (currentScreen !is Screen.Detail && currentScreen !is Screen.ExperienceMap) {
+            if (isBottomBarVisible) {
                 Column {
                     val isTrackingActive by viewModel.isTrackingLive.collectAsState()
                     if (isTrackingActive) {
@@ -900,11 +863,17 @@ fun MainContainer(viewModel: RouteViewModel, encryptedPrefs: SharedPreferences) 
                     NavigationBar {
                         // Item 1: Mapa / Localizador en tiempo real
                         NavigationBarItem(
-                            selected = currentScreen is Screen.Tracking,
-                            onClick = { viewModel.navigateTo(Screen.Tracking) },
+                            selected = currentRoute == NavRoutes.TRACKING,
+                            onClick = {
+                                navController.navigate(NavRoutes.TRACKING) {
+                                    popUpTo(navController.graph.startDestinationId) { saveState = true }
+                                    launchSingleTop = true
+                                    restoreState = true
+                                }
+                            },
                             icon = {
                                 Icon(
-                                    imageVector = if (currentScreen is Screen.Tracking) Icons.Filled.Map else Icons.Outlined.Map,
+                                    imageVector = if (currentRoute == NavRoutes.TRACKING) Icons.Filled.Map else Icons.Outlined.Map,
                                     contentDescription = "Localizador en Vivo"
                                 )
                             },
@@ -913,11 +882,17 @@ fun MainContainer(viewModel: RouteViewModel, encryptedPrefs: SharedPreferences) 
 
                         // Item 2: Lugares Guardados (Favoritos)
                         NavigationBarItem(
-                            selected = currentScreen is Screen.SavedLocations,
-                            onClick = { viewModel.navigateTo(Screen.SavedLocations) },
+                            selected = currentRoute == NavRoutes.SAVED_LOCATIONS,
+                            onClick = {
+                                navController.navigate(NavRoutes.SAVED_LOCATIONS) {
+                                    popUpTo(navController.graph.startDestinationId) { saveState = true }
+                                    launchSingleTop = true
+                                    restoreState = true
+                                }
+                            },
                             icon = {
                                 Icon(
-                                    imageVector = if (currentScreen is Screen.SavedLocations) Icons.Filled.Place else Icons.Default.Place,
+                                    imageVector = if (currentRoute == NavRoutes.SAVED_LOCATIONS) Icons.Filled.Place else Icons.Default.Place,
                                     contentDescription = "Lugares Guardados"
                                 )
                             },
@@ -926,11 +901,17 @@ fun MainContainer(viewModel: RouteViewModel, encryptedPrefs: SharedPreferences) 
 
                         // Item 3: Historial de rutas
                         NavigationBarItem(
-                            selected = currentScreen is Screen.History,
-                            onClick = { viewModel.navigateTo(Screen.History) },
+                            selected = currentRoute == NavRoutes.HISTORY,
+                            onClick = {
+                                navController.navigate(NavRoutes.HISTORY) {
+                                    popUpTo(navController.graph.startDestinationId) { saveState = true }
+                                    launchSingleTop = true
+                                    restoreState = true
+                                }
+                            },
                             icon = {
                                 Icon(
-                                    imageVector = if (currentScreen is Screen.History) Icons.Filled.History else Icons.Outlined.History,
+                                    imageVector = if (currentRoute == NavRoutes.HISTORY) Icons.Filled.History else Icons.Outlined.History,
                                     contentDescription = "Historial de Rutas"
                                 )
                             },
@@ -941,65 +922,67 @@ fun MainContainer(viewModel: RouteViewModel, encryptedPrefs: SharedPreferences) 
             }
         }
     ) { innerPadding ->
-        // Carga dinámicamente el composable correspondiente inyectando insets correctos de Scaffold
-        val contentModifier = Modifier.padding(innerPadding)
-
-        when (val screen = currentScreen) {
-            is Screen.Tracking -> {
-                MapScreen(
-                    viewModel = viewModel,
-                    modifier = contentModifier
-                )
+        NavHost(
+            navController = navController,
+            startDestination = NavRoutes.TRACKING,
+            modifier = Modifier.padding(innerPadding)
+        ) {
+            composable(NavRoutes.TRACKING) {
+                MapScreen(viewModel = viewModel)
             }
-            is Screen.History -> {
+            composable(NavRoutes.HISTORY) {
                 HistoryScreen(
                     viewModel = viewModel,
-                    modifier = contentModifier
+                    onRouteClick = { routeId ->
+                        navController.navigate(NavRoutes.detail(routeId))
+                    },
+                    onNavigateToTracking = {
+                        navController.navigate(NavRoutes.TRACKING) {
+                            popUpTo(navController.graph.startDestinationId) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    },
+                    onImportRequested = { }
                 )
             }
-            is Screen.SavedLocations -> {
+            composable(NavRoutes.SAVED_LOCATIONS) {
                 SavedLocationsScreen(
                     viewModel = viewModel,
-                    modifier = contentModifier
+                    onNavigateToMap = {
+                        navController.navigate(NavRoutes.TRACKING) {
+                            popUpTo(navController.graph.startDestinationId) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    }
                 )
             }
-            is Screen.Detail -> {
-                // Detalle no tiene padding del Scaffold botomBar para optimizar el mapa al 100%
+            composable(
+                route = NavRoutes.DETAIL,
+                arguments = listOf(navArgument("routeId") { type = NavType.IntType })
+            ) { backStackEntry ->
+                val routeId = backStackEntry.arguments?.getInt("routeId") ?: return@composable
                 DetailScreen(
                     viewModel = viewModel,
-                    routeId = screen.routeId,
-                    modifier = Modifier
+                    routeId = routeId,
+                    onBack = { navController.popBackStack() },
+                    onExperienceMap = { id -> navController.navigate(NavRoutes.experienceMap(id)) }
                 )
             }
-            is Screen.ExperienceMap -> {
+            composable(
+                route = NavRoutes.EXPERIENCE_MAP,
+                arguments = listOf(navArgument("routeId") { type = NavType.IntType })
+            ) { backStackEntry ->
+                val routeId = backStackEntry.arguments?.getInt("routeId") ?: return@composable
                 ExperienceMapScreen(
                     viewModel = viewModel,
-                    routeId = screen.routeId,
-                    modifier = Modifier
+                    routeId = routeId,
+                    onBack = { navController.popBackStack() }
                 )
             }
-            }
-    }
-    }
-}
-
-/**
- * Componible auxiliar para la sección de ayuda con iconos.
- */
-@Composable
-fun HelpSection(icon: ImageVector, title: String, description: String) {
-    Row(modifier = Modifier.padding(vertical = 10.dp), verticalAlignment = Alignment.Top) {
-        Icon(
-            imageVector = icon, 
-            contentDescription = null, 
-            tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(24.dp).padding(top = 2.dp)
-        )
-        Spacer(Modifier.width(12.dp))
-        Column {
-            Text(text = title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-            Text(text = description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
+    }
     }
 }
 

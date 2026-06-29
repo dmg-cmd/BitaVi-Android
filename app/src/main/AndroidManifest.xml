@@ -19,6 +19,14 @@
     <uses-permission android:name="android.permission.WRITE_CONTACTS" />
     <!-- Permiso necesario para mantener el CPU activo durante el tracking -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <!-- BLE Proximity Permissions -->
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
+    <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <application
@@ -36,7 +44,7 @@
             android:name=".location.LocationService"
             android:enabled="true"
             android:exported="false"
-            android:foregroundServiceType="location" />
+            android:foregroundServiceType="location|connectedDevice" />
 
         <activity
             android:name=".MainActivity"

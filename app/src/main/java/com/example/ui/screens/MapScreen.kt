@@ -35,6 +35,7 @@ import androidx.core.graphics.drawable.toBitmap
 import coil.compose.AsyncImage
 import kotlinx.coroutines.launch
 import com.example.location.ActivityMode
+import com.example.location.LocationService
 import com.example.ui.components.FullScreenPhotoDialog
 import com.example.ui.components.TourOverlay
 import com.example.ui.RouteViewModel
@@ -234,7 +235,10 @@ fun MapScreen(viewModel: RouteViewModel, modifier: Modifier = Modifier) {
     }
 
     Box(modifier = modifier.fillMaxSize().pointerInput(Unit) {
-        detectTapGestures(onPress = { lastInteractionTime = System.currentTimeMillis() })
+        detectTapGestures(onPress = {
+            lastInteractionTime = System.currentTimeMillis()
+            LocationService.reportUserActivity()
+        })
     }) {
         AndroidView(
             modifier = Modifier.fillMaxSize(),

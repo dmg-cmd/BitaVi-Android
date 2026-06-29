@@ -3,16 +3,14 @@ package com.example.ui.screens
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.*
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material3.*
@@ -21,14 +19,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.example.data.model.Route
 import com.example.ui.RouteViewModel
-import com.example.ui.Screen
 import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.TimeUnit
@@ -36,16 +31,18 @@ import java.util.concurrent.TimeUnit
 /**
  * Pantalla Historial con soporte para selección múltiple y exportación GPX.
  */
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun HistoryScreen(
     viewModel: RouteViewModel,
+    onRouteClick: (Int) -> Unit,
+    onNavigateToTracking: () -> Unit,
+    onImportRequested: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    val context = LocalContext.current
     val routes by viewModel.allRoutes.collectAsState()
     var routeToDelete by remember { mutableStateOf<Route?>(null) }
     var showBulkDeleteConfirm by remember { mutableStateOf(false) }
+    var showImportDialog by remember { mutableStateOf(false) }
     
     // Estado para selección múltiple
     var selectedRouteIds by remember { mutableStateOf(setOf<Int>()) }
@@ -120,7 +117,7 @@ fun HistoryScreen(
                 )
                 Spacer(modifier = Modifier.height(24.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = { viewModel.navigateTo(Screen.Tracking) }) {
+                    Button(onClick = onNavigateToTracking) {
                         Icon(Icons.Default.Add, contentDescription = null)
                         Spacer(modifier = Modifier.width(8.dp))
                         Text("Grabar")
@@ -171,13 +168,6 @@ fun HistoryScreen(
                                     Icon(Icons.Default.Close, contentDescription = "Cancelar")
                                 }
                             }
-                        } else {
-                            IconButton(onClick = { gpxPickerLauncher.launch(arrayOf("*/*")) }) {
-                                Icon(Icons.Default.FileUpload, contentDescription = "Importar GPX", tint = MaterialTheme.colorScheme.primary)
-                            }
-                            IconButton(onClick = { zipPickerLauncher.launch(arrayOf("application/zip", "application/x-zip-compressed")) }) {
-                                Icon(Icons.Default.Unarchive, contentDescription = "Importar ZIP", tint = Color(0xFFFF6F00))
-                            }
                         }
                     }
                 }
@@ -198,6 +188,7 @@ fun HistoryScreen(
                                     selectedRouteIds = if (isSelected) selectedRouteIds - route.id else selectedRouteIds + route.id
                                 } else {
                                     viewModel.selectRouteForDetail(route.id)
+                                    onRouteClick(route.id)
                                 }
                             },
                             onLongClick = {
@@ -212,6 +203,18 @@ fun HistoryScreen(
                 }
             }
         }
+
+        // ✨ FAB de importación omnipresente
+        ExtendedFloatingActionButton(
+            onClick = { showImportDialog = true },
+            icon = { Icon(Icons.Default.UploadFile, contentDescription = null) },
+            text = { Text("Importar") },
+            containerColor = MaterialTheme.colorScheme.primaryContainer,
+            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(16.dp)
+        )
     }
 
     // Modal de Confirmación de Borrado
@@ -257,18 +260,51 @@ fun HistoryScreen(
             }
         )
     }
+
+    // ✨ Diálogo de selección de formato de importación
+    if (showImportDialog) {
+        AlertDialog(
+            onDismissRequest = { showImportDialog = false },
+            title = { Text("Importar Recorrido") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Selecciona el formato del archivo que deseas integrar al historial:")
+                }
+            },
+            confirmButton = {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(onClick = {
+                        showImportDialog = false
+                        gpxPickerLauncher.launch(arrayOf("*/*"))
+                    }) {
+                        Text("Archivo GPX")
+                    }
+                    TextButton(onClick = {
+                        showImportDialog = false
+                        zipPickerLauncher.launch(arrayOf("application/zip"))
+                    }) {
+                        Text("Paquete ZIP")
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showImportDialog = false }) {
+                    Text("Cancelar")
+                }
+            }
+        )
+    }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun RouteCard(
     route: Route,
     isSelected: Boolean = false,
     isSelectionMode: Boolean = false,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
-    onDelete: () -> Unit,
-    modifier: Modifier = Modifier
+    onDelete: () -> Unit
 ) {
     val durationMillis = if (route.endTime > route.startTime) route.endTime - route.startTime else 0L
     val formattedDuration = formatDuration(durationMillis)
@@ -312,14 +348,14 @@ fun RouteCard(
             }
             Spacer(modifier = Modifier.height(14.dp))
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                StatItem(icon = Icons.Default.TrendingUp, value = String.format("%.2f km", km), label = "Distancia", tint = MaterialTheme.colorScheme.primary)
+                StatItem(icon = Icons.AutoMirrored.Filled.TrendingUp, value = String.format(Locale.ROOT, "%.2f km", km), label = "Distancia", tint = MaterialTheme.colorScheme.primary)
                 StatItem(icon = Icons.Default.Schedule, value = formattedDuration, label = "Duración", tint = MaterialTheme.colorScheme.secondary)
             }
             if (route.maxSpeed > 0) {
                 Spacer(modifier = Modifier.height(8.dp))
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    StatItem(icon = Icons.Default.Speed, value = String.format("%.1f km/h", route.avgSpeed * 3.6f), label = "Promedio", tint = Color(0xFF4CAF50))
-                    StatItem(icon = Icons.Default.Bolt, value = String.format("%.1f km/h", route.maxSpeed * 3.6f), label = "Máxima", tint = Color(0xFFFF9800))
+                    StatItem(icon = Icons.Default.Speed, value = String.format(Locale.ROOT, "%.1f km/h", route.avgSpeed * 3.6f), label = "Promedio", tint = Color(0xFF4CAF50))
+                    StatItem(icon = Icons.Default.Bolt, value = String.format(Locale.ROOT, "%.1f km/h", route.maxSpeed * 3.6f), label = "Máxima", tint = Color(0xFFFF9800))
                 }
             }
         }
@@ -340,7 +376,7 @@ fun StatItem(icon: ImageVector, value: String, label: String, tint: Color, modif
 
 private fun formatDuration(millis: Long): String {
     val h = TimeUnit.MILLISECONDS.toHours(millis); val m = TimeUnit.MILLISECONDS.toMinutes(millis) % 60; val s = TimeUnit.MILLISECONDS.toSeconds(millis) % 60
-    return String.format("%02d:%02d:%02d", h, m, s)
+    return String.format(Locale.ROOT, "%02d:%02d:%02d", h, m, s)
 }
 
 private fun formatDate(timestamp: Long): String {

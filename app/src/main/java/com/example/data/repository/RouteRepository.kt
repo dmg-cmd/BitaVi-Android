@@ -72,7 +72,7 @@ class RouteRepository(private val routeDao: RouteDao) {
     /**
      * Finaliza una ruta activa de forma controlada actualizando estadísticas finales.
      */
-    suspend fun stopActiveRoute(routeId: Int, distanceMeters: Double) {
+    suspend fun stopActiveRoute(routeId: Int, distanceMeters: Double, activityMode: String = "WALKING") {
         val route = routeDao.getRouteById(routeId)
         val points = routeDao.getLocationPointsForRoute(routeId)
         
@@ -86,7 +86,8 @@ class RouteRepository(private val routeDao: RouteDao) {
                     endTime = System.currentTimeMillis(),
                     distanceMeters = distanceMeters,
                     maxSpeed = maxSpeed,
-                    avgSpeed = avgSpeed
+                    avgSpeed = avgSpeed,
+                    activityMode = activityMode
                 )
             )
         }
