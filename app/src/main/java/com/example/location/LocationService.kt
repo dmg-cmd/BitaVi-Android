@@ -513,7 +513,7 @@ class LocationService : Service() {
                         }
                     }
                 }
-            } catch (e: Exception) { }
+            } catch (_: Exception) { }
         }
     }
 
@@ -679,7 +679,7 @@ class LocationService : Service() {
         timerJob?.cancel()
         
         if (wakeLock?.isHeld == true) {
-            try { wakeLock?.release() } catch (e: Exception) { }
+            try { wakeLock?.release() } catch (_: Exception) { }
         }
 
         serviceScope.launch {
@@ -774,7 +774,7 @@ class LocationService : Service() {
 
         // Liberar WakeLock si aún está activo
         if (wakeLock?.isHeld == true) {
-            try { wakeLock?.release() } catch (e: Exception) { }
+            try { wakeLock?.release() } catch (_: Exception) { }
         }
 
         // Liberar el HandlerThread para evitar fugas de memoria

@@ -105,7 +105,7 @@ fun DetailScreen(
                             } else {
                                 viewModel.shareCompleteRoute(routeId, null)
                             }
-                        } catch (e: Exception) {
+                        } catch (_: Exception) {
                             viewModel.shareCompleteRoute(routeId, null)
                         }
                     }) {

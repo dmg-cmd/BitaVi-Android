@@ -2,9 +2,6 @@ package com.example.ui.screens
 
 import android.content.Intent
 import android.net.Uri
-import android.content.ClipData
-import android.content.ClipboardManager
-import android.content.Context
 import android.widget.Toast
 import android.content.pm.PackageManager
 import androidx.core.content.ContextCompat
@@ -707,7 +704,7 @@ fun LocationCard(
                             val intent = Intent(Intent.ACTION_VIEW, Uri.parse(uri))
                             try {
                                 context.startActivity(intent)
-                            } catch (e: Exception) {
+                            } catch (_: Exception) {
                                 val browserUri = "https://www.google.com/maps/search/?api=1&query=${location.latitude},${location.longitude}"
                                 context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(browserUri)))
                             }
