@@ -60,3 +60,19 @@
 - **CSV enriquecido**: Header metadata (# Route, # Activity Mode, # Total Points) + columnas speed_kmh (redondeado a 2 decimales) y ctivity_mode por fila.
 - **Deprecación segura**: xportarRutaCompleta() marcado como @Deprecated, sin llamadas activas.
 - **Unificación total**: saveZipToUri() y xportZip() ahora usan xportRouteAsZip(). Ambos caminos de guardado producen el mismo formato estructurado.
+**[03/07/2026 - Compilación Barra Inferior Unificada]**
+- [x] Eliminar Scaffolds anidados de DetailScreen.kt y ExperienceMapScreen.kt
+- [x] Mover saveZipLauncher de ExperienceMapScreen a MainActivity.kt
+- [x] Reparar imports de MainActivity.kt (Localeimport, RouteOptionsMenu)
+- [x] Resolver conflicto formatDuration entre DetailScreen y HistoryScreen
+- [x] Compilación exitosa y APK instalado
+
+**[03/07/2026 - Corrección Ergonómica Bottom Bar]**
+- [x] .height(48.dp) → .defaultMinSize(minHeight = 72.dp)
+- [x] Agregar .navigationBarsPadding() para colchón de gestos
+- [x] Agregar padding(horizontal = 16.dp, vertical = 8.dp) contra curvas del panel
+- [x] Agregar horizontalArrangement = Arrangement.SpaceBetween
+
+## 03/07/2026 — RouteAnalyticsScreen con telemetría temporal
+- **RouteAnalyticsScreen**: Nueva pantalla dedicada con Elevation y Speed charts sincronizados (mm:ss), RangeSlider, LimitLines y panel de análisis de tramo.
+- **DetailScreen simplificado**: Grid 2×2 de métricas + botón "Ver Gráficos de Rendimiento" que navega a la nueva pantalla.

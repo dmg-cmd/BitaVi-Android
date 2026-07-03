@@ -305,7 +305,7 @@ class LocationService : Service() {
         }
 
         // Solicitar actualizaciones de baja frecuencia para la UI cuando no se está grabando
-        requestLocationUpdates(10000L, 5f)
+        requestLocationUpdates(5000L, 2f)
     }
 
     private fun startTracking(routeName: String, routeId: Int, interval: Long, distance: Float) {
@@ -371,6 +371,7 @@ class LocationService : Service() {
         ).apply {
             setMinUpdateIntervalMillis(interval / 2) // Intervalo más rápido permisible
             setMinUpdateDistanceMeters(distance)    // Desplazamiento mínimo indispensable para registrar
+            setMaxUpdateDelayMillis(0)                   // Anula el batching de Doze mode
         }.build()
 
         try {
@@ -696,6 +697,13 @@ class LocationService : Service() {
                 if (_isTracking.value && (now - routeStartTimeMillis) > 24 * 60 * 60 * 1000) {
                     Log.d(TAG, "Límite de 24hs alcanzado. Rotando segmento de ruta.")
                     rotateDailyRoute()
+                }
+
+                // COMPROBACIÓN 3: Watchdog GPS silencioso (Doze batching)
+                if (!_isTracking.value && (now - lastGpsUpdateTimeMillis) > 120_000L) {
+                    Log.d(TAG, "GPS silencioso por " + ((now - lastGpsUpdateTimeMillis) / 1000L) + "s. Reiniciando canal de ubicación.")
+                    fusedLocationClient.removeLocationUpdates(locationCallback)
+                    requestLocationUpdates(5000L, 2f)
                 }
 
                 delay(5000L) // Revisar cada 5 segundos

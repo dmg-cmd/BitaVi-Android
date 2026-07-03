@@ -32,6 +32,7 @@ import coil.compose.AsyncImage
 import com.example.ui.components.FullScreenPhotoDialog
 import com.example.ui.components.TourOverlay
 import com.example.ui.AiAnalysisState
+import com.example.ui.DetailAction
 import com.example.ui.RouteViewModel
 import com.github.mikephil.charting.charts.LineChart
 import com.github.mikephil.charting.data.Entry
@@ -39,13 +40,6 @@ import com.github.mikephil.charting.data.LineData
 import com.github.mikephil.charting.data.LineDataSet
 import com.github.mikephil.charting.components.XAxis
 import android.graphics.Color as AndroidColor
-import org.osmdroid.tileprovider.tilesource.TileSourceFactory
-import org.osmdroid.util.BoundingBox
-import org.osmdroid.util.GeoPoint
-import org.osmdroid.views.MapView
-import org.osmdroid.views.CustomZoomButtonsController
-import org.osmdroid.views.overlay.Marker
-import org.osmdroid.views.overlay.Polyline
 import java.util.concurrent.TimeUnit
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -55,6 +49,7 @@ fun DetailScreen(
     routeId: Int,
     onBack: () -> Unit,
     onExperienceMap: (Int) -> Unit,
+    onAnalytics: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -72,142 +67,44 @@ fun DetailScreen(
     var photoToZoom by remember { mutableStateOf<String?>(null) }
     var showTourFotos by remember { mutableStateOf(!viewModel.esTourVisto("fotos")) }
 
-    val mapView = remember { MapView(context) }
-
-    DisposableEffect(mapView) {
-        mapView.onResume()
-        onDispose {
-            mapView.onPause()
-            mapView.onDetach()
-        }
-    }
-
-    LaunchedEffect(points) {
-        if (points.isNotEmpty()) {
-            val geoPoints = points.map { GeoPoint(it.latitude, it.longitude) }
-            val boundingBox = BoundingBox.fromGeoPoints(geoPoints)
-            mapView.post { mapView.zoomToBoundingBox(boundingBox, true, 120) }
-        }
-    }
-
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(route?.name ?: "Detalle", fontWeight = FontWeight.Bold) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, null)
-                    }
-                },
-                actions = {
-                    IconButton(onClick = { onExperienceMap(routeId) }) {
-                        Icon(
-                            Icons.Default.Explore,
-                            "Mapa de experiencia",
-                            tint = Color(0xFF7C4DFF)
-                        )
-                    }
-                    IconButton(onClick = { showSheet = true }) {
-                        Icon(Icons.Default.BookmarkBorder, "Favoritos")
-                    }
-                    IconButton(onClick = { 
-                        editedName = route?.name ?: ""
-                        showEditDialog = true 
-                    }) {
-                        Icon(Icons.Default.Edit, "Editar nombre")
-                    }
-                    RouteOptionsMenu(
-                        onShare = { viewModel.exportRoute(routeId) },
-                        onExportGpx = { viewModel.exportRoutesAsGPX(setOf(routeId)) },
-                        onExportCsv = { viewModel.exportRoutesAsCSV(routeId) },
-                        onExportZip = { viewModel.exportarRutaZip(routeId) },
-                        onDelete = { showDeleteDialog = true },
-                        onHelp = { showHelpDialog = true }
-                    )
-                }
-            )
-        }
-    ) { innerPadding ->
-        Column(modifier = Modifier.padding(innerPadding).verticalScroll(rememberScrollState())) {
-            // MAPA
-            Box(modifier = Modifier.fillMaxWidth().height(350.dp)) {
-                if (points.isEmpty()) {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator()
-                    }
-                } else {
-                    AndroidView(
-                        modifier = Modifier.fillMaxSize(),
-                        factory = {
-                            mapView.apply {
-                                setTileSource(TileSourceFactory.MAPNIK)
-                                setMultiTouchControls(true)
-                                zoomController.setVisibility(CustomZoomButtonsController.Visibility.NEVER)
-                            }
-                        },
-                        update = { view ->
-                            view.overlays.clear()
-                            val poly = Polyline().apply {
-                                val sortedPoints = points.sortedBy { it.timestamp }
-                                setPoints(sortedPoints.map { GeoPoint(it.latitude, it.longitude) })
-                                outlinePaint.color = android.graphics.Color.RED
-                                outlinePaint.strokeWidth = 5f
-                            }
-                            view.overlays.add(poly)
-                            
-                            // Marcadores de Waypoints
-                            waypoints.forEach { wp ->
-                                val marker = Marker(view).apply {
-                                    position = GeoPoint(wp.latitude, wp.longitude)
-                                    title = wp.name
-                                    snippet = wp.description
-                                }
-                                view.overlays.add(marker)
-                            }
-                            
-                            view.invalidate()
-                        }
-                    )
-                }
-            }
-
-            // ESTADISTICAS
-            Card(modifier = Modifier.padding(16.dp), shape = RoundedCornerShape(16.dp)) {
-                Row(modifier = Modifier.padding(16.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceAround) {
+    Column(modifier = Modifier.verticalScroll(rememberScrollState()).fillMaxSize()) {
+            // ESTADISTICAS CONSOLIDADAS
+            Card(
+                modifier = Modifier.padding(16.dp).fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
                     val km = (route?.distanceMeters ?: 0.0) / 1000.0
-                    val duration = if ((route?.endTime ?: 0) > (route?.startTime ?: 0)) route!!.endTime - route!!.startTime else 0L
-                    DetailStatItem(Icons.Default.TrendingUp, "Distancia", String.format("%.2f km", km), MaterialTheme.colorScheme.primary)
-                    DetailStatItem(Icons.Default.Schedule, "Duración", formatDuration(duration), MaterialTheme.colorScheme.secondary)
-                    val activityIcon = when (route?.activityMode) {
-                        "WALKING" -> Icons.AutoMirrored.Filled.DirectionsWalk
-                        "BIKING" -> Icons.AutoMirrored.Filled.DirectionsBike
-                        "DRIVING" -> Icons.Default.DirectionsCar
-                        else -> Icons.Default.Place
+                    val totalMs = if ((route?.endTime ?: 0) > (route?.startTime ?: 0)) route!!.endTime - route!!.startTime else 0L
+                    val movingMs = if (points.size > 1) {
+                        var acc = 0L
+                        for (i in 1 until points.size) {
+                            val prev = points[i - 1]
+                            val cur = points[i]
+                            if (cur.speed > 0.14f) acc += cur.timestamp - prev.timestamp
+                        }
+                        if (acc > 0L) acc else totalMs
+                    } else totalMs
+                    val avgSpeedKmh = if (movingMs > 0) (route?.distanceMeters ?: 0.0) / movingMs * 3600.0 else 0.0
+                    val paceMinPerKm = if (avgSpeedKmh > 0) 60.0 / avgSpeedKmh else 0.0
+
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                        DetailStatItem(Icons.Default.TrendingUp, "Distancia", String.format("%.2f km", km), MaterialTheme.colorScheme.primary)
+                        DetailStatItem(Icons.Default.Schedule, "Tiempo", formatMovingTime(movingMs), MaterialTheme.colorScheme.secondary)
                     }
-                    val activityLabel = route?.activityMode?.let {
-                        when (it) { "WALKING" -> "Caminata"; "BIKING" -> "Ciclismo"; "DRIVING" -> "Automóvil"; else -> "Detenido" }
-                    } ?: "—"
-                    DetailStatItem(activityIcon, "Actividad", activityLabel, MaterialTheme.colorScheme.tertiary)
+                    Spacer(Modifier.height(12.dp))
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                        DetailStatItem(Icons.Default.Speed, "Vel. Prom", String.format("%.1f km/h", avgSpeedKmh), MaterialTheme.colorScheme.tertiary)
+                        val paceStr = if (paceMinPerKm > 0) {
+                            val pMin = paceMinPerKm.toInt()
+                            val pSec = ((paceMinPerKm - pMin) * 60).toInt()
+                            String.format("%d:%02d min/km", pMin, pSec)
+                        } else "—"
+                        DetailStatItem(Icons.Default.Timer, "Ritmo", paceStr, MaterialTheme.colorScheme.error)
+                    }
                 }
             }
-
-            // GRÁFICOS PROFESIONALES
-            if (points.size > 2) {
-                Text("Perfil de Altura (m)", modifier = Modifier.padding(start = 16.dp, top = 16.dp), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                ProfessionalChart(
-                    data = points.map { it.altitude.toFloat() }, 
-                    color = AndroidColor.parseColor("#4CAF50"), 
-                    modifier = Modifier.fillMaxWidth().height(180.dp).padding(16.dp)
-                )
-                
-                Text("Velocidad (km/h)", modifier = Modifier.padding(start = 16.dp, top = 16.dp), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                ProfessionalChart(
-                    data = points.map { it.speed * 3.6f }, 
-                    color = AndroidColor.parseColor("#2196F3"), 
-                    modifier = Modifier.fillMaxWidth().height(180.dp).padding(16.dp)
-                )
-            }
-
             // PUNTOS DE INTERÉS Y FOTOS
             if (waypoints.isNotEmpty()) {
                 Text("Puntos de Interés", modifier = Modifier.padding(16.dp), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
@@ -364,8 +261,36 @@ fun DetailScreen(
                 }
             }
 
+            // BOTON: IR A GRAFICOS DE RENDIMIENTO
+            Button(
+                onClick = { onAnalytics(routeId) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+                    .height(52.dp),
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                Icon(Icons.Default.ShowChart, null, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Ver Gráficos de Rendimiento", fontWeight = FontWeight.SemiBold)
+            }
+
             Spacer(Modifier.height(80.dp))
         }
+
+    // ─── Puente: escucha acciones desde la bottom bar ────────────────
+    LaunchedEffect(viewModel.detailAction) {
+        when (val action = viewModel.detailAction) {
+            is DetailAction.ShowSheet -> showSheet = true
+            is DetailAction.ShowEditDialog -> {
+                editedName = action.currentName
+                showEditDialog = true
+            }
+            is DetailAction.ShowDeleteDialog -> showDeleteDialog = true
+            is DetailAction.ShowHelpDialog -> showHelpDialog = true
+            null -> {}
+        }
+        viewModel.detailAction = null
     }
 
     if (showSheet) {
@@ -569,6 +494,15 @@ fun DetailStatItem(icon: ImageVector, title: String, value: String, tint: Color)
     }
 }
 
+
+private fun formatMovingTime(ms: Long): String {
+    val h = TimeUnit.MILLISECONDS.toHours(ms)
+    val m = TimeUnit.MILLISECONDS.toMinutes(ms) % 60
+    val s = TimeUnit.MILLISECONDS.toSeconds(ms) % 60
+    return if (h > 0) String.format("%d:%02d:%02d h", h, m, s)
+    else String.format("%02d:%02d min", m, s)
+}
+
 private fun formatDuration(ms: Long): String {
     val h = TimeUnit.MILLISECONDS.toHours(ms)
     val m = TimeUnit.MILLISECONDS.toMinutes(ms) % 60
@@ -642,7 +576,7 @@ fun RouteOptionsMenu(
 }
 
 @Composable
-private fun HelpItem(icon: ImageVector, title: String, description: String) {
+fun HelpItem(icon: ImageVector, title: String, description: String) {
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 4.dp)) {
         Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
         Spacer(Modifier.width(16.dp))

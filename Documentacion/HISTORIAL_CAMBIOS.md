@@ -125,3 +125,61 @@
 - **exportarRutaCompleta()**: Marcado como @Deprecated("Usa exportRouteAsZip()"). Sin llamadas activas restantes.
 - **RouteExportUseCase.kt**: saveZipToUri() y xportZip() migrados a xportRouteAsZip().getOrThrow().
 - **Impacto**: Cero cambios en lógica de negocio. Solo renombres de entries ZIP, mejora del CSV y deprecación segura. Backups en RESPALDO_ANTERIOR/20260703_RouteExchanger.kt y 20260703_RouteExportUseCase.kt.
+**[03/07/2026 - Compilación Barra Inferior Unificada]**
+- **DetailScreen.kt**: Se eliminó Scaffold+TopAppBar (topBar con navegación, acciones y RouteOptionsMenu) y se reemplazó por Column directa. Se eliminó innerPadding de Scaffold. Se agregó private a un formatDuration(ms: Long) para resolver conflicto con HistoryScreen.
+- **ExperienceMapScreen.kt**: Se eliminó Scaffold+TopAppBar con shareScreenshot() y saveZipLauncher. El contenido ahora está envuelto en Box(fillMaxSize) directo. Se eliminó el cierre extra del trailing lambda del Scaffold.
+- **MainActivity.kt**: Se reparó import mangled Localeimport → separado en import java.util.Locale e import androidx.compose.material.icons.filled.Warning.
+- **Compilación**: BUILD SUCCESSFUL + APK instalado en dispositivo.
+
+**[03/07/2026 - Corrección Ergonómica Bottom Bar (Pixel 9)]**
+- **MainActivity.kt**: Se reemplazó .height(48.dp) fijo por .defaultMinSize(minHeight = 72.dp) + .navigationBarsPadding() + .padding(horizontal = 16.dp, vertical = 8.dp) en el Row principal de la bottom bar. Se agregó horizontalArrangement = Arrangement.SpaceBetween.
+- **Imports**: Se agregaron defaultMinSize y 
+avigationBarsPadding del paquete oundation.layout.
+- **Resultado**: Barra flota sobre la zona de gestos de Android 16; botones ☰ y ? se alejan de las curvas físicas del panel.
+
+**[03/07/2026 - Panel de Fotos Translúcido con Animación]**
+- **ExperienceMapScreen.kt**: Fondo del panel lateral cambiado de Color(0xEE1A1A2E) (93% opaco azul noche) a Color(0x80000000) (50% negro translúcido). El mapa ahora se ve por detrás del panel.
+- **Animación**: Envuelto en AnimatedVisibility con adeIn + slideInHorizontally / adeOut + slideOutHorizontally para transición suave al aparecer/desaparecer la galería.
+- **Imports**: Agregados AnimatedVisibility, adeIn, adeOut, slideInHorizontally, slideOutHorizontally.
+
+**[03/07/2026 - Anti-Doze: GPS reactivo en segundo plano]**
+- **LocationService.kt**: Agregado setMaxUpdateDelayMillis(0) al LocationRequest.Builder para anular el batching de Doze mode en Google Play Services.
+- **LocationService.kt**: Intervalo pasivo reducido de 10s/5m a 5s/2m para detección más rápida del auto-arranque.
+- **LocationService.kt**: Agregado Watchdog GPS silencioso en el timer que reinicia el canal de ubicación si onLocationResult no se dispara por más de 120s en modo pasivo.
+
+**[03/07/2026 - LaunchedEffect puente para DetailAction]**
+- **DetailScreen.kt**: Agregado LaunchedEffect(viewModel.detailAction) que escucha las acciones disparadas desde la bottom bar unificada y las traduce a estados locales (showSheet, showEditDialog, showDeleteDialog, showHelpDialog), reseteando la acción a 
+ull inmediatamente después de procesarla.
+- **Causa raíz**: Al eliminar el Scaffold/TopAppBar de DetailScreen, los botones BookmarkBorder, Edit y RouteOptionsMenu migraron a la bottom bar (MainActivity.kt), pero DetailScreen nunca recibió las intenciones. El detailAction quedaba emitido al vacío.
+- **Archivos modificados**: DetailScreen.kt
+- **Archivos respaldados**: RESPALDO_ANTERIOR/20260703_DetailScreen.kt
+- **Estado**: BUILD SUCCESSFUL + deploy exitoso.
+
+**[03/07/2026 - RouteAnalyticsScreen: telemetría temporal dedicada]**
+- **CREADO** RouteAnalyticsScreen.kt: Nueva pantalla auxiliar con gráficos de rendimiento sincronizados en el eje X (tiempo transcurrido MM:ss).
+  - Perfil de Elevación: altura (m) vs tiempo.
+  - Perfil de Ritmo: velocidad (km/h) vs tiempo.
+  - Color de línea según activityMode (🟢 Caminata, 🔵 Ciclismo, 🔴 Auto).
+  - Ejes X sincronizados entre ambos gráficos para análisis cruzado.
+  - Usa MPAndroidChart con IndexAxisValueFormatter.
+- **DetailScreen.kt**: 
+  - Eliminado mapa pequeño superior + mapView + DisposableEffect + LaunchedEffect(points).
+  - Eliminados imports osmdroid.
+  - Eliminada sección de gráficos antiguos (índice vs valor).
+  - Nuevas estadísticas consolidadas en grid 2×2: Distancia, Tiempo en Movimiento, Vel. Promedio, Ritmo.
+  - Nuevo botón "Ver Gráficos de Rendimiento" → navega a RouteAnalyticsScreen.
+  - Nuevo parámetro onAnalytics: (Int) -> Unit.
+  - Nueva función helper ormatMovingTime().
+- **NavRoutes.kt**: Agregado ROUTE_ANALYTICS + outeAnalytics() + a uxiliaryRoutes.
+- **MainActivity.kt**: Nuevo estado currentRouteAnalyticsId, nuevo composable(NavRoutes.ROUTE_ANALYTICS), callback onAnalytics en DetailScreen.
+- **Estado**: BUILD SUCCESSFUL + deploy exitoso.
+
+**[03/07/2026 - RouteAnalyticsScreen: Telemetría temporal con RangeSlider y análisis de tramos]**
+- **RouteAnalyticsScreen.kt (creado)**: Pantalla dedicada con dos charts MPAndroidChart (Elevación y Velocidad vs Tiempo transcurrido en mm:ss).
+- **Eje X sincronizado**: granularity=60f, setLabelCount(8,true), IndexAxisValueFormatter con elapsedLabels.
+- **Header informativo**: Muestra hora de inicio (HH:mm), duración total y cantidad de puntos GPS.
+- **RangeSlider + LimitLines**: Slider de doble pulgar para seleccionar tramo, con líneas punteadas blancas sincronizadas en ambos charts.
+- **Panel de análisis de tramo**: Vel. Promedio, Desnivel acumulado, Ritmo (min/km), Modo predominante del tramo (Detenido/Caminata/Ciclismo/Automóvil por umbrales de velocidad).
+- **DetailScreen.kt**: Eliminado mapa, gráficos antiguos y estadísticas reemplazadas por grid 2×2 + botón "Ver Gráficos de Rendimiento".
+- **Correcciones compilación Kotlin 2.0.0**: sliderRange.end → endInclusive, RangeSlider values → value, emojis hex literal \U → carácter Unicode real.
+- **Estado**: BUILD SUCCESSFUL + deploy en Pixel 9 Pro XL.

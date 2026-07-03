@@ -23,6 +23,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -188,37 +193,7 @@ fun ExperienceMapScreen(
         }
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(text = route?.name ?: "Experience Map", fontWeight = FontWeight.Bold) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, null)
-                    }
-                },
-                actions = {
-                    IconButton(onClick = { shareScreenshot() }) {
-                        Icon(Icons.Default.Share, contentDescription = "Compartir pantalla")
-                    }
-                    IconButton(onClick = { 
-                val ts = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
-                val currentRoute = route
-                val exportName = if (currentRoute != null) {
-                    val sanitizedRouteName = currentRoute.name.trim().replace(Regex("[\\s/\\\\?%*:|\"<>]"), "_")
-                    "ROUTE_${currentRoute.id}_${sanitizedRouteName}_$ts"
-                } else {
-                    "ROUTE_${routeId}_ruta_$ts"
-                }
-                saveZipLauncher.launch("$exportName.zip")
-            }) {
-                        Icon(Icons.Default.Save, contentDescription = "Guardar como ZIP")
-                    }
-                }
-            )
-        }
-    ) { innerPadding ->
-        Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
+    Box(modifier = Modifier.fillMaxSize()) {
             if (points.isEmpty() && linkedFavorites.isEmpty() && waypoints.isEmpty()) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator()
@@ -292,12 +267,16 @@ fun ExperienceMapScreen(
                         }
                         )
 
-                    if (panelItems.isNotEmpty()) {
+                    AnimatedVisibility(
+                        visible = panelItems.isNotEmpty(),
+                        enter = fadeIn() + slideInHorizontally(),
+                        exit = fadeOut() + slideOutHorizontally()
+                    ) {
                         Column(
                             modifier = Modifier
                                 .width(160.dp)
                                 .fillMaxHeight()
-                                .background(Color(0xEE1A1A2E))
+                                .background(Color(0x80000000))
                                 .verticalScroll(scrollState)
                         ) {
                             panelItems.forEach { item ->
@@ -354,7 +333,6 @@ fun ExperienceMapScreen(
                 fontSize = 10.sp
             )
         }
-    }
 
     FullScreenPhotoDialog(
         photoUri = photoToZoom,

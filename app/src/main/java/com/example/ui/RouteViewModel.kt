@@ -47,6 +47,13 @@ sealed class AiAnalysisState {
     data class Error(val message: String) : AiAnalysisState()
 }
 
+sealed class DetailAction {
+    data object ShowSheet : DetailAction()
+    data class ShowEditDialog(val currentName: String) : DetailAction()
+    data object ShowDeleteDialog : DetailAction()
+    data object ShowHelpDialog : DetailAction()
+}
+
 class RouteViewModel(
     val repository: RouteRepository,
     private val prefsManager: PreferencesManager,
@@ -61,6 +68,8 @@ class RouteViewModel(
 ) : ViewModel() {
 
     // ─── UI State ─────────────────────────────────────────────────
+
+    var detailAction by mutableStateOf<DetailAction?>(null)
 
     var mapTargetLocation by mutableStateOf<GeoPoint?>(null)
         private set
