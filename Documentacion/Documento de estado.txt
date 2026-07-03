@@ -1,0 +1,26 @@
+Contexto del Proyecto:
+Soy el desarrollador del proyecto "Localizador". Estamos en una fase de estabilización tras una refactorización mayor.
+
+Estado Técnico:
+
+Arquitectura: MVVM modular con RouteViewModel como orquestador ligero y 12+ UseCases/Managers delegados (GeocoderUseCase, BackupUseCase, etc.).
+
+Core de Tracking: LocationService.kt utiliza un filtro isLocationValid() con umbrales de precisión (20m) y velocidad (45m/s).
+
+UI/UX: DetailScreen.kt optimizada con TopAppBar jerarquizada (Menú ⋮ con acciones de gestión y Ayuda).
+
+Stack: Kotlin, Jetpack Compose, Material 3, Room, Coroutines (serviceScope), GPS Location API.
+
+Prioridades Actuales (Fase 1 - Estabilización):
+
+Bug de Autostop: Actualmente fallando (se detiene injustamente a los 15 min).
+
+Nueva Lógica: Implementar lastGpsUpdateTimeMillis (siempre activo) vs lastMovementTimeMillis (persistencia) vs lastUserActivityTimeMillis (toques pantalla/sensor).
+Objetivo Inmediato: Modificar LocationService.kt para usar maxOf(lastMovementTimeMillis, lastUserActivityTimeMillis) y ajustar el MIN_DISTANCE_THRESHOLD a 5m.
+
+Reglas de Oro:
+
+No añadir lógica a RouteViewModel.
+Mantener la consistencia con los UseCases existentes.
+Priorizar la modularidad y evitar el "God Object".
+Hablar y pensar en Español estrictamente 
