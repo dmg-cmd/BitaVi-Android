@@ -27,7 +27,7 @@ Al finalizar cada tarea o antes de cerrar la sesión, el agente DEBE:
 
 
 ## Permiso para Shell Commands
-- **Ejecucion sin restriccion**: El agente tiene permiso continuo y permanente para ejecutar cualquier comando shell (bash, gradlew, adb, git, etc.) sin necesidad de solicitar aprobacion explicita, siempre y cuando el comando este directamente relacionado con la tarea en curso. Esto incluye compilar, instalar (installDebug), ejecutar tests y operaciones de red.
+- **Ejecución supeditada a "implementa"**: El agente solo ejecutará comandos shell (bash, gradlew, adb, git, etc.) sin pedir aprobación explícita **una vez que el usuario haya pronunciado la orden "implementa"**. Mientras esté en modo plan, solo hará operaciones de lectura. Al recibir "implementa", podrá compilar, instalar (installDebug), ejecutar tests, operaciones de red, respaldos, edición de código y actualización de documentación sin preguntar.
 ## Pauta de Estilo
 - Ser conciso pero técnicamente preciso.
 - Siempre desplegar la app en el dispositivo (`deploy`) tras cambios significativos.

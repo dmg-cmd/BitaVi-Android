@@ -293,10 +293,14 @@ class RouteViewModel(
 
     fun saveSpecificLocation(name: String, address: String, latitude: Double, longitude: Double, comment: String = "", author: String = "", photoPath: String? = null, phoneNumber: String = "", email: String = "", isContact: Boolean = false, color: String = "#FFD700") {
         viewModelScope.launch(Dispatchers.IO) {
-            repository.addSavedLocation(name, address, latitude, longitude, comment, author, photoPath, phoneNumber, email, isContact, "Desconocido", "Desconocida", color)
+            val finalComment = if (photoPath != null) {
+                val datePart = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(Date())
+                val meta = "📸 Capturada el ${datePart}"
+                if (comment.isBlank()) meta else "${comment}\n\n${meta}"
+            } else comment
+            repository.addSavedLocation(name, address, latitude, longitude, finalComment, author, photoPath, phoneNumber, email, isContact, "Desconocido", "Desconocida", color)
         }
     }
-
     fun updateSavedLocation(location: SavedLocation) { viewModelScope.launch(Dispatchers.IO) { repository.updateSavedLocation(location) } }
 
     fun deleteSavedLocation(savedLocation: SavedLocation) { viewModelScope.launch { repository.deleteSavedLocation(savedLocation) } }

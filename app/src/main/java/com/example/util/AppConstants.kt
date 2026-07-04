@@ -13,6 +13,7 @@ object AppConstants {
         const val PRE_RECORDING_BUFFER_DURATION_MILLIS = 60000L
         const val AUTO_START_MIN_SPEED_KMH = 2.5f
         const val AUTO_START_SUSTAINED_MS = 10000L
+        const val STOP_SPEED_THRESHOLD_KMH = 2.5f
         const val AUTO_STOP_SPEED_MPS = 0.5f
         val INACTIVITY_THRESHOLD_MILLIS = TimeUnit.MINUTES.toMillis(5)
     }

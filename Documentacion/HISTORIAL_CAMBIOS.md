@@ -1,4 +1,14 @@
+**[04/07/2026 - Metadata Temporal en Fotos Favoritas]**
+- **RouteViewModel.kt**: Se modificó saveSpecificLocation() (línea 293) para inyectar metadata temporal en el campo comment cuando photoPath != null. Si el usuario añade una foto, se concatena automáticamente "📸 Capturada el dd/MM/yyyy HH:mm" al final del comentario. Si el comentario está vacío, se usa solo la metadata. Si ya tiene texto, se añade con separador \n\n.
+- **Arquitectura**: Punto de inyección único en ViewModel, confluencia natural de MapScreen.kt y SavedLocationsScreen.kt. No afecta restauración de backups (usa repository directo) ni ediciones posteriores.
+- **Respaldo**: RESPALDO_ANTERIOR/20260704_RouteViewModel.kt.
 
+**[04/07/2026 - Marcador de Paradas Cortas (Short Stop Marker)]**
+- **LocationService.kt**: Nuevo sistema de detección de paradas cortas durante el tracking activo. Cuando la velocidad cae por debajo de 2.5 km/h y se mantiene así por 2 minutos consecutivos, se registran las coordenadas y se dispara geocodificación inversa asíncrona vía GeocoderUseCase. Al reanudar la marcha (>2.5 km/h), se calcula la duración total de la parada (incluyendo tolerancia de +3 min) y se inserta automáticamente un nuevo registro en la tabla de Favoritos con comentario "⏱️ Parada automática de X min Y seg" (author="Automático").
+- **Variables de estado**: timeStartedStopping, isShortStopDetected, shortStopLat, shortStopLon, shortStopAddress (viaje de ida y vuelta completo con resets en pauseTracking/stopTracking).
+- **AppConstants.kt**: Nueva constante STOP_SPEED_THRESHOLD_KMH = 2.5f en object Location.
+- **Constantess del companion**: SHORT_STOP_DELAY_MS = 120_000L (2 min de quietud), STOP_TOLERANCE_MS = 180_000L (+3 min de tolerancia post-parada).
+- **Resets**: Limpieza total de las 5 variables en pauseTracking() y stopTracking() para evitar estados colgados entre rutas consecutivas.
 **[02/07/2026 - Unificación de Formato SAF con generateRouteZipFile]**
 - **ExperienceMapScreen.kt**: Se reemplazó la sugerencia de nombre del SAF (Storage Access Framework) de oute?.name a ROUTE_{id}_{sanitizedName}_{timestamp}.zip, replicando exactamente el patrón de generateRouteZipFile(). Ahora ambos caminos (Compartir y Guardar como ZIP) usan el mismo formato unificado.
 - **RouteExportUseCase.kt**: Se agregó .getOrThrow() en xportRouteAsZip() para que el Result<Unit> del RouteExchanger lance excepción en caso de error, mejorando la propagación de fallos.

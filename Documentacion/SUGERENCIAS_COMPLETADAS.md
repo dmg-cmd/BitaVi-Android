@@ -1,4 +1,13 @@
-# Sugerencias Completadas
+## 04/07/2026 — Metadata Temporal en Fotos Favoritas
+- **Metadata automática**: Al crear un favorito con foto (cámara o galería), se inyecta "📸 Capturada el dd/MM/yyyy HH:mm" en el campo de comentario.
+- **Sin pérdida de datos**: Si el usuario ya escribió un comentario, la metadata se concatena con separador \n\n sin sobrescribir.
+- **Punto único**: Modificación centralizada en saveSpecificLocation() del ViewModel, beneficiando ambas pantallas de creación (Mapa y Favoritos).
+
+## 04/07/2026 — Marcador de Paradas Cortas (Short Stop Marker)
+- **Detección de quietud**: Cuando velocidad < 2.5 km/h con tracking activo, se inicia contador de 2 minutos.
+- **Registro automático**: Si pasan 2 min quieto, captura coordenadas y geocodifica en segundo plano.
+- **Inserción en Favoritos**: Al reanudar (>2.5 km/h), calcula duración + 3 min de tolerancia y guarda "⏱️ Parada automática de X min Y seg" como favorito (author="Automático").
+- **Resets de ciclo de vida**: Limpieza en pauseTracking() y stopTracking() para evitar estados fantasma.# Sugerencias Completadas
 
 ## Sesión Actual — Menú de Acciones de Ruta y Refactor del Filtro GPS
 - **RouteOptionsMenu**: Implementación de menú `⋮` con DropdownMenu y submenú de exportación anidado (GPX/CSV/ZIP). Reemplazo de 7 IconButtons individuales por 3 visibles + menú.
