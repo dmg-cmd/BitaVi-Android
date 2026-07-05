@@ -1,3 +1,41 @@
+[04/07/2026 - Pantalla Inmersiva Focus Favorite + Postal Táctica]
+- **FocusFavoriteScreen.kt**: Reestructuración completa. Se eliminó Scaffold/TopAppBar y se reemplazó por jerarquía Box raíz con dos Box anidados: (1) contenedor capturable con drawWithContent + GraphicsLayer.record que renderiza mapa osmdroid + card translúcida, y (2) botones flotantes (Volver/Compartir) como hijos directos del Box raíz, fuera del recorte de captura.
+- **Postal Táctica**: El botón Compartir ahora captura el contenedor vía graphicsLayer.toImageBitmap() → asAndroidBitmap(), guarda PNG en cacheDir/shared_posts/ y despacha Intent.ACTION_SEND con type=image/png vía FileProvider. La imagen resultante NO incluye botones de UI ni barras del sistema.
+- **Botones flotantes**: ArrowBack (arriba-izquierda) y Share (arriba-derecha) sobre fondo negro 50% alpha, CircleShape, padding ajustado para notch del Pixel 9 Pro XL.
+- **Backup**: RESPALDO_ANTERIOR/20260704_FocusFavoriteScreen.kt.
+- **Compilación**: BUILD SUCCESSFUL, deploy exitoso en Pixel 9 Pro XL.
+
+[04/07/2026 - Transparencia Absoluta con FLAG_LAYOUT_NO_LIMITS]
+- **FocusFavoriteScreen.kt**: Se reemplazó el bloque SideEffect (window.statusBarColor = TRANSPARENT) por DisposableEffect(Unit) con FLAG_LAYOUT_NO_LIMITS + onDispose limpia.
+  - window.setFlags(FLAG_LAYOUT_NO_LIMITS, FLAG_LAYOUT_NO_LIMITS) ignora todos los insets del sistema (status bar + nav bar), forzando transparencia real en el Pixel 9 Pro XL sin parpadeos.
+  - onDispose { window.clearFlags(FLAG_LAYOUT_NO_LIMITS) } restaura el estado al salir de la pantalla, evitando roturas de layout en el resto de la app (teclado, nav bar).
+  - window.decorView.setBackgroundColor(BLACK) se mantiene para el frame 0.
+  - Se añadió import android.view.WindowManager y import androidx.compose.runtime.DisposableEffect.
+- **Padding inferior en la Card**: .padding(16.dp) → .padding(start = 16.dp, end = 16.dp, bottom = 32.dp) para que el watermark "AGENVIAJE" y el contenido no queden bajo la barra de gestos del Pixel 9 Pro XL.
+- **Respaldo**: RESPALDO_ANTERIOR/20260704_FocusFavoriteScreen_v4.kt.
+- **Compilación**: BUILD SUCCESSFUL + installDebug en Pixel 9 Pro XL.
+**[04/07/2026 - Compartir Favorito con Foto Adjunta]**
+- **ShareUseCase.kt**: Refactor completo de shareLocation(). Ahora envía un Intent.ACTION_SEND con tipo dinámico: image/* si location.photoPath tiene URI válida (content://), text/plain si no. Se añade FLAG_GRANT_READ_URI_PERMISSION para que la app receptora (WhatsApp/Telegram) pueda leer el stream de la imagen. Formato de texto actualizado: "📍 ¡Te comparto este lugar desde mi bitácora!" + nombre + nota + enlace Google Maps.
+- **Arquitectura**: Sin cambios en UI ni ViewModel — el botón Share ya existía en LocationCard (SavedLocationsScreen.kt:698) y llamaba a shareLocation(). photoPath ya viene como content:// URI desde PhotoManager, no necesita FileProvider adicional.
+- **Backup**: RESPALDO_ANTERIOR/20260704_ShareUseCase.kt.
+- **Compilación**: BUILD SUCCESSFUL, deploy exitoso en Pixel 9 Pro XL.
+**[04/07/2026 - Grosor de Trazado Dinámico con Slider]**
+- **PreferencesManager.kt**: Nuevos getStrokeWidth() / setStrokeWidth() con clave "map_stroke_width", default 8f, persistencia SharedPreferences vía edit {}.
+- **RouteViewModel.kt**: Nueva variable de estado mapStrokeWidth (mutableStateOf, default 8f). Carga en init desde prefsManager. Método updateStrokeWidth(w) que actualiza el estado y persiste en Dispatchers.IO.
+- **MainActivity.kt**: Slider en el menú lateral, insertado justo después de "Protección Biométrica". Rango 4f..14f con steps=5 (saltos: 4, 6, 8, 10, 12, 14). Muestra etiqueta "Grosor del trazado: Xpx". Import añadido: Slider de material3.
+- **ExperienceMapScreen.kt / MapScreen.kt**: outilinePaint.strokeWidth ahora lee viewModel.mapStrokeWidth en lugar del hardcoded 8f. Reactivo: cualquier cambio del slider dispara recomposición instantánea.
+- **Backups**: RESPALDO_ANTERIOR/20260704_PreferencesManager.kt, _RouteViewModel.kt, _MainActivity.kt, _ExperienceMapScreen.kt, _MapScreen.kt.
+- **Compilación**: BUILD SUCCESSFUL, deploy exitoso en Pixel 9 Pro XL.
+**[04/07/2026 - Purga del Debug Overlay en ExperienceMapScreen]**
+- **ExperienceMapScreen.kt**: Eliminación completa del bloque DEBUG OVERLAY (líneas 332-339) que mostraba una barra negra semi-transparente con texto verde de telemetría (pts, wp, fav, fotos, load). El mapa y las fotos translúcidas ahora ocupan toda la pantalla de borde a borde sin interferencias visuales.
+- **Backup**: RESPALDO_ANTERIOR/20260704_ExperienceMapScreen.kt.
+- **Compilación**: BUILD SUCCESSFUL, deploy exitoso en Pixel 9 Pro XL.
+**[04/07/2026 - Agrupación Jerárquica de Favoritos con Árbol Animado]**
+- **LocationParser.kt** (NUEVO): Objeto con parseFromAddressString() para inferir país/ciudad desde direcciones tipo "Av. de Mayo 1370, C1085 CABA, Argentina" (últimas 2 partes separadas por coma), inferCountryCity() con cache ConcurrentHashMap para geocodificación redundante, y clearCache().
+- **RouteViewModel.kt**: Se corrigió saveSpecificLocation() para usar geocoderUseCase.fetchLocationDetails() y almacenar país/ciudad reales (ya no hardcode "Desconocido"/"Desconocida"). Se corrigió refreshLocationDetails() para actualizar address, country y city simultáneamente. Nuevo StateFlow groupedFavorites: Map<String, Map<String, List<SavedLocation>>> derivado de allSavedLocations con inferencia jerárquica vía LocationParser (usa el campo db primero, fallback al parser de dirección).
+- **SavedLocationsScreen.kt**: Rediseño completo del listado. Se reemplazó el LazyColumn plano con un árbol expandible: país → ciudad → favoritos, usando AnimatedVisibility para transiciones suaves. Botones ExpandMore/ChevronRight con toggles via mutableStateMapOf. Expansión inicial por defecto (países y ciudades abiertos). cityKey único por combinación "país|ciudad".
+- **Backups**: RESPALDO_ANTERIOR/20260704_SavedLocationsScreen.kt, 20260704_RouteViewModel.kt.
+- **Respaldos**: LocationParser.kt (creado), SavedLocationsScreen.kt + RouteViewModel.kt (modificados).
 **[04/07/2026 - Metadata Temporal en Fotos Favoritas]**
 - **RouteViewModel.kt**: Se modificó saveSpecificLocation() (línea 293) para inyectar metadata temporal en el campo comment cuando photoPath != null. Si el usuario añade una foto, se concatena automáticamente "📸 Capturada el dd/MM/yyyy HH:mm" al final del comentario. Si el comentario está vacío, se usa solo la metadata. Si ya tiene texto, se añade con separador \n\n.
 - **Arquitectura**: Punto de inyección único en ViewModel, confluencia natural de MapScreen.kt y SavedLocationsScreen.kt. No afecta restauración de backups (usa repository directo) ni ediciones posteriores.
@@ -10,12 +48,14 @@
 - **Constantess del companion**: SHORT_STOP_DELAY_MS = 120_000L (2 min de quietud), STOP_TOLERANCE_MS = 180_000L (+3 min de tolerancia post-parada).
 - **Resets**: Limpieza total de las 5 variables en pauseTracking() y stopTracking() para evitar estados colgados entre rutas consecutivas.
 **[02/07/2026 - Unificación de Formato SAF con generateRouteZipFile]**
-- **ExperienceMapScreen.kt**: Se reemplazó la sugerencia de nombre del SAF (Storage Access Framework) de oute?.name a ROUTE_{id}_{sanitizedName}_{timestamp}.zip, replicando exactamente el patrón de generateRouteZipFile(). Ahora ambos caminos (Compartir y Guardar como ZIP) usan el mismo formato unificado.
+- **ExperienceMapScreen.kt**: Se reemplazó la sugerencia de nombre del SAF (Storage Access Framework) de 
+oute?.name a ROUTE_{id}_{sanitizedName}_{timestamp}.zip, replicando exactamente el patrón de generateRouteZipFile(). Ahora ambos caminos (Compartir y Guardar como ZIP) usan el mismo formato unificado.
 - **RouteExportUseCase.kt**: Se agregó .getOrThrow() en xportRouteAsZip() para que el Result<Unit> del RouteExchanger lance excepción en caso de error, mejorando la propagación de fallos.
 
 **[02/07/2026 - Nombre Único y Ubicación Persistente para ZIPs]**
 - **RouteExportUseCase.kt**: Se centralizó la generación del nombre del ZIP en la nueva función generateRouteZipFile(). El nombre sigue el patrón ROUTE_{id}_{nombre}_{timestamp}.zip (ej: ROUTE_5_Paseo_del_Rio_20260702_143052.zip), eliminando colisiones y permitiendo exportar la misma ruta múltiples veces.
-- **Sanitización robusta**: El nombre se limpia con eplace(Regex("[\s/\\\\?%*:|\"<>]"), "_") + .take(20) para preservar acentos, eñes y caracteres internacionales, eliminando solo caracteres prohibidos por el sistema de archivos.
+- **Sanitización robusta**: El nombre se limpia con 
+eplace(Regex("[\s/\\\\?%*:|\"<>]"), "_") + .take(20) para preservar acentos, eñes y caracteres internacionales, eliminando solo caracteres prohibidos por el sistema de archivos.
 - **Migración a DIRECTORY_DOCUMENTS**: Los ZIP ahora se guardan en context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS) en lugar de cacheDir, haciendo que los archivos persistan tras el reinicio de la app y sean visibles en la carpeta Documentos del explorador de archivos.
 - **file_paths.xml**: Se añadió <external-files-path name="my_documents" path="Documents" /> para que FileProvider pueda generar URIs compartibles desde la nueva ubicación.**Historial de Cambios - Proyecto Localizador**
 
@@ -129,7 +169,8 @@
 - **Impacto**: Sin cambios en lógica concurrente. Solo 3 líneas de constantes. Backupeado en RESPALDO_ANTERIOR/20260703_AppConstants.kt.
 **[03/07/2026 - Súper ZIP Social: Empaquetado Estructurado con GPX + CSV + Media]**
 - **RouteExchanger.kt**: Se unificó la exportación ZIP bajo xportRouteAsZip() con el nuevo árbol:
-  - 	rack.gpx: Coordenadas estándar GPX 1.1 (antes uta_telemetria.gpx).
+  - 	rack.gpx: Coordenadas estándar GPX 1.1 (antes 
+uta_telemetria.gpx).
   - 	elemetry.csv: Matriz con columnas 	imestamp_ms,latitude,longitude,altitude_m,speed_ms,speed_kmh,activity_mode. Incluye header metadata (# Route, # Activity Mode, # Total Points). speed_kmh redondeado a 2 decimales con String.format.
   - media/: Carpeta con fotos de waypoints y favoritos (antes multimedia/).
 - **exportarRutaCompleta()**: Marcado como @Deprecated("Usa exportRouteAsZip()"). Sin llamadas activas restantes.
@@ -180,7 +221,8 @@ ull inmediatamente después de procesarla.
   - Nuevo botón "Ver Gráficos de Rendimiento" → navega a RouteAnalyticsScreen.
   - Nuevo parámetro onAnalytics: (Int) -> Unit.
   - Nueva función helper ormatMovingTime().
-- **NavRoutes.kt**: Agregado ROUTE_ANALYTICS + outeAnalytics() + a uxiliaryRoutes.
+- **NavRoutes.kt**: Agregado ROUTE_ANALYTICS + 
+outeAnalytics() + a uxiliaryRoutes.
 - **MainActivity.kt**: Nuevo estado currentRouteAnalyticsId, nuevo composable(NavRoutes.ROUTE_ANALYTICS), callback onAnalytics en DetailScreen.
 - **Estado**: BUILD SUCCESSFUL + deploy exitoso.
 

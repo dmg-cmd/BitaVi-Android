@@ -21,21 +21,27 @@ class ShareUseCase(
     fun shareLocation(location: SavedLocation) {
         val mapsUrl = "https://www.google.com/maps/search/?api=1&query=${location.latitude},${location.longitude}"
         val shareText = buildString {
-            append("📍 *${location.name}*\n\n")
-            if (location.address.isNotBlank()) append("🏠 Dirección: ${location.address}\n")
-            if (location.comment.isNotBlank()) append("📝 Nota: ${location.comment}\n")
-            append("\n🗺️ Ver en el mapa: $mapsUrl\n\n")
-            append("_Enviado desde Localizador Pro_")
+            appendLine("📍 ¡Te comparto este lugar desde mi bitácora!")
+            appendLine("📌 Nombre: ${location.name}")
+            if (location.comment.isNotBlank()) appendLine("📝 Nota: ${location.comment}")
+            appendLine("🗺️ Ver en Google Maps: $mapsUrl")
         }
 
-        val intent = Intent(Intent.ACTION_SEND).apply {
-            type = "text/plain"
-            putExtra(Intent.EXTRA_SUBJECT, "Ubicación: ${location.name}")
+        Intent(Intent.ACTION_SEND).apply {
+            val photoUri = location.photoPath?.takeIf { it.isNotBlank() }?.let { Uri.parse(it) }
+            if (photoUri != null) {
+                type = "image/*"
+                putExtra(Intent.EXTRA_STREAM, photoUri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            } else {
+                type = "text/plain"
+            }
             putExtra(Intent.EXTRA_TEXT, shareText)
+        }.also { intent ->
+            val chooser = Intent.createChooser(intent, "Compartir ubicación vía")
+            chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(chooser)
         }
-        val chooser = Intent.createChooser(intent, "Compartir ubicación vía")
-        chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        context.startActivity(chooser)
     }
 
     suspend fun shareCompleteRoute(routeId: Int, mapBitmap: Bitmap? = null) {
@@ -57,7 +63,7 @@ class ShareUseCase(
                 append("\n📍 *Puntos destacados:*")
                 waypoints.forEach { wp -> append("\n- ${wp.name}: ${wp.description}") }
             }
-            append("\n\n🗺️ _Generado por Localizador Pro_")
+            append("\n\n🗺️ _Generado por Agenviaje_")
         }
 
         val imageUris = arrayListOf<Uri>()

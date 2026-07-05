@@ -270,6 +270,8 @@ class RouteRepository(private val routeDao: RouteDao) {
         return routeDao.getFavoritesForRoute(routeId)
     }
 
+
+    fun getSavedLocationByIdFlow(id: Int): Flow<SavedLocation?> = routeDao.getSavedLocationByIdFlow(id)
     fun getRoutesForFavoriteFlow(favoriteId: Int): Flow<List<Route>> {
         return routeDao.getRoutesForFavoriteFlow(favoriteId)
     }

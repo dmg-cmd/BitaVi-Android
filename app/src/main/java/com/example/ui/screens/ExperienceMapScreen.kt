@@ -221,7 +221,7 @@ fun ExperienceMapScreen(
                                     overlays.add(Polyline().apply {
                                         setPoints(seg.points)
                                         outlinePaint.color = seg.color
-                                        outlinePaint.strokeWidth = 5f
+                                        outlinePaint.strokeWidth = viewModel.mapStrokeWidth
                                     })
                                 }
                             }
@@ -329,14 +329,6 @@ fun ExperienceMapScreen(
             }
         }
 
-        // DEBUG OVERLAY
-        Box(modifier = Modifier.fillMaxWidth().background(Color.Black.copy(alpha = 0.7f)).padding(4.dp), contentAlignment = Alignment.Center) {
-            Text(
-                text = "pts=${points.size} wp=${waypoints.size} fav=${linkedFavorites.size} fotos=${photoItems.size} load=${points.isEmpty() && linkedFavorites.isEmpty() && waypoints.isEmpty()}",
-                color = Color.Green,
-                fontSize = 10.sp
-            )
-        }
 
     FullScreenPhotoDialog(
         photoUri = photoToZoom,

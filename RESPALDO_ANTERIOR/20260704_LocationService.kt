@@ -25,6 +25,7 @@ import com.example.util.ContactHashHelper
 import com.example.data.model.LocationPoint
 import com.example.data.model.Route
 import com.example.data.repository.RouteRepository
+import com.example.ui.GeocoderUseCase
 import com.google.android.gms.location.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -124,6 +125,13 @@ class LocationService : Service() {
     private val PROXIMITY_THRESHOLD_METERS = 100f
     private val NOTIFICATION_COOLDOWN_MS = 10 * 60 * 1000L // 10 minutos para repetir aviso
 
+    // Short Stop Marker (Paradas Cortas)
+    private var timeStartedStopping: Long = 0L
+    private var isShortStopDetected = false
+    private var shortStopLat = 0.0
+    private var shortStopLon = 0.0
+    private var shortStopAddress = ""
+
     // BLE Proximity (Módulo 3B)
     private var alertNotifier: AlertNotifier? = null
     private var proximityManager: ProximityManager? = null
@@ -146,6 +154,10 @@ class LocationService : Service() {
         // Activity Mode: tiempos de inercia
         private const val TIME_TO_UPGRADE = 10_000L   // 10s para subir de intensidad (inicio rápido)
         private const val TIME_TO_DOWNGRADE = 120_000L // 2min para bajar de intensidad
+
+        // Short Stop Marker
+        private const val SHORT_STOP_DELAY_MS = 120_000L
+        private const val STOP_TOLERANCE_MS = 180_000L
 
         // Acciones de control del servicio
         const val ACTION_START = "ACTION_START"
@@ -412,6 +424,55 @@ class LocationService : Service() {
 
         // Actualizar Activity Mode con la velocidad computada
         updateActivityMode(lastComputedSpeedMps * 3.6f)
+
+        // --- MARCADOR DE PARADAS CORTAS ---
+        if (_isTracking.value) {
+            val speedKmh = lastComputedSpeedMps * 3.6f
+            if (speedKmh < AppConstants.Location.STOP_SPEED_THRESHOLD_KMH) {
+                if (timeStartedStopping == 0L) {
+                    timeStartedStopping = System.currentTimeMillis()
+                }
+                if (!isShortStopDetected &&
+                    System.currentTimeMillis() - timeStartedStopping >= SHORT_STOP_DELAY_MS
+                ) {
+                    isShortStopDetected = true
+                    shortStopLat = location.latitude
+                    shortStopLon = location.longitude
+                    serviceScope.launch {
+                        val geocoder = GeocoderUseCase(this@LocationService)
+                        val details = geocoder.fetchLocationDetails(shortStopLat, shortStopLon)
+                        shortStopAddress = details.first
+                    }
+                }
+            } else {
+                if (isShortStopDetected) {
+                    val stopDurationMs = System.currentTimeMillis() -
+                        timeStartedStopping + STOP_TOLERANCE_MS
+                    val totalSec = stopDurationMs / 1000L
+                    val minutes = totalSec / 60
+                    val seconds = totalSec % 60
+                    val comment = "⏱️ Parada automática de ${minutes} min ${seconds} seg"
+                    val finalAddress = shortStopAddress.ifBlank {
+                        "GPS: ${String.format("%.5f, %.5f", shortStopLat, shortStopLon)}"
+                    }
+                    serviceScope.launch {
+                        repository.addSavedLocation(
+                            name = finalAddress,
+                            address = finalAddress,
+                            latitude = shortStopLat,
+                            longitude = shortStopLon,
+                            comment = comment,
+                            author = "Automático"
+                        )
+                    }
+                }
+                timeStartedStopping = 0L
+                isShortStopDetected = false
+                shortStopLat = 0.0
+                shortStopLon = 0.0
+                shortStopAddress = ""
+            }
+        }
 
         // --- LÓGICA "CERCA DE MÍ" ---
         if (isNearMeEnabled) {
@@ -774,6 +835,11 @@ class LocationService : Service() {
         fusedLocationClient.removeLocationUpdates(locationCallback)
         timerJob?.cancel()
         _isTracking.value = false
+        timeStartedStopping = 0L
+        isShortStopDetected = false
+        shortStopLat = 0.0
+        shortStopLon = 0.0
+        shortStopAddress = ""
     }
 
     private fun stopTracking() {
@@ -796,6 +862,11 @@ class LocationService : Service() {
                 activeRouteId = -1
                 _currentRouteId.value = null
                 _latestLocation.value = null
+                timeStartedStopping = 0L
+                isShortStopDetected = false
+                shortStopLat = 0.0
+                shortStopLon = 0.0
+                shortStopAddress = ""
                 _elapsedTimeSeconds.value = 0L
                 _currentDistanceMeters.value = 0.0
 

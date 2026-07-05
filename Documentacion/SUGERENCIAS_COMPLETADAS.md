@@ -1,3 +1,13 @@
+## 04/07/2026 — Pantalla Inmersiva Focus Favorite + Postal Táctica
+- **FocusFavoriteScreen**: Rediseño completo sin Scaffold. Box raíz + contenedor drawWithContent + botones flotantes CircleShape.
+- **Captura de Postal**: GraphicsLayer.record → toImageBitmap() → PNG en caché → FileProvider → Intent ACTION_SEND image/png.
+- **Sin UI en la postal**: Botones de volver/compartir fuera del contenedor capturable; el destinatario recibe solo mapa + card.
+
+## 04/07/2026 — Agrupación Jerárquica de Favoritos (Árbol Animado)
+- **LocationParser**: Nuevo objeto utilitario para inferir país y ciudad desde direcciones de geocoder o directamente desde el AddressField.
+- **Grouped Favorites en ViewModel**: Nuevo StateFlow groupedFavorites derivado de allSavedLocations que organiza favoritos en Map<País, Map<Ciudad, List<SavedLocation>>>.
+- **Interfaz de Árbol**: SavedLocationsScreen reemplaza el listado plano por secciones expandibles país→ciudad con animaciones AnimatedVisibility y botones ExpandMore/ChevronRight.
+- **Geodatos reales**: saveSpecificLocation() ahora almacena país y ciudad reales desde geocoder; refreshLocationDetails() actualiza los 3 campos (address, country, city).
 ## 04/07/2026 — Metadata Temporal en Fotos Favoritas
 - **Metadata automática**: Al crear un favorito con foto (cámara o galería), se inyecta "📸 Capturada el dd/MM/yyyy HH:mm" en el campo de comentario.
 - **Sin pérdida de datos**: Si el usuario ya escribió un comentario, la metadata se concatena con separador \n\n sin sobrescribir.

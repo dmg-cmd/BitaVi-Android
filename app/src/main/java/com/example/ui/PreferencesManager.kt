@@ -32,4 +32,7 @@ class PreferencesManager(context: Context) {
     fun setDefaultLocation(lat: Double, lon: Double) {
         prefs.edit { putFloat("default_lat", lat.toFloat()); putFloat("default_lon", lon.toFloat()) }
     }
+    fun setStrokeWidth(w: Float) { prefs.edit { putFloat("map_stroke_width", w) } }
+    fun getStrokeWidth(): Float = prefs.getFloat("map_stroke_width", 8f)
+
 }

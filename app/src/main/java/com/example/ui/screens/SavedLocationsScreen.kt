@@ -28,6 +28,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import androidx.compose.animation.AnimatedVisibility
 import com.example.ui.components.FullScreenPhotoDialog
 import com.example.ui.components.TourOverlay
 import com.example.ui.dialogs.DeleteConfirmationDialog
@@ -41,9 +42,11 @@ import org.osmdroid.util.GeoPoint
 fun SavedLocationsScreen(
     viewModel: RouteViewModel,
     onNavigateToMap: () -> Unit,
+    onFocusFavorite: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val locations by viewModel.allSavedLocations.collectAsState()
+    val groupedFavorites by viewModel.groupedFavorites.collectAsState()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var showAddDialog by remember { mutableStateOf(false) }
@@ -149,57 +152,95 @@ fun SavedLocationsScreen(
                 }
             }
         }
-    ) { padding ->
+) { padding ->
         Column(modifier = Modifier.padding(padding).fillMaxSize()) {
             if (locations.isEmpty()) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("No tienes lugares guardados aún", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("No tienes lugares guardados aun", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             } else {
-                val groupedLocations = locations.groupBy { it.country }.mapValues { entry -> 
-                    entry.value.groupBy { it.city } 
-                }
+                val expandedCountries = remember { mutableStateMapOf<String, Boolean>() }
+                val expandedCities = remember { mutableStateMapOf<String, Boolean>() }
 
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    groupedLocations.forEach { (country, cities) ->
-                        item {
-                            Text(
-                                text = country,
-                                style = MaterialTheme.typography.titleLarge,
-                                fontWeight = FontWeight.Black,
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
-                            )
-                        }
-                        cities.forEach { (city, locs) ->
-                            item {
-                                Text(
-                                    text = "  $city",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.secondary,
-                                    modifier = Modifier.padding(bottom = 4.dp)
-                                )
-                            }
-                            items(locs) { location ->
-                                LocationCard(
-                                    location = location,
-                                    onDelete = {
-                                        favoriteToDelete = location
-                                        showDeleteConfirmation = true
-                                    },
-                                    onEdit = { locationToEdit = location },
-                                    onShowOnMap = {
-                                        android.util.Log.d("Navegacion", "Yendo a: ${location.name} en ${location.latitude}, ${location.longitude}")
-                                        viewModel.setMapTarget(location.latitude, location.longitude)
-                                        onNavigateToMap()
-                                    },
-                                    onShare = { viewModel.shareLocation(location) }
-                                )
+                    groupedFavorites.forEach { (country, cities) ->
+                        item(key = country) {
+                            val isCountryExpanded = expandedCountries[country] ?: true
+                            Column {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { expandedCountries[country] = !isCountryExpanded }
+                                        .padding(vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = if (isCountryExpanded) Icons.Default.ExpandMore else Icons.Default.ChevronRight,
+                                        contentDescription = if (isCountryExpanded) "Colapsar" else "Expandir",
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = country,
+                                        style = MaterialTheme.typography.titleLarge,
+                                        fontWeight = FontWeight.Black,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                                AnimatedVisibility(visible = isCountryExpanded) {
+                                    Column {
+                                        cities.forEach { (city, locs) ->
+                                            val cityKey = "${country}|${city}"
+                                            val isCityExpanded = expandedCities[cityKey] ?: true
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .clickable { expandedCities[cityKey] = !isCityExpanded }
+                                                    .padding(start = 24.dp, top = 4.dp, bottom = 4.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Icon(
+                                                    imageVector = if (isCityExpanded) Icons.Default.ExpandMore else Icons.Default.ChevronRight,
+                                                    contentDescription = if (isCityExpanded) "Colapsar" else "Expandir",
+                                                    tint = MaterialTheme.colorScheme.secondary,
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text(
+                                                    text = city,
+                                                    style = MaterialTheme.typography.titleMedium,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = MaterialTheme.colorScheme.secondary
+                                                )
+                                            }
+                                            AnimatedVisibility(visible = isCityExpanded) {
+                                                Column {
+                                                    locs.forEach { location ->
+                                                        LocationCard(
+                                                            location = location,
+                                                            onDelete = {
+                                                                favoriteToDelete = location
+                                                                showDeleteConfirmation = true
+                                                            },
+                                                            onEdit = { locationToEdit = location },
+                                                            onShowOnMap = {
+                                                                android.util.Log.d("Navegacion", "Yendo a: ${location.name} en ${location.latitude}, ${location.longitude}")
+                                                                viewModel.setMapTarget(location.latitude, location.longitude)
+                                                                onNavigateToMap()
+                                                            },
+                                                            onShare = { viewModel.shareLocation(location) },
+                                                            onFocus = { onFocusFavorite(location.id) },
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -600,7 +641,8 @@ fun LocationCard(
     onDelete: () -> Unit,
     onEdit: () -> Unit,
     onShowOnMap: () -> Unit,
-    onShare: () -> Unit
+    onShare: () -> Unit,
+    onFocus: () -> Unit
 ) {
     val context = LocalContext.current
     var photoToZoom by remember { mutableStateOf<String?>(null) }
@@ -745,7 +787,7 @@ fun LocationCard(
                                     putExtra(android.provider.ContactsContract.Intents.Insert.PHONE, location.phoneNumber)
                                     putExtra(android.provider.ContactsContract.Intents.Insert.EMAIL, location.email)
                                     putExtra(android.provider.ContactsContract.Intents.Insert.POSTAL, location.address)
-                                    putExtra(android.provider.ContactsContract.Intents.Insert.NOTES, "Localizador: ${location.comment}")
+                                    putExtra(android.provider.ContactsContract.Intents.Insert.NOTES, "Agenviaje: ${location.comment}")
                                 }
                                 context.startActivity(intent)
                             }) {
@@ -755,6 +797,9 @@ fun LocationCard(
                     }
 
                     Row {
+                        IconButton(onClick = onFocus) {
+                            Icon(Icons.Default.CenterFocusStrong, contentDescription = "Ver en detalle", tint = Color(0xFF4CAF50))
+                        }
                         IconButton(onClick = onEdit) {
                             Icon(Icons.Default.Edit, contentDescription = "Editar", tint = MaterialTheme.colorScheme.primary)
                         }

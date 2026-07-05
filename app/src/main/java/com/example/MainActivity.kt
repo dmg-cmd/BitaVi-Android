@@ -94,10 +94,13 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
+import androidx.compose.material3.Slider
+import androidx.compose.ui.res.stringResource
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -134,6 +137,7 @@ import com.example.ui.navigation.NavRoutes
 import com.example.ui.screens.DetailScreen
 import com.example.ui.screens.ExperienceMapScreen
 import com.example.ui.screens.HistoryScreen
+import com.example.ui.screens.FocusFavoriteScreen
 import com.example.ui.screens.MapScreen
 import com.example.ui.screens.SavedLocationsScreen
 import com.example.ui.dialogs.ApiKeyDialog
@@ -308,7 +312,7 @@ class MainActivity : FragmentActivity() {
 
         Configuration.getInstance().load(this, sharedPrefs)
         // User-Agent legítimo e identificable siguiendo las directrices de la política de OSM (Hallazgo A11)
-        Configuration.getInstance().userAgentValue = "LocalizadorPro/1.0 (Android; contact: dev@example.com)"
+        Configuration.getInstance().userAgentValue = "Agenviaje/1.0 (Android; contact: dev@example.com)"
         
         // Asegurar que osmdroid use la carpeta interna de la app para el caché (evita problemas de permisos)
         Configuration.getInstance().osmdroidTileCache = getExternalFilesDir(null) ?: filesDir
@@ -384,7 +388,7 @@ class MainActivity : FragmentActivity() {
                 } else if (viewModel.isBiometricEnabled) {
                     authenticateSimple(
                         title = "Acceso Seguro",
-                        subtitle = "Coloque su huella para abrir Localizador Pro"
+                        subtitle = getString(R.string.biometric_subtitle)
                     ) {
                         // Éxito: la app sigue su curso normal
                     }
@@ -414,6 +418,7 @@ fun MainContainer(viewModel: RouteViewModel, encryptedPrefs: SharedPreferences) 
     var currentDetailRouteId by remember { mutableStateOf<Int?>(null) }
     var currentExperienceRouteId by remember { mutableStateOf<Int?>(null) }
     var currentRouteAnalyticsId by remember { mutableStateOf<Int?>(null) }
+    var currentFocusFavoriteId by mutableIntStateOf(0)
     LaunchedEffect(currentRoute) {
         if (currentRoute !in NavRoutes.auxiliaryRoutes) {
             currentDetailRouteId = null
@@ -515,7 +520,7 @@ fun MainContainer(viewModel: RouteViewModel, encryptedPrefs: SharedPreferences) 
         drawerContent = {
             ModalDrawerSheet {
                 Spacer(Modifier.height(12.dp))
-                Text("Ajustes de Localizador", modifier = Modifier.padding(16.dp), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                AgenviajeDrawerHeader()
                 HorizontalDivider()
                 
                 NavigationDrawerItem(
@@ -640,6 +645,21 @@ fun MainContainer(viewModel: RouteViewModel, encryptedPrefs: SharedPreferences) 
                             viewModel.toggleBiometric(newState)
                         }
                     }
+                )
+
+
+                // ── Grosor del trazado ──
+                Text(
+                    "Grosor del trazado: ${viewModel.mapStrokeWidth.toInt()}px",
+                    modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 4.dp),
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Slider(
+                    value = viewModel.mapStrokeWidth,
+                    onValueChange = { viewModel.updateStrokeWidth(it) },
+                    valueRange = 4f..14f,
+                    steps = 5,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
                 )
 
                 HorizontalDivider()
@@ -1015,7 +1035,12 @@ fun MainContainer(viewModel: RouteViewModel, encryptedPrefs: SharedPreferences) 
                             launchSingleTop = true
                             restoreState = true
                         }
-                    }
+                    },
+                    onFocusFavorite = { favoriteId ->
+                        navController.navigate(NavRoutes.focusFavorite(favoriteId)) {
+                            launchSingleTop = true
+                        }
+                    },
                 )
             }
             composable(
@@ -1056,6 +1081,18 @@ fun MainContainer(viewModel: RouteViewModel, encryptedPrefs: SharedPreferences) 
                     onBack = { navController.popBackStack() }
                 )
             }
+            composable(
+                route = NavRoutes.FOCUS_FAVORITE,
+                arguments = listOf(navArgument("favoriteId") { type = NavType.IntType })
+            ) { backStackEntry ->
+                val favoriteId = backStackEntry.arguments?.getInt("favoriteId") ?: return@composable
+                currentFocusFavoriteId = favoriteId
+                FocusFavoriteScreen(
+                    viewModel = viewModel,
+                    favoriteId = favoriteId,
+                    onBack = { navController.popBackStack() }
+                )
+            }
         }
     }
     }
@@ -1067,4 +1104,26 @@ fun MainContainer(viewModel: RouteViewModel, encryptedPrefs: SharedPreferences) 
 @Composable
 fun Greeting(name: String, modifier: Modifier = Modifier) {
     Text(text = "Hello $name!", modifier = modifier)
+}
+
+@Composable
+fun AgenviajeDrawerHeader() {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp, vertical = 32.dp)
+    ) {
+        Text(
+            text = stringResource(id = R.string.drawer_title_header),
+            style = MaterialTheme.typography.headlineMedium,
+            color = Color.White,
+            fontWeight = FontWeight.Bold
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = stringResource(id = R.string.drawer_subtitle_header),
+            style = MaterialTheme.typography.bodyMedium,
+            color = Color.Green.copy(alpha = 0.8f)
+        )
+    }
 }

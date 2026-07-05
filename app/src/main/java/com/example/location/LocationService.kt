@@ -18,6 +18,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.example.MainActivity
 import com.example.data.db.AppDatabase
+import com.example.R
 import com.example.ui.ContactUseCase
 import com.example.util.AlertNotifier
 import com.example.util.AppConstants
@@ -309,7 +310,7 @@ class LocationService : Service() {
         val isAutoModeActive = sharedPrefs.getBoolean("auto_mode", false)
         val statusText = if (isAutoModeActive) "Vigilando movimiento... Modo Automático activo." else "Servicio activo en modo pasivo."
         
-        val notification = buildNotification("Localizador", statusText)
+        val notification = buildNotification(getString(R.string.notification_service_title), statusText)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
         } else {
@@ -898,7 +899,7 @@ class LocationService : Service() {
     }
 
     private fun ensureForeground() {
-        val notification = buildNotification("Localizador", "Servicio en ejecución")
+        val notification = buildNotification(getString(R.string.notification_service_title), getString(R.string.notification_service_description))
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
         } else {
@@ -948,8 +949,8 @@ class LocationService : Service() {
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val name = "Rastreo de Rutas GPS"
-            val descriptionText = "Notificación persistente para el seguimiento de rutas en segundo plano"
+            val name = getString(R.string.notification_service_title)
+            val descriptionText = getString(R.string.notification_service_description)
             val importance = NotificationManager.IMPORTANCE_LOW
             val channel = NotificationChannel(CHANNEL_ID, name, importance).apply {
                 description = descriptionText

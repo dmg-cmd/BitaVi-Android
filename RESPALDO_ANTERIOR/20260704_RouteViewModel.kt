@@ -38,6 +38,8 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+import android.location.Geocoder
+import kotlinx.coroutines.flow.combine
 sealed class AiAnalysisState {
     object Idle : AiAnalysisState()
     object Loading : AiAnalysisState()
@@ -90,6 +92,8 @@ class RouteViewModel(
     var updateIntervalSeconds by mutableStateOf(5f)
     var updateDistanceMeters by mutableStateOf(2f)
     var defaultLatitude by mutableStateOf(-34.6037)
+    var mapStrokeWidth by mutableStateOf(8f)
+        private set
     var defaultLongitude by mutableStateOf(-58.3816)
     var isAirplaneMode by mutableStateOf(false)
         private set
@@ -116,6 +120,7 @@ class RouteViewModel(
         defaultLatitude = prefsManager.getDefaultLatitude()
         defaultLongitude = prefsManager.getDefaultLongitude()
 
+        mapStrokeWidth = prefsManager.getStrokeWidth()
         @OptIn(FlowPreview::class)
         viewModelScope.launch(Dispatchers.IO) {
             _savedLocationColorUpdateFlow
@@ -175,6 +180,11 @@ class RouteViewModel(
 
     fun updateGroqApiKey(key: String) { groqApiKey = key }
 
+
+    fun updateStrokeWidth(w: Float) {
+        mapStrokeWidth = w
+        viewModelScope.launch(Dispatchers.IO) { prefsManager.setStrokeWidth(w) }
+    }
     fun esTourVisto(key: String): Boolean = prefsManager.isTourSeen(key)
     fun marcarTourVisto(key: String) { prefsManager.markTourSeen(key) }
 
@@ -281,6 +291,17 @@ class RouteViewModel(
 
     val allSavedLocations: StateFlow<List<SavedLocation>> = repository.allSavedLocations.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val allFavorites: StateFlow<List<SavedLocation>> = allSavedLocations
+    val groupedFavorites: StateFlow<Map<String, Map<String, List<SavedLocation>>>> = allSavedLocations.map { list ->
+        list.groupBy { loc ->
+            if (loc.country != "Desconocido") loc.country
+            else LocationParser.parseFromAddressString(loc.address).first
+        }.mapValues { entry ->
+            entry.value.groupBy { loc ->
+                if (loc.city != "Desconocida") loc.city
+                else LocationParser.parseFromAddressString(loc.address).second
+            }
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
 
     fun getFavoritesForRouteFlow(routeId: Int): Flow<List<SavedLocation>> = repository.getFavoritesForRouteFlow(routeId)
 
@@ -293,10 +314,17 @@ class RouteViewModel(
 
     fun saveSpecificLocation(name: String, address: String, latitude: Double, longitude: Double, comment: String = "", author: String = "", photoPath: String? = null, phoneNumber: String = "", email: String = "", isContact: Boolean = false, color: String = "#FFD700") {
         viewModelScope.launch(Dispatchers.IO) {
-            repository.addSavedLocation(name, address, latitude, longitude, comment, author, photoPath, phoneNumber, email, isContact, "Desconocido", "Desconocida", color)
+            val finalComment = if (photoPath != null) {
+                val datePart = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(Date())
+                val meta = "📸 Capturada el ${datePart}"
+                if (comment.isBlank()) meta else "${comment}\n\n${meta}"
+            } else comment
+            val details = geocoderUseCase.fetchLocationDetails(latitude, longitude)
+            val country = details.second.ifBlank { "Desconocido" }
+            val city = details.third.ifBlank { "Desconocida" }
+            repository.addSavedLocation(name, address, latitude, longitude, finalComment, author, photoPath, phoneNumber, email, isContact, country, city, color)
         }
     }
-
     fun updateSavedLocation(location: SavedLocation) { viewModelScope.launch(Dispatchers.IO) { repository.updateSavedLocation(location) } }
 
     fun deleteSavedLocation(savedLocation: SavedLocation) { viewModelScope.launch { repository.deleteSavedLocation(savedLocation) } }
@@ -308,7 +336,9 @@ class RouteViewModel(
     fun refreshLocationDetails(location: SavedLocation) {
         viewModelScope.launch(Dispatchers.IO) {
             val details = geocoderUseCase.fetchLocationDetails(location.latitude, location.longitude)
-            repository.updateSavedLocation(location.copy(address = details.first))
+            val country = details.second.ifBlank { "Desconocido" }
+            val city = details.third.ifBlank { "Desconocida" }
+            repository.updateSavedLocation(location.copy(address = details.first, country = country, city = city))
         }
     }
 

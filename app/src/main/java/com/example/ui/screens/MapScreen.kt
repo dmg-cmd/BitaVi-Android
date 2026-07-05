@@ -327,7 +327,7 @@ fun MapScreen(viewModel: RouteViewModel, modifier: Modifier = Modifier) {
                             Polyline().apply {
                                 setPoints(seg.points)
                                 outlinePaint.color = seg.color
-                                outlinePaint.strokeWidth = 5f
+                                outlinePaint.strokeWidth = viewModel.mapStrokeWidth
                             }.also {
                                 routePolylines.add(it)
                                 view.overlays.add(it)

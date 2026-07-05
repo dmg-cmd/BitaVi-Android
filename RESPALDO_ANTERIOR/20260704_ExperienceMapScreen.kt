@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import com.example.ui.SegmentoRuta
+import com.example.ui.toRouteSegments
 import android.app.Activity
 import android.content.Intent
 import android.graphics.Bitmap
@@ -215,11 +217,13 @@ fun ExperienceMapScreen(
                             overlays.removeIf { it is Marker || it is GuideLinesOverlay || it is Polyline }
 
                             if (sortedPoints.isNotEmpty()) {
-                                overlays.add(Polyline().apply {
-                                    setPoints(sortedPoints.map { GeoPoint(it.latitude, it.longitude) })
-                                    outlinePaint.color = android.graphics.Color.RED
-                                    outlinePaint.strokeWidth = 5f
-                                })
+                                sortedPoints.toRouteSegments().forEach { seg ->
+                                    overlays.add(Polyline().apply {
+                                        setPoints(seg.points)
+                                        outlinePaint.color = seg.color
+                                        outlinePaint.strokeWidth = 8f
+                                    })
+                                }
                             }
 
                             waypoints.forEach { wp ->
@@ -325,14 +329,6 @@ fun ExperienceMapScreen(
             }
         }
 
-        // DEBUG OVERLAY
-        Box(modifier = Modifier.fillMaxWidth().background(Color.Black.copy(alpha = 0.7f)).padding(4.dp), contentAlignment = Alignment.Center) {
-            Text(
-                text = "pts=${points.size} wp=${waypoints.size} fav=${linkedFavorites.size} fotos=${photoItems.size} load=${points.isEmpty() && linkedFavorites.isEmpty() && waypoints.isEmpty()}",
-                color = Color.Green,
-                fontSize = 10.sp
-            )
-        }
 
     FullScreenPhotoDialog(
         photoUri = photoToZoom,

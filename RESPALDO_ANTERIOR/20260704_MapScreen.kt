@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import com.example.ui.SegmentoRuta
+import com.example.ui.toRouteSegments
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
@@ -136,12 +138,7 @@ fun MapScreen(viewModel: RouteViewModel, modifier: Modifier = Modifier) {
     val markerIconCache = remember { mutableMapOf<String, android.graphics.drawable.Drawable>() }
     val waypointMarkers = remember { mutableMapOf<Int, Marker>() }
     val favoriteMarkers = remember { mutableMapOf<Int, Marker>() }
-    val routePolyline = remember { 
-        Polyline(mapView).apply {
-            outlinePaint.color = android.graphics.Color.RED
-            outlinePaint.strokeWidth = 5f
-        }
-    }
+    val routePolylines = remember { mutableListOf<Polyline>() }
     
     val personIcon = remember(isTracking) {
         ContextCompat.getDrawable(context, org.osmdroid.library.R.drawable.person)!!.mutate().apply {
@@ -322,32 +319,22 @@ fun MapScreen(viewModel: RouteViewModel, modifier: Modifier = Modifier) {
 
                     var needsInvalidate = false
 
-                    // 1. Optimización de Polyline (Ruta) - Actualización incremental (Hallazgo A11)
-                    val polyPoints = routePolyline.actualPoints
-                    if (routePoints.size != polyPoints.size) {
-                        if (routePoints.isEmpty()) {
-                            if (view.overlays.remove(routePolyline)) needsInvalidate = true
-                            routePolyline.setPoints(emptyList())
-                        } else {
-                            if (!view.overlays.contains(routePolyline)) {
-                                view.overlays.add(routePolyline)
+                    // 1. Polyline segmentada por modo de actividad (reconstrucción completa)
+                    routePolylines.forEach { view.overlays.remove(it) }
+                    routePolylines.clear()
+                    if (routePoints.isNotEmpty()) {
+                        routePoints.toRouteSegments().forEach { seg ->
+                            Polyline().apply {
+                                setPoints(seg.points)
+                                outlinePaint.color = seg.color
+                                outlinePaint.strokeWidth = 8f
+                            }.also {
+                                routePolylines.add(it)
+                                view.overlays.add(it)
                                 needsInvalidate = true
                             }
-                            
-                            // Añadimos solo los nuevos puntos si la lista creció (ya vienen ordenados del DAO)
-                            if (routePoints.size > polyPoints.size && polyPoints.isNotEmpty()) {
-                                for (i in polyPoints.size until routePoints.size) {
-                                    val p = routePoints[i]
-                                    routePolyline.addPoint(GeoPoint(p.latitude, p.longitude))
-                                }
-                            } else {
-                                // Reconstrucción total solo si es necesario, sin ordenación manual costosa
-                                routePolyline.setPoints(routePoints.map { GeoPoint(it.latitude, it.longitude) })
-                            }
-                            needsInvalidate = true
                         }
                     }
-
                     // 2. Optimización de Waypoints (Diffing selectivo)
                     val currentWpIds = waypoints.map { it.id }.toSet()
                     if (waypointMarkers.keys.retainAll { id ->

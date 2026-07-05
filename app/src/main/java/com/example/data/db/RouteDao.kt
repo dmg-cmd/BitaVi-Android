@@ -120,6 +120,9 @@ interface RouteDao {
     @Query("SELECT * FROM saved_locations")
     suspend fun getAllSavedLocations(): List<com.example.data.model.SavedLocation>
 
+
+    @Query("SELECT * FROM saved_locations WHERE id = :id")
+    fun getSavedLocationByIdFlow(id: Int): Flow<com.example.data.model.SavedLocation?>
     @Delete
     suspend fun deleteSavedLocation(location: com.example.data.model.SavedLocation)
 
