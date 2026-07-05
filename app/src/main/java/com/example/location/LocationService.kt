@@ -34,6 +34,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import java.util.concurrent.ConcurrentLinkedDeque
 import java.util.concurrent.TimeUnit
+import java.util.LinkedList
 
 enum class ActivityMode { STOPPED, WALKING, BIKING, DRIVING }
 
@@ -63,6 +64,7 @@ class LocationService : Service() {
     private var activeRouteId: Int = -1
     private var totalDistanceMeters: Double = 0.0
     private var lastValidLocation: Location? = null
+    private val locationWindow = LinkedList<Location>()
     private var lastStopLocation: Location? = null
 
     private var timerJob: Job? = null
@@ -151,6 +153,8 @@ class LocationService : Service() {
         private const val MIN_DISTANCE_DELTA = AppConstants.Location.MOVEMENT_TRIGGER_THRESHOLD_METERS
         private const val MAX_VALID_SPEED_MPS = AppConstants.Location.MAX_SPEED_METERS_PER_SECOND
         private const val MAX_GPS_ACCURACY = AppConstants.Location.MAX_GPS_ACCURACY_METERS
+        private const val TOLERANT_ACCURACY = AppConstants.Location.MAX_POCKET_ACCURACY_METERS
+        private const val MAX_ALLOWED_SPEED_MPS = 15.0 // ~54 km/h - límite físico para descartar saltos de antena
 
         // Activity Mode: tiempos de inercia
         private const val TIME_TO_UPGRADE = 10_000L   // 10s para subir de intensidad (inicio rápido)
@@ -407,6 +411,36 @@ class LocationService : Service() {
 
         // Marcar que el GPS sigue activo (antes de cualquier filtro)
         lastGpsUpdateTimeMillis = System.currentTimeMillis()
+        lastUserActivityTimeMillis = System.currentTimeMillis()
+
+        // Fase 1: Precisión mínima - descartar puntos con accuracy > 50m
+        if (location.accuracy > 50f) {
+            Log.d(TAG, "Fase 1: Punto descartado por baja precisión: ${location.accuracy}m")
+            return
+        }
+
+        // Fase 2: Ventana móvil de 5 puntos con filtro cinemático de velocidad
+        if (locationWindow.isNotEmpty()) {
+            val lastPoint = locationWindow.last()
+
+            val distanceMeters = lastPoint.distanceTo(location)
+            val timeDeltaSeconds = (location.time - lastPoint.time) / 1000.0
+
+            if (timeDeltaSeconds > 0) {
+                val calculatedSpeed = distanceMeters / timeDeltaSeconds
+                if (calculatedSpeed > MAX_ALLOWED_SPEED_MPS) {
+                    val msg = String.format("⚠️ Salto de antena detectado: %.2f m/s (%.2f km/h). Punto descartado.", calculatedSpeed, calculatedSpeed * 3.6)
+                    Log.w(TAG, msg)
+                    return
+                }
+            }
+        }
+
+        // Punto válido: agregar a la ventana deslizante de 5 posiciones
+        locationWindow.addLast(location)
+        if (locationWindow.size > 5) {
+            locationWindow.removeFirst()
+        }
 
         val isAutoModeActive = sharedPrefs.getBoolean("auto_mode", false)
         val isNearMeEnabled = sharedPrefs.getBoolean("near_me_enabled", false)
@@ -537,33 +571,38 @@ class LocationService : Service() {
                 val routeId = activeRouteId
                 if (routeId == -1) return@launch
 
-                if (!isLocationValid(location)) {
-                    Log.d(TAG, "Punto descartado por filtro de validación")
+                val accuracy = location.accuracy
+
+                // Capa A: Odómetro tolerante (hasta 50m para el bolsillo)
+                if (accuracy <= TOLERANT_ACCURACY) {
+                    val distanceStep = lastValidLocation?.distanceTo(location) ?: 0f
+                    lastValidLocation = location
+                    lastMovementTimeMillis = System.currentTimeMillis()
+
+                    if (distanceStep > 0) {
+                        totalDistanceMeters += distanceStep
+                        _currentDistanceMeters.value = totalDistanceMeters
+
+                        val currentRoute = repository.getRouteById(routeId)
+                        if (currentRoute != null) {
+                            repository.updateRoute(currentRoute.copy(distanceMeters = totalDistanceMeters))
+                        }
+                    }
+                } else {
+                    Log.d(TAG, "Punto descartado del odómetro por baja precisión: ${accuracy}")
                     return@launch
                 }
 
-                val distanceStep = lastValidLocation?.distanceTo(location) ?: 0f
-
-                lastValidLocation = location
-                lastMovementTimeMillis = System.currentTimeMillis()
-
-                if (distanceStep > 0) {
-                    totalDistanceMeters += distanceStep
-                    _currentDistanceMeters.value = totalDistanceMeters
-
-                    val currentRoute = repository.getRouteById(routeId)
-                    if (currentRoute != null) {
-                        repository.updateRoute(currentRoute.copy(distanceMeters = totalDistanceMeters))
-                    }
+                // Capa B: Guardado en DB solo con alta precisión (<=20m)
+                if (accuracy <= MAX_GPS_ACCURACY) {
+                    repository.addLocationPoint(
+                        routeId = routeId,
+                        latitude = location.latitude,
+                        longitude = location.longitude,
+                        altitude = location.altitude,
+                        speed = location.speed
+                    )
                 }
-
-                repository.addLocationPoint(
-                    routeId = routeId,
-                    latitude = location.latitude,
-                    longitude = location.longitude,
-                    altitude = location.altitude,
-                    speed = location.speed
-                )
 
                 updateNotification(routeId)
             } catch (e: Exception) {
@@ -768,7 +807,7 @@ class LocationService : Service() {
                     requestLocationUpdates(5000L, 2f)
                 }
 
-                delay(5000L) // Revisar cada 5 segundos
+                delay(1000L) // Revisar cada 1 segundo
             }
         }
     }

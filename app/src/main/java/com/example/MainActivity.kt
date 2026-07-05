@@ -276,6 +276,7 @@ class MainActivity : FragmentActivity() {
             // Usamos un alias personalizado único para evadir el alias corrupto del hardware
             val masterKey = MasterKey.Builder(this, AppConstants.Preferences.MASTER_KEY_ALIAS)
                 .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+                .setUserAuthenticationRequired(false)
                 .build()
 
             EncryptedSharedPreferences.create(
@@ -299,6 +300,7 @@ class MainActivity : FragmentActivity() {
             // Reintento final limpio
             val masterKey = MasterKey.Builder(this, AppConstants.Preferences.MASTER_KEY_ALIAS)
                 .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+                .setUserAuthenticationRequired(false)
                 .build()
 
             EncryptedSharedPreferences.create(
@@ -361,37 +363,19 @@ class MainActivity : FragmentActivity() {
             checkAndRequestBackgroundLocation()
         }
 
-        // --- CARGA SEGURA DE API KEY (HARDWARE BACKED) con blindaje de ciclo de vida ---
+        // --- CARGA DIRECTA DE API KEY desde EncryptedSharedPreferences ---
         lifecycleScope.launch {
             lifecycle.withStateAtLeast(Lifecycle.State.RESUMED) {
-                val encryptedKey = encryptedPrefs.getString(AppConstants.Preferences.GROQ_API_KEY_KEY, null)
                 val iv = encryptedPrefs.getString(AppConstants.Preferences.GROQ_API_KEY_IV_KEY, null)
-
-                if (encryptedKey != null && iv != null) {
-                    try {
-                        val rawIv = Base64.decode(iv, Base64.DEFAULT)
-                        val decryptCipher = try {
-                            BiometricCipherHelper.getDecryptCipher(rawIv)
-                        } catch (_: KeyPermanentlyInvalidatedException) {
-                            Toast.makeText(this@MainActivity, "Seguridad: llave del hardware renovada. Reingrese su API Key.", Toast.LENGTH_LONG).show()
-                            return@withStateAtLeast
-                        }
-                        authenticateWithCrypto(decryptCipher, "Inicio Seguro") { authorizedCipher ->
-                            val decryptedKey = BiometricCipherHelper.decryptText(authorizedCipher, encryptedKey!!)
-                            viewModel.updateGroqApiKey(decryptedKey)
-                            Toast.makeText(this@MainActivity, "IA y Aplicación Desbloqueadas", Toast.LENGTH_SHORT).show()
-                        }
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                        Toast.makeText(this@MainActivity, "Error de seguridad: ${e.message}", Toast.LENGTH_LONG).show()
-                    }
-                } else if (viewModel.isBiometricEnabled) {
-                    authenticateSimple(
-                        title = "Acceso Seguro",
-                        subtitle = getString(R.string.biometric_subtitle)
-                    ) {
-                        // Éxito: la app sigue su curso normal
-                    }
+                val apiKey = if (iv == null) {
+                    encryptedPrefs.getString(AppConstants.Preferences.GROQ_API_KEY_KEY, null)
+                } else {
+                    // Formato antiguo (cifrado biométrico): ignorar, forzar reingreso
+                    encryptedPrefs.edit { remove(AppConstants.Preferences.GROQ_API_KEY_KEY) }
+                    null
+                }
+                if (apiKey != null) {
+                    viewModel.updateGroqApiKey(apiKey)
                 }
             }
         }
@@ -451,7 +435,6 @@ fun MainContainer(viewModel: RouteViewModel, encryptedPrefs: SharedPreferences) 
     
     var tempKey by remember { mutableStateOf(viewModel.groqApiKey ?: "") }
     var keyVisible by remember { mutableStateOf(false) }
-    var isKeyUnlocked by remember { mutableStateOf(false) }
 
     // Estados para la ubicación predeterminada
     var tempLat by remember { mutableStateOf(viewModel.defaultLatitude.toString()) }
@@ -529,32 +512,8 @@ fun MainContainer(viewModel: RouteViewModel, encryptedPrefs: SharedPreferences) 
                     icon = { Icon(Icons.Default.VpnKey, null) },
                     onClick = { 
                         scope.launch { drawerState.close() }
-                        
-                        // Obtenemos los datos cifrados guardados
-                        val encryptedKey = encryptedPrefs.getString(AppConstants.Preferences.GROQ_API_KEY_KEY, null)
-                        val iv = encryptedPrefs.getString(AppConstants.Preferences.GROQ_API_KEY_IV_KEY, null)
-
-                        if (encryptedKey != null && iv != null) {
-                            try {
-                                val decryptCipher = BiometricCipherHelper.getDecryptCipher(Base64.decode(iv, Base64.DEFAULT))
-                                mainActivity.authenticateWithCrypto(decryptCipher, "Desbloquear API Key") { authorizedCipher ->
-                                    tempKey = BiometricCipherHelper.decryptText(authorizedCipher, encryptedKey)
-                                    isKeyUnlocked = true
-                                    showApiKeyDialog = true
-                                }
-                            } catch (_: Exception) {
-                                // Si la clave del Keystore fue invalidada (nuevas huellas) o error
-                                Toast.makeText(context, "Error de hardware seguro. Reintroduzca la clave.", Toast.LENGTH_LONG).show()
-                                tempKey = ""
-                                isKeyUnlocked = true
-                                showApiKeyDialog = true
-                            }
-                        } else {
-                            // No hay clave guardada aún con este método
-                            tempKey = ""
-                            isKeyUnlocked = true
-                            showApiKeyDialog = true
-                        }
+                        tempKey = viewModel.groqApiKey ?: ""
+                        showApiKeyDialog = true
                     }
                 )
                 
@@ -717,57 +676,20 @@ fun MainContainer(viewModel: RouteViewModel, encryptedPrefs: SharedPreferences) 
         if (showApiKeyDialog) {
             ApiKeyDialog(
                 apiKey = tempKey,
-                isKeyUnlocked = isKeyUnlocked,
                 keyVisible = keyVisible,
                 onApiKeyChange = { tempKey = it },
-                onUnlockClick = {
-                    val encryptedKey = encryptedPrefs.getString(AppConstants.Preferences.GROQ_API_KEY_KEY, null)
-                    val iv = encryptedPrefs.getString(AppConstants.Preferences.GROQ_API_KEY_IV_KEY, null)
-                    if (encryptedKey != null && iv != null) {
-                        try {
-                            val decryptCipher = BiometricCipherHelper.getDecryptCipher(Base64.decode(iv, Base64.DEFAULT))
-                            mainActivity.authenticateWithCrypto(decryptCipher, "Desbloquear API Key") { authorizedCipher ->
-                                tempKey = BiometricCipherHelper.decryptText(authorizedCipher, encryptedKey)
-                                isKeyUnlocked = true
-                            }
-                        } catch (_: Exception) {
-                            Toast.makeText(context, "Error de hardware seguro. Reintroduzca la clave.", Toast.LENGTH_LONG).show()
-                            tempKey = ""
-                            isKeyUnlocked = true
-                        }
-                    } else {
-                        tempKey = ""
-                        isKeyUnlocked = true
-                    }
-                },
                 onToggleVisibility = { keyVisible = !keyVisible },
                 onSaveClick = {
-                    try {
-                        val encryptCipher = try {
-                            BiometricCipherHelper.getEncryptCipher()
-                        } catch (_: KeyPermanentlyInvalidatedException) {
-                            BiometricCipherHelper.regenerateMasterKey()
-                            BiometricCipherHelper.getEncryptCipher()
-                        }
-                        mainActivity.authenticateWithCrypto(encryptCipher, "Cifrar API Key") { authorizedCipher ->
-                            val (iv, encrypted) = BiometricCipherHelper.encryptText(tempKey, authorizedCipher)
-                            encryptedPrefs.edit {
-                                putString(AppConstants.Preferences.GROQ_API_KEY_KEY, encrypted)
-                                putString(AppConstants.Preferences.GROQ_API_KEY_IV_KEY, iv)
-                            }
-                            viewModel.updateGroqApiKey(tempKey)
-                            showApiKeyDialog = false
-                            isKeyUnlocked = false
-                            Toast.makeText(context, "API Key guardada con éxito", Toast.LENGTH_SHORT).show()
-                        }
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                        Toast.makeText(context, "Error fatal del Keystore: ${e.message}", Toast.LENGTH_LONG).show()
+                    encryptedPrefs.edit {
+                        putString(AppConstants.Preferences.GROQ_API_KEY_KEY, tempKey)
+                        remove(AppConstants.Preferences.GROQ_API_KEY_IV_KEY)
                     }
+                    viewModel.updateGroqApiKey(tempKey)
+                    showApiKeyDialog = false
+                    Toast.makeText(context, "API Key guardada con éxito", Toast.LENGTH_SHORT).show()
                 },
                 onDismiss = {
                     showApiKeyDialog = false
-                    isKeyUnlocked = false
                     keyVisible = false
                 }
             )

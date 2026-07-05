@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
@@ -26,10 +25,8 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun ApiKeyDialog(
     apiKey: String,
-    isKeyUnlocked: Boolean,
     keyVisible: Boolean,
     onApiKeyChange: (String) -> Unit,
-    onUnlockClick: () -> Unit,
     onToggleVisibility: () -> Unit,
     onSaveClick: () -> Unit,
     onDismiss: () -> Unit
@@ -40,50 +37,30 @@ fun ApiKeyDialog(
         text = {
             Column {
                 Text(
-                    "La clave está protegida. Pulse el candado para desbloquear y editar.",
+                    "Ingrese o pegue su API Key de Groq. Se cifrará al guardar.",
                     style = MaterialTheme.typography.bodySmall
                 )
                 Spacer(Modifier.height(8.dp))
                 OutlinedTextField(
                     value = apiKey,
-                    onValueChange = { if (isKeyUnlocked) onApiKeyChange(it) },
+                    onValueChange = onApiKeyChange,
                     label = { Text("Groq API Key") },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
-                    enabled = isKeyUnlocked,
                     visualTransformation = if (keyVisible) VisualTransformation.None else PasswordVisualTransformation(),
                     trailingIcon = {
-                        IconButton(onClick = {
-                            if (isKeyUnlocked) {
-                                onToggleVisibility()
-                            } else {
-                                onUnlockClick()
-                            }
-                        }) {
+                        IconButton(onClick = onToggleVisibility) {
                             Icon(
-                                imageVector = if (!isKeyUnlocked) Icons.Default.Lock
-                                else if (keyVisible) Icons.Default.VisibilityOff
-                                else Icons.Default.Visibility,
-                                contentDescription = null
+                                imageVector = if (keyVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                contentDescription = if (keyVisible) "Ocultar clave" else "Mostrar clave"
                             )
                         }
                     }
                 )
-                if (!isKeyUnlocked) {
-                    Text(
-                        "🔒 Desbloquee con Biometría para ver o editar",
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.labelSmall,
-                        modifier = Modifier.padding(top = 4.dp)
-                    )
-                }
             }
         },
         confirmButton = {
-            Button(
-                enabled = isKeyUnlocked,
-                onClick = onSaveClick
-            ) { Text("Guardar") }
+            Button(onClick = onSaveClick) { Text("Guardar") }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("Cerrar") }

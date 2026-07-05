@@ -12,12 +12,10 @@ Al finalizar cada tarea o antes de cerrar la sesión, el agente DEBE:
 4. **Actualizar `Documentacion/SUGERENCIAS.md`**: Marcar tareas completadas.
 5. **Actualizar `Documentacion/SUGERENCIAS_COMPLETADAS.md`**: Mover las tareas finalizadas aquí.
 
-
-## Protocolo de Autorización
-- **Órden "implementa"**: Una vez autorizado el plan, la palabra "implementa" faculta a ejecutar **todo** sin pedir aprobación intermedia: respaldos, edición de código, actualización de documentación y deploy. No se requiere confirmación para añadir contenido a archivos de documentación existentes.
-
-- La autorización de un plan faculta a **modificar y crear** los archivos especificados en dicho plan.
+## Protocolo de Ejecución
+- Una vez que el usuario dice **"implementa"**, el agente ejecuta **todo** sin pedir aprobación intermedia: respaldos, edición de código, comandos shell (gradlew, adb, git, etc.), actualización de documentación y deploy.
 - **No está permitido borrar/eliminar archivos del proyecto** sin un permiso explícito y específico del usuario para esa eliminación en concreto.
+- Si el agente necesita presentar un plan antes de ejecutar, lo hace. Pero una vez autorizado con "implementa", no vuelve a preguntar hasta completar la tarea.
 
 ## Contexto de Desarrollo
 - Proyecto: Android (Kotlin + Compose + Room).
@@ -25,12 +23,7 @@ Al finalizar cada tarea o antes de cerrar la sesión, el agente DEBE:
 - Arquitectura: MVVM.
 - IA: Groq (Llama 3.3) para análisis de rutas.
 
-
-## Permiso para Shell Commands
-- **Ejecución supeditada a "implementa"**: El agente solo ejecutará comandos shell (bash, gradlew, adb, git, etc.) sin pedir aprobación explícita **una vez que el usuario haya pronunciado la orden "implementa"**. Mientras esté en modo plan, solo hará operaciones de lectura. Al recibir "implementa", podrá compilar, instalar (installDebug), ejecutar tests, operaciones de red, respaldos, edición de código y actualización de documentación sin preguntar.
 ## Pauta de Estilo
 - Ser conciso pero técnicamente preciso.
 - Siempre desplegar la app en el dispositivo (`deploy`) tras cambios significativos.
 - No borrar historial previo en los archivos de texto; siempre añadir al final o principio según el formato.
-
-

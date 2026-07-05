@@ -95,3 +95,14 @@
 ## 03/07/2026 — RouteAnalyticsScreen con telemetría temporal
 - **RouteAnalyticsScreen**: Nueva pantalla dedicada con Elevation y Speed charts sincronizados (mm:ss), RangeSlider, LimitLines y panel de análisis de tramo.
 - **DetailScreen simplificado**: Grid 2×2 de métricas + botón "Ver Gráficos de Rendimiento" que navega a la nueva pantalla.
+
+## 04/07/2026 — Rollback y Fusión Táctica (v4 + bottom=40dp)
+- **Problema diagnosticado**: La card inferior de FocusFavoriteScreen desaparecía al tocar el mapa porque el modo inmersivo del Pixel pone los insets a 0 y navigationBarsPadding() pierde efecto.
+- **Solución confirmada**: bottom=40dp fijo en lugar de navigationBarsPadding(). La card se mantiene visible pase lo que pase con los insets.
+- **Experimentos revertidos**:
+  - FLAG_LAYOUT_NO_LIMITS: Causaba parpadeo al redibujar el scrim en cada invalidate() del mapa.
+  - Attributos de transparencia en themes.xml (statusBarColor, navigationBarColor, windowTranslucentStatus): Causaban efectos secundarios globales en todas las pantallas con mapa.
+  - pointerInput + detectVerticalDragGestures: Innecesario (no hay scroll heredado).
+  - DisposableEffect/WindowManager: Innecesario, SideEffect simple es suficiente.
+- **Lección aprendida**: El modo inmersivo del Pixel es nativo e inevitable al tocar un MapView. Pelear contra él rompe el renderizado. La solución es adaptar el layout (bottom fijo) en lugar de force tear la transparencia.
+- **Rollback base**: Se restauró RESPALDO_ANTERIOR/20260704_FocusFavoriteScreen_v4.kt (20:53, 258 líneas, Box + GraphicsLayer + fitsSystemWindows=false). Único parche: bottom=40dp en la Card.

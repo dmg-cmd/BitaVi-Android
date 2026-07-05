@@ -4,10 +4,10 @@
 Localizador Pro es una herramienta avanzada de seguimiento GPS para Android, diseñada para usuarios que requieren precisión técnica, automatización inteligente y un diario multimedia de sus recorridos. Funciona de forma autónoma, sin depender de servicios en la nube para el almacenamiento de rutas.
 
 ### 5. Postal Táctica (Focus Favorite)
-- **Pantalla Inmersiva**: Al pulsar el icono CenterFocusStrong en un favorito del árbol, se abre una vista full-screen sin barra superior. El mapa ocupa el 100% de la pantalla con un pin central y una card translúcida flotante en la parte inferior con foto, nombre, coordenadas y fecha.
-- **Compartir como Postal**: El botón verde de compartir (esquina superior derecha) captura exclusivamente el contenedor del mapa + card (sin botones de UI) usando GraphicsLayer. Convierte la composición a PNG y la envía como imagen única a WhatsApp/Telegram mediante FileProvider.
-- **Navegación**: Botón circular translúcido (←) en la esquina superior izquierda para volver. Ambos botones flotan sobre el mapa sin interrumpir la vista inmersiva.
-
+### 5. Postal Táctica (Focus Favorite)
+- **Pantalla Inmersiva**: Al pulsar CenterFocusStrong, se abre vista full-screen Box raíz con drawWithContent + GraphicsLayer. Mapa 100% con pin central y card translúcida flotante abajo.
+- **Card con protección bottom=40dp**: La card inferior usa padding fijo de 40dp desde el borde inferior para resistir el modo inmersivo del Pixel (que oculta la status bar al tocar el mapa). NO usa navigationBarsPadding() porque los insets dinámicos se ponen a 0 en modo inmersivo.
+- **Compartir como Postal**: Botón verde captura el contenedor mapa+card via GraphicsLayer → toImageBitmap() → PNG → FileProvider → Intent ACTION_SEND image/png. Los botones de UI quedan fuera del capturable.
 ## Guía de Uso (Manual del Usuario)
 
 ### 1. Gestión de Rutas
@@ -24,7 +24,7 @@ Localizador Pro es una herramienta avanzada de seguimiento GPS para Android, dis
 - **Importar Contactos (Agenda):** (Novedad Fase 2) Puedes importar datos directamente de la agenda de tu teléfono. El botón de "Importar contacto" lee automáticamente el nombre, dirección, teléfono y correo electrónico para crear un favorito al instante.
 - **Modo Cerca de mí:** (Novedad Fase 3) Si activas este ajuste en el menú lateral, la app te notificará cuando estés a menos de 100 metros de una de tus estrellas guardadas.
 - **Compartir Trayecto con Mapa:** Envía un resumen visual a WhatsApp que incluye una captura de tu mapa de ruta y todas las fotos de los puntos marcados. Accesible desde el menú `⋮` en el detalle de la ruta.
-- **Inteligencia Anti-Error:** La app filtra automáticamente "saltos" de GPS mediante un sistema multicapa: descarta puntos con precisión >20m, velocidad >162 km/h, o demasiado próximos en tiempo y distancia. Solo arranca el modo automático si detectas un paso firme y continuo (>2.5 km/h) durante al menos 10 segundos, eliminando falsos positivos por ruido GPS.
+- **Inteligencia Anti-Error:** La app filtra automáticamente saltos de GPS mediante un sistema multicapa de 3 niveles: (1) **Fase 1 — Precisión**: descarta puntos con accuracy >50m al instante; (2) **Fase 2 — Inercia**: ventana móvil de 5 posiciones que calcula velocidad cinemática entre el último punto válido y el nuevo; si supera 15 m/s (~54 km/h, límite físico de carrera), el punto se descarta como salto de antena con registro en Log.w; (3) **Fase 3 — Precisión fina**: accuracy >20m para DB y velocidad >45 m/s como respaldo. Solo arranca el modo automático si detectas un paso firme y continuo (>2.5 km/h) durante al menos 10 segundos, eliminando falsos positivos por ruido GPS.
 - **GPS en Fotos:** Al elegir una foto de la galería, la app puede detectar su ubicación original (GPS EXIF) y ofrecerte guardar el favorito allí.
 - **Contactos:** Marca la casilla "Es un Contacto" para vincular una dirección con un teléfono y email.
 
@@ -77,3 +77,8 @@ avigationBarsPadding(): colchón dinámico que empuja la barra por encima de la 
 - **Panel de análisis**: Al seleccionar un tramo muestra Vel. Promedio, Desnivel acumulado, Ritmo (min/km) y Modo predominante (Detenido/Caminata/Ciclismo/Automóvil).
 - **Acceso**: Botón "Ver Gráficos de Rendimiento" en el detalle de la ruta.
 - **Eliminación de mapa en DetailScreen**: Las estadísticas ahora son grid 2×2 (Distancia, Tiempo en Movimiento, Vel. Promedio, Ritmo) sin mapa para carga más rápida.
+
+## Pixel 9 Pro XL — Modo Inmersivo Nativo (04/07/2026)
+- La barra de estado (hora/batería) se oculta automáticamente al tocar el mapa y reaparece al soltar. Es comportamiento estándar del SO, no un bug.
+- Pelear contra esto con FLAG_LAYOUT_NO_LIMITS o android:statusBarColor en themes.xml causa parpadeos y efectos secundarios en toda la app.
+- La solución estable es: themes.xml limpio, enableEdgeToEdge() en MainActivity, y bottom=40dp fijo en la Card en lugar de depender de insets dinámicos.

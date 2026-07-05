@@ -6,6 +6,7 @@ object AppConstants {
 
     object Location {
         const val MAX_GPS_ACCURACY_METERS = 20.0f
+        const val MAX_POCKET_ACCURACY_METERS = 50f
         const val MAX_SPEED_METERS_PER_SECOND = 45.0f
         const val MIN_TIME_DELTA_MILLIS = 3000L
         const val MIN_DISTANCE_THRESHOLD_METERS = 5.0f
@@ -14,7 +15,7 @@ object AppConstants {
         const val AUTO_START_MIN_SPEED_KMH = 2.5f
         const val AUTO_START_SUSTAINED_MS = 10000L
         const val STOP_SPEED_THRESHOLD_KMH = 2.5f
-        const val AUTO_STOP_SPEED_MPS = 0.5f
+        const val AUTO_STOP_SPEED_MPS = 0.3f
         val INACTIVITY_THRESHOLD_MILLIS = TimeUnit.MINUTES.toMillis(5)
     }
 

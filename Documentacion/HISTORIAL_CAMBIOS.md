@@ -1,3 +1,15 @@
+[05/07/2026 - Fase 2 GPS: Ventana Móvil de 5 Puntos + Filtro Cinemático 15 m/s]
+- **Problema**: Las antenas de telefonía pueden entregar coordenadas con saltos absurdos (>100 m/s) que contaminan el odómetro y la base de datos. El filtro existente (MAX_VALID_SPEED_MPS = 45 m/s) era demasiado permisivo y no se aplicaba como pre-filtro de entrada.
+- **Solución — Pre-filtro de doble capa al inicio de processNewLocation()**:
+  - **Fase 1 (Precisión)**: if (location.accuracy > 50f) return — descarta puntos con precisión degradada antes de cualquier procesamiento.
+  - **Fase 2 (Inercia/Velocidad)**: LinkedList<Location> locationWindow como cola fija de 5 posiciones. Velocidad calculada entre locationWindow.last() y el nuevo punto. Si supera MAX_ALLOWED_SPEED_MPS = 15.0 (~54 km/h), se registra un Log.w de advertencia y el punto se descarta por completo.
+  - **Ventana deslizante**: Solo los puntos que pasan ambos filtros se agregan a la ventana. Si excede 5 elementos, se poda el más antiguo (removeFirst())
+- **Arquitectura**: El bloque se inyectó como pre-filtro en la línea 416 de processNewLocation(), ANTES de cualquier lógica pesada (ActivityMode, ShortStop, BLE, Auto-mode, odómetro, DB). Esto asegura que solo "carne premium" llegue al resto del pipeline.
+- **Constante nueva**: MAX_ALLOWED_SPEED_MPS = 15.0 en companion object (equivale a ~54 km/h, límite físico de corrida/caminata).
+- **Estructura nueva**: locationWindow: LinkedList<Location>() como campo privado de la clase.
+- **Respaldos**: RESPALDO_ANTERIOR/20260705_LocationService.kt.
+- **Compilación**: BUILD SUCCESSFUL + installDebug en Pixel 9 Pro XL.
+
 [04/07/2026 - Pantalla Inmersiva Focus Favorite + Postal Táctica]
 - **FocusFavoriteScreen.kt**: Reestructuración completa. Se eliminó Scaffold/TopAppBar y se reemplazó por jerarquía Box raíz con dos Box anidados: (1) contenedor capturable con drawWithContent + GraphicsLayer.record que renderiza mapa osmdroid + card translúcida, y (2) botones flotantes (Volver/Compartir) como hijos directos del Box raíz, fuera del recorte de captura.
 - **Postal Táctica**: El botón Compartir ahora captura el contenedor vía graphicsLayer.toImageBitmap() → asAndroidBitmap(), guarda PNG en cacheDir/shared_posts/ y despacha Intent.ACTION_SEND con type=image/png vía FileProvider. La imagen resultante NO incluye botones de UI ni barras del sistema.
@@ -5,7 +17,35 @@
 - **Backup**: RESPALDO_ANTERIOR/20260704_FocusFavoriteScreen.kt.
 - **Compilación**: BUILD SUCCESSFUL, deploy exitoso en Pixel 9 Pro XL.
 
-[04/07/2026 - Transparencia Absoluta con FLAG_LAYOUT_NO_LIMITS]
+[REVERTIDO] [04/07/2026 - Arquitectura Opus: Transparencia nativa desde themes.xml + insets correctos]
+
+[04/07/2026 - Rollback y Fusión: v3 (20:15) + bottom=40dp]
+- **Rollback completo**: Se deshicieron todos los experimentos del día (FLAG_LAYOUT_NO_LIMITS, arquitectura Opus, diagnósticos rojo/verde).
+- **Fusión táctica**: FocusFavoriteScreen.kt restaurado desde RESPALDO_ANTERIOR/20260704_FocusFavoriteScreen_v3.kt (20:15) — arquitectura Box raíz con GraphicsLayer + watermark elegante + captura PNG.
+- **Único parche aplicado**: .padding(16.dp) → .padding(start=16.dp, end=16.dp, bottom=40.dp) en la Card para evitar que el modo inmersivo del Pixel la empuje fuera del viewport.
+- **themes.xml**: Mantenido en su estado original (sin atributos de transparencia). enableEdgeToEdge() en MainActivity es suficiente.
+- **Lecciones aprendidas**: navigationBarsPadding() depende de insets dinámicos que Android pone a 0 en modo inmersivo. bottom=40.dp fijo es más robusto. Los experimentos con FLAG_LAYOUT_NO_LIMITS y atributos de transparencia global en themes.xml causaron efectos secundarios en toda la app.
+- **Entradas [REVERTIDO]**: 2 entradas del historial marcadas.
+- **Compilación**: clean + installDebug — BUILD SUCCESSFUL.
+- **themes.xml**: Se agregaron 4 atributos de transparencia al tema raíz Theme.MyApplication:
+  - android:statusBarColor = @android:color/transparent
+  - android:navigationBarColor = @android:color/transparent
+  - android:windowTranslucentStatus = false
+  - android:windowTranslucentNavigation = false
+- **FocusFavoriteScreen.kt**: Reestructuración completa siguiendo la arquitectura Opus:
+  - Eliminado FLAG_LAYOUT_NO_LIMITS (causaba parpadeo al redibujar scrim en cada invalidate del mapa).
+  - Eliminados imports: android.view.WindowManager, androidx.compose.runtime.DisposableEffect.
+  - Bloque de ventana reducido a SideEffect con solo isAppearanceLightStatusBars = false + decorView.setBackgroundColor(BLACK).
+  - Mapa envuelto en Box(fillMaxSize) con setOnTouchListener que llama a requestDisallowInterceptTouchEvent(true) para evitar que osmdroid propague relayout de insets al sistema.
+  - Card utiliza .navigationBarsPadding() (en lugar de bottom=32.dp) para respetar la barra de gestos inferior.
+  - Botones flotantes (back, share) utilizan .statusBarsPadding() en lugar de top=40.dp manual.
+  - Watermark restaurado a su versión elegante: context.getString(R.string.app_name).lowercase(), alpha=0.5f, FontWeight.Light, letterSpacing=2.sp.
+  - Agregados imports: navigationBarsPadding, statusBarsPadding.
+- **Resultado**: El mapa fluye 100% de borde a borde sin parpadeos. Los elementos de UI respetan insets del sistema. La transparencia nace del tema (no del WindowManager runtime).
+- **Respaldos**: RESPALDO_ANTERIOR/20260704_FocusFavoriteScreen_v5.kt, RESPALDO_ANTERIOR/20260704_themes.xml.
+- **Compilación**: BUILD SUCCESSFUL + installDebug en Pixel 9 Pro XL.
+
+[REVERTIDO] [04/07/2026 - Transparencia Absoluta con FLAG_LAYOUT_NO_LIMITS]
 - **FocusFavoriteScreen.kt**: Se reemplazó el bloque SideEffect (window.statusBarColor = TRANSPARENT) por DisposableEffect(Unit) con FLAG_LAYOUT_NO_LIMITS + onDispose limpia.
   - window.setFlags(FLAG_LAYOUT_NO_LIMITS, FLAG_LAYOUT_NO_LIMITS) ignora todos los insets del sistema (status bar + nav bar), forzando transparencia real en el Pixel 9 Pro XL sin parpadeos.
   - onDispose { window.clearFlags(FLAG_LAYOUT_NO_LIMITS) } restaura el estado al salir de la pantalla, evitando roturas de layout en el resto de la app (teclado, nav bar).
@@ -235,3 +275,14 @@ outeAnalytics() + a uxiliaryRoutes.
 - **DetailScreen.kt**: Eliminado mapa, gráficos antiguos y estadísticas reemplazadas por grid 2×2 + botón "Ver Gráficos de Rendimiento".
 - **Correcciones compilación Kotlin 2.0.0**: sliderRange.end → endInclusive, RangeSlider values → value, emojis hex literal \U → carácter Unicode real.
 - **Estado**: BUILD SUCCESSFUL + deploy en Pixel 9 Pro XL.
+
+[05/07/2026 - Fase 1: Doble Capa de Precisión Ignición Bolsillo]
+- **Problema diagnosticado**: Cuando el Pixel 9 Pro XL está en el bolsillo, la precisión GPS degrada a 25-50m. El filtro isLocationValid() (accuracy ≤ 20m) descartaba TODOS los puntos para el odómetro, aunque la flecha del mapa se movía (vía _latestLocation + MyLocationNewOverlay independiente de osmdroid).
+- **Solución implementada — Doble Capa de Precisión**:
+  - **Capa A (Odómetro)**: Nueva constante TOLERANT_ACCURACY = 50f (MAX_POCKET_ACCURACY_METERS en AppConstants). La distancia suma con precisión de hasta 50m, tolerando el bolsillo.
+  - **Capa B (Base de Datos)**: Se mantiene el filtro estricto MAX_GPS_ACCURACY = 20f. Solo los puntos de alta precisión se guardan en la DB, preservando líneas limpias en el mapa final.
+- **Cambio 2 — Sensibilidad de movimiento**: AUTO_STOP_SPEED_MPS bajado de 0.5f a 0.3f (~1 km/h) en AppConstants.kt para que el tracking no se detenga al caminar lento en el bolsillo.
+- **Cambio 3 — Anti Auto-Stop**: lastUserActivityTimeMillis ahora se actualiza en cada tick del GPS (LocationService.kt:411), no solo con ACTION_SCREEN_ON. El auto-stop por inactividad de 5 min no se dispara mientras el teléfono se mueve aunque esté en el bolsillo.
+- **Cambio 4 — Timer reactivo**: delay(5000L) → delay(1000L) en el timer de tracking. El contador de tiempo ahora se siente instantáneo al sacar el celular.
+- **Archivos modificados**: AppConstants.kt, LocationService.kt.
+- **Respaldos**: RESPALDO_ANTERIOR/20260705_AppConstants.kt, 20260705_LocationService.kt.
