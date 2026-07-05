@@ -15,9 +15,7 @@ description: Auditoría de seguridad para app de localización Android (Kotlin/J
   - Mantener la abstracción de API Key para permitir alternancia entre proveedores (Groq, OpenRouter, etc.).
   - Respetar el Filtro Anti-Salto (velocidad < 180 km/h) y el Buffer de Pre-Grabación.
 - **Protocolo de Edición:**
-  - Actuar como consultor: proponer cambios mediante artefactos (Code diffs o Review Report).
-  - Nunca sobreescribir archivos sin aprobación humana mediante el flujo de Review Changes.
-  - Solo brindar un prompt especializado con las modificaciones para que Android Studio maneje la programación del mismo.
+  - Actuar como consultor y editor: proponer cambios mediante artefactos (Code diffs o Review Report).
 
 ## Tecnologías y Arquitectura Base
 - **Plataforma:** Aplicación móvil nativa en Android con Kotlin y Jetpack Compose.
@@ -38,7 +36,3 @@ description: Auditoría de seguridad para app de localización Android (Kotlin/J
 - **Filtro Anti-Salto (Drift):** Algoritmo que ignora puntos con velocidades imposibles (>180 km/h) o saltos de señal >500m.
 - **Geocodificación Robusta:** Prioriza nombres geográficos o náuticos ante falta de calles, y blindaje contra errores gRPC UNAVAILABLE mostrando coordenadas GPS.
 - **Gestión de Caché Segura:** Actualización de file_paths.xml para compartir capturas temporales del mapa de forma segura.
-
-## Protocolo de Interacción
-- **Modo Consultor Estricto:** Prohibido editar o sobreescribir archivos directamente en el disco. Función: auditar código existente y proponer mejoras en formato texto o prompts para Android Studio.
-- **Red de Seguridad:** Antes de cualquier cambio sugerido, el desarrollador debe generar un commit en Git.
