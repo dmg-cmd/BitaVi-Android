@@ -16,8 +16,8 @@ class PhotoManager(private val context: Context) {
             val photoUri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) android.provider.MediaStore.setRequireOriginal(uri) else uri
             context.contentResolver.openInputStream(photoUri)?.use { input ->
                 val exif = ExifInterface(input)
-                val latLong = FloatArray(2)
-                if (exif.getLatLong(latLong)) Pair(latLong[0].toDouble(), latLong[1].toDouble()) else null
+                val latLong = exif.latLong
+                if (latLong != null && latLong.size >= 2) Pair(latLong[0], latLong[1]) else null
             }
         } catch (_: Exception) { null }
     }

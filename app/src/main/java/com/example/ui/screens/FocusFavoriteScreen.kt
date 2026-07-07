@@ -54,6 +54,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.FileProvider
+import androidx.core.content.ContextCompat
 import coil.compose.AsyncImage
 import com.example.ui.RouteViewModel
 import com.example.ui.components.FullScreenPhotoDialog
@@ -111,7 +112,7 @@ fun FocusFavoriteScreen(
                                 position = GeoPoint(fav.latitude, fav.longitude)
                                 title = fav.name
                                 setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
-                                icon = context.getDrawable(android.R.drawable.btn_star_big_on)
+                                icon = ContextCompat.getDrawable(context, android.R.drawable.btn_star_big_on)
                             })
                         }
                     },
@@ -149,7 +150,7 @@ fun FocusFavoriteScreen(
 
                             Column(modifier = Modifier.padding(16.dp)) {
                                 Text(
-                                    text = stringResource(id = R.string.app_name).lowercase(),
+                                    text = stringResource(id = R.string.app_name).lowercase(Locale.ROOT),
                                     style = MaterialTheme.typography.labelSmall,
                                     color = Color.White.copy(alpha = 0.4f),
                                     fontWeight = FontWeight.Light,

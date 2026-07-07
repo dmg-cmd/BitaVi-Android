@@ -14,6 +14,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
 import androidx.compose.material.icons.automirrored.filled.DirectionsBike
+import androidx.compose.material.icons.automirrored.filled.TrendingUp
+import androidx.compose.material.icons.automirrored.filled.ShowChart
+import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -42,6 +47,8 @@ import com.github.mikephil.charting.data.LineDataSet
 import com.github.mikephil.charting.components.XAxis
 import android.graphics.Color as AndroidColor
 import java.util.concurrent.TimeUnit
+import androidx.core.graphics.toColorInt
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -91,16 +98,16 @@ fun DetailScreen(
                     val paceMinPerKm = if (avgSpeedKmh > 0) 60.0 / avgSpeedKmh else 0.0
 
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                        DetailStatItem(Icons.Default.TrendingUp, "Distancia", String.format("%.2f km", km), MaterialTheme.colorScheme.primary)
+                        DetailStatItem(Icons.AutoMirrored.Filled.TrendingUp, "Distancia", String.format(Locale.US, "%.2f km", km), MaterialTheme.colorScheme.primary)
                         DetailStatItem(Icons.Default.Schedule, "Tiempo", formatMovingTime(movingMs), MaterialTheme.colorScheme.secondary)
                     }
                     Spacer(Modifier.height(12.dp))
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                        DetailStatItem(Icons.Default.Speed, "Vel. Prom", String.format("%.1f km/h", avgSpeedKmh), MaterialTheme.colorScheme.tertiary)
+                        DetailStatItem(Icons.Default.Speed, "Vel. Prom", String.format(Locale.US, "%.1f km/h", avgSpeedKmh), MaterialTheme.colorScheme.tertiary)
                         val paceStr = if (paceMinPerKm > 0) {
                             val pMin = paceMinPerKm.toInt()
                             val pSec = ((paceMinPerKm - pMin) * 60).toInt()
-                            String.format("%d:%02d min/km", pMin, pSec)
+                            String.format(Locale.US, "%d:%02d min/km", pMin, pSec)
                         } else "—"
                         DetailStatItem(Icons.Default.Timer, "Ritmo", paceStr, MaterialTheme.colorScheme.error)
                     }
@@ -271,7 +278,7 @@ fun DetailScreen(
                     .height(52.dp),
                 shape = RoundedCornerShape(14.dp)
             ) {
-                Icon(Icons.Default.ShowChart, null, modifier = Modifier.size(20.dp))
+                Icon(Icons.AutoMirrored.Filled.ShowChart, null, modifier = Modifier.size(20.dp))
                 Spacer(Modifier.width(8.dp))
                 Text("Ver Gráficos de Rendimiento", fontWeight = FontWeight.SemiBold)
             }
@@ -321,7 +328,7 @@ fun DetailScreen(
                                     Icon(
                                         IconCategory.fromKey(fav.iconCategory).icon,
                                         null,
-                                        tint = Color(android.graphics.Color.parseColor(fav.color)),
+                                        tint = Color(fav.color.toColorInt()),
                                         modifier = Modifier.size(24.dp)
                                     )
                                 },
@@ -393,7 +400,7 @@ fun DetailScreen(
                     HelpItem(Icons.Default.Explore, "Mapa de Experiencia", "Visualiza el recorrido completo con altimetría y velocidad en 3D/interactivo.")
                     HelpItem(Icons.Default.BookmarkBorder, "Vincular Favoritos", "Guarda esta ruta en tu lista de ubicaciones preferidas.")
                     HelpItem(Icons.Default.Edit, "Editar nombre", "Cambia el nombre de la ruta.")
-                    HelpItem(Icons.Default.Send, "Compartir", "Genera un ZIP con telemetría GPX+CSV y fotos para compartir por mensajería.")
+                    HelpItem(Icons.AutoMirrored.Filled.Send, "Compartir", "Genera un ZIP con telemetría GPX+CSV y fotos para compartir por mensajería.")
                     HelpItem(Icons.Default.Archive, "Exportar", "Convierte tus datos a formatos estándar (GPX para otras apps, CSV para Excel, ZIP para respaldos completos).")
                     HelpItem(Icons.Default.Delete, "Eliminar ruta", "Borra permanentemente la ruta y todos sus datos asociados.")
                 }
@@ -500,15 +507,15 @@ private fun formatMovingTime(ms: Long): String {
     val h = TimeUnit.MILLISECONDS.toHours(ms)
     val m = TimeUnit.MILLISECONDS.toMinutes(ms) % 60
     val s = TimeUnit.MILLISECONDS.toSeconds(ms) % 60
-    return if (h > 0) String.format("%d:%02d:%02d h", h, m, s)
-    else String.format("%02d:%02d min", m, s)
+    return if (h > 0) String.format(Locale.US, "%d:%02d:%02d h", h, m, s)
+    else String.format(Locale.US, "%02d:%02d min", m, s)
 }
 
 private fun formatDuration(ms: Long): String {
     val h = TimeUnit.MILLISECONDS.toHours(ms)
     val m = TimeUnit.MILLISECONDS.toMinutes(ms) % 60
     val s = TimeUnit.MILLISECONDS.toSeconds(ms) % 60
-    return String.format("%02d:%02d:%02d", h, m, s)
+    return String.format(Locale.US, "%02d:%02d:%02d", h, m, s)
 }
 
 @Composable
@@ -534,11 +541,11 @@ fun RouteOptionsMenu(
             DropdownMenuItem(
                 text = { Text("Compartir ruta") },
                 onClick = { expanded = false; onShare() },
-                leadingIcon = { Icon(Icons.Default.Send, null) }
+                leadingIcon = { Icon(Icons.AutoMirrored.Filled.Send, null) }
             )
             DropdownMenuItem(
                 text = { Text("Exportar") },
-                trailingIcon = { Icon(Icons.Default.KeyboardArrowRight, null) },
+                trailingIcon = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null) },
                 onClick = { exportExpanded = true }
             )
             DropdownMenu(
@@ -564,7 +571,7 @@ fun RouteOptionsMenu(
             DropdownMenuItem(
                 text = { Text("Ayuda de la pantalla") },
                 onClick = { expanded = false; onHelp() },
-                leadingIcon = { Icon(Icons.Default.HelpOutline, null) }
+                leadingIcon = { Icon(Icons.AutoMirrored.Filled.HelpOutline, null) }
             )
             HorizontalDivider()
             DropdownMenuItem(

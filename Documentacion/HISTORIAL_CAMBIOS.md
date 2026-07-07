@@ -1,3 +1,50 @@
+[07/07/2026 - Bloque B: Guarda de Contingencia 3min + Bloque C: Dashboard MD3]
+- **StationaryAnchorManager.kt**: Nueva función shouldForceStop() que monitorea accuracy >25m por 3 minutos continuos. Al dispararse, retorna true para forzar parada automática vía stopTrackingWithAutoRestart(). Preserva processAnchor() intacto.
+- **LocationService.kt**: Inyección de la guarda en processNewLocation() línea 465, justo después de stationaryAnchorManager.processAnchor(). Si shouldForceStop() retorna true, corta el pipeline con return temprano.
+- **MapScreen.kt**: Reemplazo del Surface de telemetría por Card MD3 con:
+  - Barra de acento lateral izquierda según modo (ámbar/verde/azul/rojo)
+  - Icono 28dp + label español 18sp bold ("Detenido", "Caminando", "En Bicicleta", "En Vehículo") coloreado por modo
+  - Velocidad a la derecha en blanco 15sp
+  - Stats secundarias (distancia + timer en tracking)
+  - Telemetría fina (LAT/LON/ALT) en gris 9sp
+- **RouteSegmenter.kt**: Sincronización de paleta: DRIVING rgb(244,67,54) → rgb(255,82,82) (#FF5252), STOPPED rgb(255,235,59) → rgb(255,214,0) (#FFD600). toSegmentColor() y toSolidColor() actualizados.
+- **Respaldos**: RESPALDO_ANTERIOR/20260707_1341_StationaryAnchorManager.kt, 20260707_1341_LocationService.kt, 20260707_1341_MapScreen.kt, 20260707_1341_RouteSegmenter.kt.
+- **Compilación**: BUILD SUCCESSFUL (1 warning preexistente). Deploy no disponible (sin dispositivo conectado).
+[07/07/2026 - Saneamiento Final UI: SavedLocationsScreen + DetailScreen + IconCategory]
+- **SavedLocationsScreen.kt**: 8 parches: Color.parseColor → toColorInt() (4 pts), Locale.US en String.format (3 pts), imports KTX+Locale.
+- **DetailScreen.kt**: 7 parches: Color.parseColor → toColorInt() (1 pt), Locale.US en String.format (5 pts), imports KTX+Locale.
+  - Nota: 6 iconos (TrendingUp, ShowChart, Send x2, KeyboardArrowRight, HelpOutline) presentan deprecación a AutoMirrored pero los equivalentes no están disponibles en la versión actual de la librería Material Icons. Pendiente de resolución con upgrade de dependencias.
+- **IconCategory.kt**: Refactor completo: values() → entries, createBitmap KTX, toBitmap como método de instancia, acentos en labels.
+- **RouteViewModel.kt**: Auditado — 0 cambios (arquitectura limpia, delegación a UseCases).
+- **Respaldos**: RESPALDO_ANTERIOR/20260707_SavedLocationsScreen.kt, 20260707_DetailScreen.kt, 20260707_IconCategory.kt.
+- **Compilación**: BUILD SUCCESSFUL.
+[07/07/2026 - Saneamiento de IconCategory.kt + MapScreen.kt (infraestructura)]
+- **IconCategory.kt**: Refactor completo del diccionario visual:
+  - values() → entries (asignación cíclica de arreglos erradicada, Kotlin 1.9+).
+  - toBitmap() migrado de companion object estático a método de instancia (diseño OOP idiomático).
+  - Bitmap.createBitmap(size, size, Config.ARGB_8888) → createBitmap(size, size) KTX.
+  - Etiquetas corregidas: "Gastronomía", "Vehículo", "Automática".
+- **MapScreen.kt línea 440**: Llamada actualizada a la nueva firma: IconCategory.fromKey().toBitmap(40, color).
+- **RouteViewModel.kt**: Auditado — 0 cambios necesarios (arquitectura limpia).
+- **Respaldos**: RESPALDO_ANTERIOR/20260707_IconCategory.kt.
+- **Compilación**: BUILD SUCCESSFUL en 22s, 0 warnings.
+[07/07/2026 - Saneamiento de Deuda Técnica: MapScreen + FocusFavorite + LocationService]
+- **MapScreen.kt** (1037 líneas): Sanación completa de 8 categorías de warnings:
+  - Eliminación de variables muertas (waypointName, locationName, isManualMode).
+  - Migración a KTX: createBitmap(size, size), String.toColorInt(), Bitmap.toDrawable().
+  - Corrección de accesibilidad: v.performClick() en setOnTouchListener.
+  - API osmdroid moderna: getPoints() → actualPoints.
+  - Eliminación de bloques if vacíos en retainAll (waypointMarkers, favoriteMarkers).
+  - Resource hoisting: context.resources elevado fuera del forEach de favoritos.
+  - Internacionalización: Locale.getDefault() en String.format de telemetría visible; Locale.US en formatos de color.
+  - Color.parseColor() → toColorInt() en todos los selectores de color.
+- **FocusFavoriteScreen.kt** (245 líneas): 2 parches de internacionalización:
+  - Migración de getDrawable() deprecado a ContextCompat.getDrawable().
+  - lowercase() → lowercase(Locale.ROOT) para inmunidad contra el problema de la "I turca".
+- **LocationService.kt** (1073 líneas): 4 correcciones de Locale en String.format:
+  - Locale.US en logs de telemetría (línea 450), coordenadas para metadata (512), distancia en notificación (790).
+  - Locale.getDefault() en formato de tiempo visible al usuario (1039).
+- **Respaldos**: RESPALDO_ANTERIOR/20260707_MapScreen.kt, 20260707_FocusFavoriteScreen.kt, 20260707_LocationService.kt.
 [05/07/2026 - Fase 2 GPS: Ventana Móvil de 5 Puntos + Filtro Cinemático 15 m/s]
 - **Problema**: Las antenas de telefonía pueden entregar coordenadas con saltos absurdos (>100 m/s) que contaminan el odómetro y la base de datos. El filtro existente (MAX_VALID_SPEED_MPS = 45 m/s) era demasiado permisivo y no se aplicaba como pre-filtro de entrada.
 - **Solución — Pre-filtro de doble capa al inicio de processNewLocation()**:
@@ -357,3 +404,8 @@ outeAnalytics() + a uxiliaryRoutes.
 - **DetailScreen.kt**: Icono en lista de favoritos vinculados usa IconCategory.fromKey(fav.iconCategory).icon en lugar de Icons.Default.Star estático.
 - **Backups**: RESPALDO_ANTERIOR/20250707_*.kt para AppDatabase, IconCategory, MapScreen, SavedLocationsScreen, DetailScreen, RouteViewModel, RouteRepository.
 - **Compilación**: BUILD SUCCESSFUL (0 errores). **Deploy**: installDebug exitoso en Pixel 9 Pro XL.
+
+
+
+
+

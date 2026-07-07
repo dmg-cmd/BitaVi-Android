@@ -37,6 +37,7 @@ import kotlinx.coroutines.flow.first
 import java.util.concurrent.ConcurrentLinkedDeque
 import java.util.concurrent.TimeUnit
 import java.util.LinkedList
+import java.util.Locale
 
 enum class ActivityMode { STOPPED, WALKING, BIKING, DRIVING }
 
@@ -83,10 +84,13 @@ class LocationService : Service() {
     private fun handlePreRecording(newLocation: Location) {
         preRecordingBuffer.addLast(newLocation)
         val newestTime = preRecordingBuffer.peekLast()?.time ?: return
-        while (!preRecordingBuffer.isEmpty() &&
-            (newestTime - preRecordingBuffer.peekFirst().time) > AppConstants.Location.PRE_RECORDING_BUFFER_DURATION_MILLIS
-        ) {
-            preRecordingBuffer.removeFirst()
+        while (true) {
+            val firstPoint = preRecordingBuffer.peekFirst() ?: break
+            if ((newestTime - firstPoint.time) > AppConstants.Location.PRE_RECORDING_BUFFER_DURATION_MILLIS) {
+                preRecordingBuffer.removeFirst()
+            } else {
+                break
+            }
         }
     }
 
@@ -446,7 +450,7 @@ class LocationService : Service() {
             if (timeDeltaSeconds > 0) {
                 val calculatedSpeed = distanceMeters / timeDeltaSeconds
                 if (calculatedSpeed > MAX_ALLOWED_SPEED_MPS) {
-                    val msg = String.format("⚠️ Salto de antena detectado: %.2f m/s (%.2f km/h). Punto descartado.", calculatedSpeed, calculatedSpeed * 3.6)
+                    val msg = String.format(Locale.US, "⚠️ Salto de antena detectado: %.2f m/s (%.2f km/h). Punto descartado.", calculatedSpeed, calculatedSpeed * 3.6)
                     Log.w(TAG, msg)
                     return
                 }
@@ -461,6 +465,13 @@ class LocationService : Service() {
 
         // Anclaje estacionario: congelar posición si el usuario está quieto en interiores
         val anchoredLocation = stationaryAnchorManager.processAnchor(location)
+
+        // Guarda de contingencia: forzar parada si 3 min de precision degradada (>25m)
+        if (stationaryAnchorManager.shouldForceStop(location)) {
+            Log.w(TAG, "Guarda de 3min activada. Forzando parada automatica por degradacion de senhal en interiores.")
+            stopTrackingWithAutoRestart()
+            return
+        }
 
         val isAutoModeActive = sharedPrefs.getBoolean("auto_mode", false)
         val isNearMeEnabled = sharedPrefs.getBoolean("near_me_enabled", false)
@@ -508,7 +519,7 @@ class LocationService : Service() {
                     val seconds = totalSec % 60
                     val comment = "⏱️ Parada automática de ${minutes} min ${seconds} seg"
                     val finalAddress = shortStopAddress.ifBlank {
-                        "GPS: ${String.format("%.5f, %.5f", shortStopLat, shortStopLon)}"
+                        "GPS: ${String.format(Locale.US, "%.5f, %.5f", shortStopLat, shortStopLon)}"
                     }
                     serviceScope.launch {
                         repository.addSavedLocation(
@@ -786,7 +797,7 @@ class LocationService : Service() {
         serviceScope.launch {
             val route = repository.getRouteById(routeId) ?: return@launch
             val km = totalDistanceMeters / 1000.0
-            val formattedDistance = String.format("%.2f km", km)
+            val formattedDistance = String.format(Locale.US, "%.2f km", km)
             val formattedTime = formatElapsedTime(_elapsedTimeSeconds.value)
 
             val contentText = "Distancia: $formattedDistance | Tiempo: $formattedTime"
@@ -1035,7 +1046,7 @@ class LocationService : Service() {
         val hr = TimeUnit.SECONDS.toHours(seconds)
         val min = TimeUnit.SECONDS.toMinutes(seconds) % 60
         val sec = seconds % 60
-        return String.format("%02d:%02d:%02d", hr, min, sec)
+        return String.format(Locale.getDefault(), "%02d:%02d:%02d", hr, min, sec)
     }
 
     override fun onBind(intent: Intent?): IBinder? {
@@ -1066,6 +1077,8 @@ class LocationService : Service() {
         super.onDestroy()
     }
 }
+
+
 
 
 

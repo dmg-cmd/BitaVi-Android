@@ -3,8 +3,13 @@ package com.example.ui
 import android.content.Context
 import android.location.Address
 import android.location.Geocoder
+import android.os.Build
 import com.example.util.AppConstants
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
 import java.util.Locale
+import kotlin.coroutines.resume
 
 class GeocoderUseCase(private val context: Context) {
 
@@ -41,6 +46,7 @@ class GeocoderUseCase(private val context: Context) {
         val coordFallback = "GPS: ${String.format("%.5f, %.5f", lat, lon)}"
         return try {
             val geocoder = Geocoder(context, Locale.getDefault())
+            @Suppress("DEPRECATION")
             val addresses = geocoder.getFromLocation(lat, lon, 1)
             if (!addresses.isNullOrEmpty()) {
                 val addr = addresses[0]
@@ -53,8 +59,51 @@ class GeocoderUseCase(private val context: Context) {
         if (!isValidCoordinate(lat, lon)) return null
         return try {
             val geocoder = Geocoder(context, Locale.getDefault())
+            @Suppress("DEPRECATION")
             val addresses = geocoder.getFromLocation(lat, lon, 1)
             if (!addresses.isNullOrEmpty()) formatAddress(addresses[0], "Desconocida") else null
         } catch (_: Exception) { null }
+    }
+
+    suspend fun fetchCityAndCountry(latitude: Double, longitude: Double): Result<String> = withContext(Dispatchers.IO) {
+        runCatching {
+            if (latitude == 0.0 && longitude == 0.0) {
+                return@withContext Result.failure(IllegalArgumentException("Coordenadas inválidas en el origen"))
+            }
+
+            val geocoder = Geocoder(context, Locale.getDefault())
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                suspendCancellableCoroutine { continuation ->
+                    geocoder.getFromLocation(latitude, longitude, 1, object : Geocoder.GeocodeListener {
+                        override fun onGeocode(addresses: MutableList<Address>) {
+                            if (addresses.isNotEmpty()) {
+                                val address = addresses[0]
+                                val ciudad = address.locality ?: address.subAdminArea ?: "Ciudad Desconocida"
+                                val pais = address.countryName ?: "País Desconocido"
+                                continuation.resume("$ciudad, $pais")
+                            } else {
+                                continuation.resume("Sin dirección asignada")
+                            }
+                        }
+
+                        override fun onError(errorMessage: String?) {
+                            continuation.resume("Ubicación Georreferenciada")
+                        }
+                    })
+                }
+            } else {
+                @Suppress("DEPRECATION")
+                val addresses = geocoder.getFromLocation(latitude, longitude, 1)
+                if (!addresses.isNullOrEmpty()) {
+                    val address = addresses[0]
+                    val ciudad = address.locality ?: address.subAdminArea ?: "Ciudad Desconocida"
+                    val pais = address.countryName ?: "País Desconocido"
+                    "$ciudad, $pais"
+                } else {
+                    "Sin dirección asignada"
+                }
+            }
+        }
     }
 }

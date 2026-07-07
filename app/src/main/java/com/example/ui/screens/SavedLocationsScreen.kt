@@ -33,6 +33,8 @@ import com.example.ui.components.FullScreenPhotoDialog
 import com.example.ui.components.TourOverlay
 import com.example.ui.dialogs.DeleteConfirmationDialog
 import kotlinx.coroutines.launch
+import androidx.core.graphics.toColorInt
+import java.util.Locale
 import com.example.data.model.SavedLocation
 import com.example.ui.model.IconCategory
 import com.example.ui.RouteViewModel
@@ -307,7 +309,7 @@ fun SavedLocationsScreen(
                             Box(
                                 modifier = Modifier
                                     .size(32.dp)
-                                    .background(Color(android.graphics.Color.parseColor(colorHex)), RoundedCornerShape(16.dp))
+                                    .background(Color(colorHex.toColorInt()), RoundedCornerShape(16.dp))
                                     .clickable { selectedColor = colorHex }
                                     .padding(4.dp)
                             ) {
@@ -321,7 +323,7 @@ fun SavedLocationsScreen(
                     // Selector de color libre (Slider de Matiz)
                     var hue by remember { 
                         val hsv = FloatArray(3)
-                        android.graphics.Color.colorToHSV(android.graphics.Color.parseColor(selectedColor), hsv)
+                        android.graphics.Color.colorToHSV(selectedColor.toColorInt(), hsv)
                         mutableStateOf(hsv[0]) 
                     }
                     
@@ -339,7 +341,7 @@ fun SavedLocationsScreen(
                             value = hue,
                             onValueChange = { 
                                 hue = it
-                                val newColor = String.format("#%06X", 0xFFFFFF and android.graphics.Color.HSVToColor(floatArrayOf(hue, 1f, 1f)))
+                                val newColor = String.format(Locale.US, "#%06X", 0xFFFFFF and android.graphics.Color.HSVToColor(floatArrayOf(hue, 1f, 1f)))
                                 selectedColor = newColor
                             },
                             valueRange = 0f..360f,
@@ -367,7 +369,7 @@ fun SavedLocationsScreen(
                             ) {
                                 Checkbox(checked = usePhotoGps, onCheckedChange = { usePhotoGps = it })
                                 Text(
-                                    "Foto tomada en: ${String.format("%.4f", photoGpsLocation!!.first)}, ${String.format("%.4f", photoGpsLocation!!.second)}", 
+                                    "Foto tomada en: ${String.format(Locale.US, "%.4f", photoGpsLocation!!.first)}, ${String.format(Locale.US, "%.4f", photoGpsLocation!!.second)}", 
                                     style = MaterialTheme.typography.labelMedium, 
                                     fontWeight = FontWeight.Bold
                                 )
@@ -537,7 +539,7 @@ fun SavedLocationsScreen(
                             Box(
                                 modifier = Modifier
                                     .size(32.dp)
-                                    .background(Color(android.graphics.Color.parseColor(colorHex)), RoundedCornerShape(16.dp))
+                                    .background(Color(colorHex.toColorInt()), RoundedCornerShape(16.dp))
                                     .clickable { 
                                         editColor = colorHex 
                                         viewModel.updateSavedLocationColorReactively(locationToEdit!!.id, colorHex)
@@ -554,7 +556,7 @@ fun SavedLocationsScreen(
                     // Selector de color libre (Slider de Matiz)
                     var hue by remember { 
                         val hsv = FloatArray(3)
-                        android.graphics.Color.colorToHSV(android.graphics.Color.parseColor(editColor), hsv)
+                        android.graphics.Color.colorToHSV(editColor.toColorInt(), hsv)
                         mutableStateOf(hsv[0]) 
                     }
                     
@@ -572,7 +574,7 @@ fun SavedLocationsScreen(
                             value = hue,
                             onValueChange = { 
                                 hue = it
-                                val newColor = String.format("#%06X", 0xFFFFFF and android.graphics.Color.HSVToColor(floatArrayOf(hue, 1f, 1f)))
+                                val newColor = String.format(Locale.US, "#%06X", 0xFFFFFF and android.graphics.Color.HSVToColor(floatArrayOf(hue, 1f, 1f)))
                                 editColor = newColor
                                 viewModel.updateSavedLocationColorReactively(locationToEdit!!.id, newColor)
                             },
@@ -678,7 +680,7 @@ fun LocationCard(
                         Icon(
                             imageVector = IconCategory.fromKey(location.iconCategory).icon,
                             contentDescription = null,
-                            tint = Color(android.graphics.Color.parseColor(location.color)),
+                            tint = Color(location.color.toColorInt()),
                             modifier = Modifier.size(28.dp)
                         )
                         Spacer(Modifier.width(8.dp))

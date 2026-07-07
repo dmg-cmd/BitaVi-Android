@@ -29,7 +29,7 @@ class CinematicFilterManager(
         if (location.latitude == 0.0 && location.longitude == 0.0) return false
 
         if (locationWindow.isNotEmpty()) {
-            val last = locationWindow.last
+            val last = locationWindow.last()
             val dist = last.distanceTo(location)
             val timeDelta = (location.time - last.time) / 1000.0
             if (timeDelta > 0) {

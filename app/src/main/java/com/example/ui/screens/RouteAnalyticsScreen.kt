@@ -5,6 +5,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -253,7 +254,7 @@ fun RouteAnalyticsScreen(
                                     String.format("%d:%02d min/km", pMin, pSec)
                                 } else "\u2014"
                                 DetailStatItem(Icons.Default.Timer, "Ritmo", paceStr, MaterialTheme.colorScheme.error)
-                                DetailStatItem(Icons.Default.DirectionsWalk, "Modo", tramoActivity, MaterialTheme.colorScheme.tertiary)
+                                DetailStatItem(Icons.AutoMirrored.Filled.DirectionsWalk, "Modo", tramoActivity, MaterialTheme.colorScheme.tertiary)
                             }
                         }
                     }

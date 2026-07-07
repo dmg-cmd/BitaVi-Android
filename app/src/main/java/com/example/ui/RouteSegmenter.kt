@@ -18,17 +18,17 @@ fun Float.toActivityMode(): ActivityMode = when {
 }
 
 fun ActivityMode.toSegmentColor(): Int = when (this) {
-    ActivityMode.STOPPED -> android.graphics.Color.argb(128, 255, 235, 59)
+    ActivityMode.STOPPED -> android.graphics.Color.argb(128, 255, 214, 0)
     ActivityMode.WALKING -> android.graphics.Color.rgb(76, 175, 80)
     ActivityMode.BIKING -> android.graphics.Color.rgb(33, 150, 243)
-    ActivityMode.DRIVING -> android.graphics.Color.rgb(244, 67, 54)
+    ActivityMode.DRIVING -> android.graphics.Color.rgb(255, 82, 82)
 }
 
 fun ActivityMode.toSolidColor(): Int = when (this) {
-    ActivityMode.STOPPED -> android.graphics.Color.rgb(255, 235, 59)
+    ActivityMode.STOPPED -> android.graphics.Color.rgb(255, 214, 0)
     ActivityMode.WALKING -> android.graphics.Color.rgb(76, 175, 80)
     ActivityMode.BIKING -> android.graphics.Color.rgb(33, 150, 243)
-    ActivityMode.DRIVING -> android.graphics.Color.rgb(244, 67, 54)
+    ActivityMode.DRIVING -> android.graphics.Color.rgb(255, 82, 82)
 }
 
 fun List<LocationPoint>.toRouteSegments(): List<SegmentoRuta> {

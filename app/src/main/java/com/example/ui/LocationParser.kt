@@ -21,6 +21,7 @@ object LocationParser {
         geoCache[cacheKey]?.let { return it }
 
         return try {
+            @Suppress("DEPRECATION")
             val addresses = geocoder.getFromLocation(lat, lon, 1)
             if (!addresses.isNullOrEmpty()) {
                 val addr = addresses[0]

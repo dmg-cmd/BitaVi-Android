@@ -40,7 +40,7 @@ import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material.icons.filled.GpsFixed
 import androidx.compose.material.icons.filled.GpsOff
-import androidx.compose.material.icons.filled.HelpOutline
+import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.LocationSearching
@@ -678,7 +678,7 @@ fun MainContainer(viewModel: RouteViewModel, encryptedPrefs: SharedPreferences) 
                 NavigationDrawerItem(
                     label = { Text("Ayuda y Funcionamiento") },
                     selected = false,
-                    icon = { Icon(Icons.Default.HelpOutline, null) },
+                    icon = { Icon(Icons.AutoMirrored.Filled.HelpOutline, null) },
                     onClick = { 
                         scope.launch { drawerState.close() }
                         showHelpDialog = true 
@@ -948,7 +948,7 @@ fun MainContainer(viewModel: RouteViewModel, encryptedPrefs: SharedPreferences) 
                                 }
                             }
                             IconButton(onClick = { showHelpDialog = true }, modifier = Modifier.size(36.dp)) {
-                                Icon(Icons.Default.HelpOutline, "Ayuda", modifier = Modifier.size(18.dp))
+                                Icon(Icons.AutoMirrored.Filled.HelpOutline, "Ayuda", modifier = Modifier.size(18.dp))
                             }
                         }
                     }

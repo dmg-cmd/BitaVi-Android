@@ -23,6 +23,7 @@ object BiometricCipherHelper {
      * Obtiene o genera la clave simétrica en el Keystore.
      * setUserAuthenticationRequired(true) obliga a que se use Biometría para acceder a ella.
      */
+    @Suppress("DEPRECATION")
     private fun getOrCreateSecretKey(): SecretKey {
         val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
         

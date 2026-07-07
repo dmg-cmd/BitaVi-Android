@@ -34,6 +34,10 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.drawable.toBitmap
+import androidx.core.graphics.createBitmap
+import androidx.core.graphics.toColorInt
+import androidx.core.graphics.drawable.toDrawable
+import java.util.Locale
 import coil.compose.AsyncImage
 import kotlinx.coroutines.launch
 import com.example.location.ActivityMode
@@ -78,15 +82,10 @@ fun MapScreen(viewModel: RouteViewModel, modifier: Modifier = Modifier) {
     var showSaveLocationDialog by remember { mutableStateOf(false) }
     var showAddressBox by remember { mutableStateOf(false) }
     var newRouteName by remember { mutableStateOf("") }
-    var waypointName by remember { mutableStateOf("") }
     var clickedGeoPoint by remember { mutableStateOf<GeoPoint?>(null) }
-    var locationName by remember { mutableStateOf("") }
     
     // Control de Mapa: Seguimiento vs Manual
     var lastInteractionTime by remember { mutableStateOf(0L) }
-    val isManualMode by remember { 
-        derivedStateOf { System.currentTimeMillis() - lastInteractionTime < 10000L } // 10 segundos de gracia
-    }
 
     var capturedPhotoUri by remember { mutableStateOf<android.net.Uri?>(null) }
     var photoGpsLocation by remember { mutableStateOf<Pair<Double, Double>?>(null) }
@@ -149,9 +148,9 @@ fun MapScreen(viewModel: RouteViewModel, modifier: Modifier = Modifier) {
     var prevTotalPoints by remember { mutableStateOf(0) }
     val circleIcon = remember(isTracking) {
         val size = 48
-        val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val bitmap = createBitmap(size, size)
         val canvas = Canvas(bitmap)
-        val fillColor = if (isTracking) android.graphics.Color.RED else android.graphics.Color.parseColor("#1B5E20")
+        val fillColor = if (isTracking) android.graphics.Color.RED else "#1B5E20".toColorInt()
         Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = fillColor
             style = Paint.Style.FILL
@@ -169,7 +168,7 @@ fun MapScreen(viewModel: RouteViewModel, modifier: Modifier = Modifier) {
             val d = ContextCompat.getDrawable(context, resId)
                 ?: error("resId")
             d.mutate().apply {
-                setTint(android.graphics.Color.parseColor(colorHex))
+                setTint(colorHex.toColorInt())
             }
         }
     }
@@ -258,6 +257,7 @@ fun MapScreen(viewModel: RouteViewModel, modifier: Modifier = Modifier) {
                     setTileSource(TileSourceFactory.MAPNIK)
                     setMultiTouchControls(true)
                     setOnTouchListener { v, event ->
+                        v.performClick()
                         v.parent.requestDisallowInterceptTouchEvent(true)
                         false
                     }
@@ -358,7 +358,7 @@ fun MapScreen(viewModel: RouteViewModel, modifier: Modifier = Modifier) {
                         val lastPolyline = routePolylines.lastOrNull()
                         val lastSegment = newSegments.lastOrNull()
                         if (lastPolyline != null && lastSegment != null) {
-                            val existingCount = lastPolyline.getPoints().size
+                            val existingCount = lastPolyline.actualPoints.size
                             if (existingCount < lastSegment.points.size) {
                                 val newGeoPoints = lastSegment.points.drop(existingCount)
                                 newGeoPoints.forEach { lastPolyline.addPoint(it) }
@@ -372,13 +372,13 @@ fun MapScreen(viewModel: RouteViewModel, modifier: Modifier = Modifier) {
                     prevTotalPoints = currentTotalPoints
                     // 2. Optimización de Waypoints (Diffing selectivo)
                     val currentWpIds = waypoints.map { it.id }.toSet()
-                    if (waypointMarkers.keys.retainAll { id ->
+                    waypointMarkers.keys.retainAll { id ->
                         if (id !in currentWpIds) {
                             view.overlays.remove(waypointMarkers[id])
                             needsInvalidate = true
                             false
                         } else true
-                    }) { /* Se eliminaron marcadores */ }
+                    }
 
                     waypoints.forEach { wp ->
                         var isNew = false
@@ -407,13 +407,15 @@ fun MapScreen(viewModel: RouteViewModel, modifier: Modifier = Modifier) {
 
                     // 3. Optimización de Favoritos (Diffing selectivo)
                     val currentFavIds = savedLocations.map { it.id }.toSet()
-                    if (favoriteMarkers.keys.retainAll { id ->
+                    favoriteMarkers.keys.retainAll { id ->
                         if (id !in currentFavIds) {
                             view.overlays.remove(favoriteMarkers[id])
                             needsInvalidate = true
                             false
                         } else true
-                    }) { }
+                    }
+
+                    val res = context.resources
 
                     savedLocations.forEach { loc ->
                         var isNew = false
@@ -435,7 +437,7 @@ fun MapScreen(viewModel: RouteViewModel, modifier: Modifier = Modifier) {
                             marker.position = newPos
                             marker.title = loc.name
                             marker.snippet = loc.address
-                            marker.icon = android.graphics.drawable.BitmapDrawable(context.resources, IconCategory.toBitmap(IconCategory.fromKey(loc.iconCategory), android.graphics.Color.parseColor(loc.color), 40))
+                            marker.icon = IconCategory.fromKey(loc.iconCategory).toBitmap(40, loc.color.toColorInt()).toDrawable(res)
                             needsInvalidate = true
                         }
                     }
@@ -445,15 +447,12 @@ fun MapScreen(viewModel: RouteViewModel, modifier: Modifier = Modifier) {
             }
         )
 
-        // PANEL UNIFICADO: TELEMETRÍA + STATS (NUEVO DISEÑO FINO)
-        Column(
-            modifier = Modifier.padding(16.dp).align(Alignment.TopStart),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            Surface(
-                color = Color.Black.copy(alpha = 0.75f),
-                shape = RoundedCornerShape(10.dp),
-                modifier = Modifier.clickable { 
+        // DASHBOARD DE ACTIVIDAD MD3: modo + telemetría
+        Card(
+            modifier = Modifier
+                .padding(16.dp)
+                .align(Alignment.TopStart)
+                .clickable {
                     if (!showAddressBox) {
                         viewModel.fetchCurrentAddress()
                         showAddressBox = true
@@ -461,67 +460,98 @@ fun MapScreen(viewModel: RouteViewModel, modifier: Modifier = Modifier) {
                         showAddressBox = false
                         viewModel.clearCurrentAddress()
                     }
-                }
-            ) {
-                Row(
-                    modifier = Modifier.padding(10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    // Columna Lat/Lon/Alt (Referencia de ancho)
-                    Column {
-                        latestLocation.let { loc ->
-                            if (loc != null) {
-                                Text("LAT: ${String.format("%.6f", loc.latitude)}", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                                Text("LON: ${String.format("%.6f", loc.longitude)}", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                                Text("ALT: ${String.format("%.1f", loc.altitude)}m", color = Color(0xFF4CAF50), fontSize = 10.sp, fontWeight = FontWeight.ExtraBold)
-                            } else {
-                                Text("GPS...", color = Color.Yellow, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                            }
+                },
+            shape = RoundedCornerShape(12.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = Color(0xCC1A1A2E)
+            ),
+            elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
+        ) {
+            // Barra de acento lateral izquierdo según modo
+            val modeColor = when (activityMode) {
+                ActivityMode.STOPPED -> Color(0xFFFFD600)
+                ActivityMode.WALKING -> Color(0xFF4CAF50)
+                ActivityMode.BIKING -> Color(0xFF2196F3)
+                ActivityMode.DRIVING -> Color(0xFFFF5252)
+            }
+            Row(modifier = Modifier.height(IntrinsicSize.Min)) {
+                Box(
+                    modifier = Modifier
+                        .width(4.dp)
+                        .fillMaxHeight()
+                        .background(modeColor)
+                )
+                Column(modifier = Modifier.padding(12.dp)) {
+                    // Fila hero: icono + modo + velocidad
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = when (activityMode) {
+                                ActivityMode.STOPPED -> Icons.Default.StopCircle
+                                ActivityMode.WALKING -> Icons.AutoMirrored.Filled.DirectionsWalk
+                                ActivityMode.BIKING -> Icons.AutoMirrored.Filled.DirectionsBike
+                                ActivityMode.DRIVING -> Icons.Default.DirectionsCar
+                            },
+                            contentDescription = null,
+                            tint = modeColor,
+                            modifier = Modifier.size(28.dp)
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        Text(
+                            text = when (activityMode) {
+                                ActivityMode.STOPPED -> "Detenido"
+                                ActivityMode.WALKING -> "Caminando"
+                                ActivityMode.BIKING -> "En Bicicleta"
+                                ActivityMode.DRIVING -> "En Vehículo"
+                            },
+                            color = modeColor,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(Modifier.weight(1f))
+                        Text(
+                            text = "${String.format(Locale.getDefault(), "%.1f", (latestLocation?.speed ?: 0f) * 3.6f)} km/h",
+                            color = Color.White,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    // Stats secundarias (solo en tracking)
+                    if (isTracking) {
+                        Spacer(Modifier.height(4.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                "${String.format(Locale.getDefault(), "%.2f km", distanceMeters/1000)}",
+                                color = Color.White.copy(alpha = 0.85f),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Spacer(Modifier.width(16.dp))
+                            val h = elapsedSeconds/3600; val m = (elapsedSeconds%3600)/60; val s = elapsedSeconds%60
+                            Text(
+                                String.format(Locale.getDefault(), "%02d:%02d:%02d hs", h, m, s),
+                                color = Color.White.copy(alpha = 0.85f),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium
+                            )
                         }
                     }
-
-                    // Separador y Stats si está grabando
-                    if (isTracking) {
-                        Box(modifier = Modifier.width(1.dp).height(35.dp).background(Color.White.copy(alpha = 0.3f)))
-                        Column {
-                            // ── Icono del modo actividad ──
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(18.dp)
-                                        .background(Color.White.copy(alpha = 0.15f), RoundedCornerShape(4.dp)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = when (activityMode) {
-                                            ActivityMode.STOPPED -> Icons.Default.Stop
-                                        ActivityMode.WALKING -> Icons.AutoMirrored.Filled.DirectionsWalk
-                                        ActivityMode.BIKING -> Icons.AutoMirrored.Filled.DirectionsBike
-                                            ActivityMode.DRIVING -> Icons.Default.DirectionsCar
-                                        },
-                                        contentDescription = activityMode.name,
-                                        tint = Color.White,
-                                        modifier = Modifier.size(14.dp)
-                                    )
-                                }
-                                Spacer(Modifier.width(6.dp))
-                                Text(activityMode.name, color = Color.White.copy(alpha = 0.8f), fontSize = 10.sp, fontWeight = FontWeight.Medium)
-                            }
-                            Spacer(Modifier.height(2.dp))
-                            // ── Velocidad ──
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.Speed, null, tint = Color.White, modifier = Modifier.size(10.dp))
-                                Spacer(Modifier.width(4.dp))
-                                Text("${String.format("%.1f", (latestLocation?.speed ?: 0f) * 3.6f)} km/h", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                            }
-                            Text("${String.format("%.2f", distanceMeters/1000)} km", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.Timer, null, tint = Color.White, modifier = Modifier.size(10.dp))
-                                Spacer(Modifier.width(4.dp))
-                                val h = elapsedSeconds/3600; val m = (elapsedSeconds%3600)/60; val s = elapsedSeconds%60
-                                Text(String.format("%02d:%02d:%02d", h, m, s), color = Color.White, fontSize = 11.sp)
-                            }
+                    // Telemetría fina (LAT/LON/ALT)
+                    Spacer(Modifier.height(4.dp))
+                    latestLocation.let { loc ->
+                        if (loc != null) {
+                            Text(
+                                "LAT: ${String.format(Locale.getDefault(), "%.6f", loc.latitude)}  LON: ${String.format(Locale.getDefault(), "%.6f", loc.longitude)}",
+                                color = Color.White.copy(alpha = 0.55f),
+                                fontSize = 9.sp
+                            )
+                            Text(
+                                "ALT: ${String.format(Locale.getDefault(), "%.1f", loc.altitude)}m",
+                                color = Color(0xFF4CAF50).copy(alpha = 0.8f),
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        } else {
+                            Text("GPS...", color = Color.Yellow, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -660,7 +690,7 @@ fun MapScreen(viewModel: RouteViewModel, modifier: Modifier = Modifier) {
                             Box(
                                 modifier = Modifier
                                     .size(32.dp)
-                                    .background(Color(android.graphics.Color.parseColor(colorHex)), RoundedCornerShape(16.dp))
+                                    .background(Color(colorHex.toColorInt()), RoundedCornerShape(16.dp))
                                     .clickable { selectedColor = colorHex }
                                     .padding(4.dp)
                             ) {
@@ -674,7 +704,7 @@ fun MapScreen(viewModel: RouteViewModel, modifier: Modifier = Modifier) {
                     // Selector de color libre (Slider de Matiz)
                     var hue by remember { 
                         val hsv = FloatArray(3)
-                        android.graphics.Color.colorToHSV(android.graphics.Color.parseColor(selectedColor), hsv)
+                        android.graphics.Color.colorToHSV(selectedColor.toColorInt(), hsv)
                         mutableStateOf(hsv[0]) 
                     }
                     
@@ -692,7 +722,7 @@ fun MapScreen(viewModel: RouteViewModel, modifier: Modifier = Modifier) {
                             value = hue,
                             onValueChange = { 
                                 hue = it
-                                val newColor = String.format("#%06X", 0xFFFFFF and android.graphics.Color.HSVToColor(floatArrayOf(hue, 1f, 1f)))
+                                val newColor = String.format(Locale.US, "#%06X", 0xFFFFFF and android.graphics.Color.HSVToColor(floatArrayOf(hue, 1f, 1f)))
                                 selectedColor = newColor
                             },
                             valueRange = 0f..360f,
@@ -861,7 +891,7 @@ fun MapScreen(viewModel: RouteViewModel, modifier: Modifier = Modifier) {
                             Box(
                                 modifier = Modifier
                                     .size(32.dp)
-                                    .background(Color(android.graphics.Color.parseColor(colorHex)), RoundedCornerShape(16.dp))
+                                    .background(Color(colorHex.toColorInt()), RoundedCornerShape(16.dp))
                                     .clickable { selectedColor = colorHex }
                                     .padding(4.dp)
                             ) {
@@ -875,7 +905,7 @@ fun MapScreen(viewModel: RouteViewModel, modifier: Modifier = Modifier) {
                     // Selector de color libre (Slider de Matiz)
                     var hue by remember { 
                         val hsv = FloatArray(3)
-                        android.graphics.Color.colorToHSV(android.graphics.Color.parseColor(selectedColor), hsv)
+                        android.graphics.Color.colorToHSV(selectedColor.toColorInt(), hsv)
                         mutableStateOf(hsv[0]) 
                     }
                     
@@ -893,7 +923,7 @@ fun MapScreen(viewModel: RouteViewModel, modifier: Modifier = Modifier) {
                             value = hue,
                             onValueChange = { 
                                 hue = it
-                                val newColor = String.format("#%06X", 0xFFFFFF and android.graphics.Color.HSVToColor(floatArrayOf(hue, 1f, 1f)))
+                                val newColor = String.format(Locale.US, "#%06X", 0xFFFFFF and android.graphics.Color.HSVToColor(floatArrayOf(hue, 1f, 1f)))
                                 selectedColor = newColor
                             },
                             valueRange = 0f..360f,
@@ -1032,4 +1062,7 @@ fun MapScreen(viewModel: RouteViewModel, modifier: Modifier = Modifier) {
         )
     }
 }
+
+
+
 

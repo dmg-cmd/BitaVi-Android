@@ -296,7 +296,7 @@ class RouteExchanger(
         if (waypointsArray.length() > 0) {
             for (i in 0 until waypointsArray.length()) {
                 val wp = waypointsArray.getJSONObject(i)
-                val photoFile = wp.optString("photoFile", null)
+                val photoFile = wp.optString("photoFile").takeIf { it.isNotEmpty() }
                 val photoPath = if (photoFile != null) photoUriMap[photoFile] else null
 
                 repository.addWaypoint(
@@ -323,7 +323,7 @@ class RouteExchanger(
 
         for (i in 0 until favoritesArray.length()) {
             val fav = favoritesArray.getJSONObject(i)
-            val photoFile = fav.optString("photoFile", null)
+            val photoFile = fav.optString("photoFile").takeIf { it.isNotEmpty() }
             val photoPath = if (photoFile != null) photoUriMap[photoFile] else null
 
             val location = SavedLocation(

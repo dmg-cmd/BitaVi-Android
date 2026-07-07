@@ -3,11 +3,6 @@ package com.example.location.manager
 import android.location.Location
 import android.util.Log
 
-/**
- * Gestor de Anclaje Estacionario (Auto-Stop) v3.0
- * Mitiga el "paseo fantasma" por rebote de señal multicamino en interiores congelando
- * la telemetría si la velocidad decae y la precisión se degrada por debajo de los umbrales.
- */
 class StationaryAnchorManager(
     private val speedThresholdMps: Double = 0.25,
     private val timeThresholdMillis: Long = 120_000L,
@@ -16,10 +11,12 @@ class StationaryAnchorManager(
     private var anchorLocation: Location? = null
     private var firstLowSpeedTimeMillis: Long? = null
 
-    /**
-     * Evalúa y aplica el filtro de anclaje posicional.
-     * @return Ubicación mitigada si el anclaje está activo, u original si está en tránsito legítimo.
-     */
+    // Guarda de contingencia para interiores (Bloque B)
+    private var lastValidGpsTimestamp: Long = 0L
+    private var isForcedStopTriggered: Boolean = false
+    private val accuracyThreshold: Float = 25.0f
+    private val forceStopTimeoutMs: Long = 3 * 60 * 1000L
+
     fun processAnchor(currentLocation: Location): Location {
         val currentSpeed = if (currentLocation.hasSpeed()) currentLocation.speed.toDouble() else 0.0
 
@@ -32,14 +29,14 @@ class StationaryAnchorManager(
                 if (durationStationary >= timeThresholdMillis && anchorLocation == null
                     && currentLocation.accuracy > accuracyAnchorThreshold) {
                     anchorLocation = currentLocation
-                    Log.i("ANCHOR_MANAGER", "Auto-Stop: Anclaje fijado en (, ) debido a rebote de señal.")
+                    Log.i("ANCHOR_MANAGER", "Auto-Stop: Anclaje fijado por rebote de señal.")
                 }
             }
         } else {
             if (currentSpeed > speedThresholdMps * 2) {
                 firstLowSpeedTimeMillis = null
                 if (anchorLocation != null) {
-                    Log.i("ANCHOR_MANAGER", "Inercia rota ( m/s). Anclaje liberado.")
+                    Log.i("ANCHOR_MANAGER", "Inercia rota. Anclaje liberado.")
                     reset()
                 }
             }
@@ -54,8 +51,31 @@ class StationaryAnchorManager(
         } ?: currentLocation
     }
 
+    fun shouldForceStop(location: Location): Boolean {
+        val currentTime = System.currentTimeMillis()
+
+        if (location.accuracy <= accuracyThreshold) {
+            lastValidGpsTimestamp = currentTime
+            isForcedStopTriggered = false
+            return false
+        }
+
+        if (lastValidGpsTimestamp == 0L) lastValidGpsTimestamp = currentTime
+
+        val durationDegraded = currentTime - lastValidGpsTimestamp
+        if (durationDegraded >= forceStopTimeoutMs && !isForcedStopTriggered) {
+            isForcedStopTriggered = true
+            Log.i("ANCHOR_MANAGER", "Guarda de 3min: Forzando Parada Automatica por degradacion de senhal")
+            return true
+        }
+
+        return false
+    }
+
     fun reset() {
         anchorLocation = null
         firstLowSpeedTimeMillis = null
+        lastValidGpsTimestamp = 0L
+        isForcedStopTriggered = false
     }
 }

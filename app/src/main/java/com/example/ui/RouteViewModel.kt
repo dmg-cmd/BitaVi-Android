@@ -40,6 +40,7 @@ import java.util.Locale
 
 import android.location.Geocoder
 import kotlinx.coroutines.flow.combine
+
 sealed class AiAnalysisState {
     object Idle : AiAnalysisState()
     object Loading : AiAnalysisState()
@@ -321,6 +322,17 @@ class RouteViewModel(
     fun addFavoriteToRoute(routeId: Int, favoriteId: Int) { viewModelScope.launch { repository.addFavoriteToRoute(routeId, favoriteId) } }
 
     fun removeFavoriteFromRoute(routeId: Int, favoriteId: Int) { viewModelScope.launch { repository.removeFavoriteFromRoute(routeId, favoriteId) } }
+
+    fun saveFavoritePoint(latitude: Double, longitude: Double, label: String) {
+        viewModelScope.launch {
+            val locationResult = geocoderUseCase.fetchCityAndCountry(latitude, longitude)
+            val finalLabel = locationResult.fold(
+                onSuccess = { geoText -> "$label ($geoText)" },
+                onFailure = { "$label (Ubicación Georreferenciada)" }
+            )
+            repository.insertFavorite(latitude, longitude, finalLabel)
+        }
+    }
 
     fun saveSpecificLocation(name: String, address: String, latitude: Double, longitude: Double, comment: String = "", author: String = "", photoPath: String? = null, phoneNumber: String = "", email: String = "", isContact: Boolean = false, color: String = "#FFD700", iconCategory: String = "DEFAULT") {
         viewModelScope.launch(Dispatchers.IO) {

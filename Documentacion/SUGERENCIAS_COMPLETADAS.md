@@ -1,3 +1,8 @@
+## 07/07/2026 — Saneamiento de Deuda Técnica (Fase 0: Zero Warnings)
+- **MapScreen.kt**: Eliminación de 8+ warnings de linter: variables muertas, KTX, performClick, actualPoints, retainAll, resources hoisting, Locale, toColorInt.
+- **FocusFavoriteScreen.kt**: Corrección de getDrawable deprecado + lowercase(Locale.ROOT).
+- **LocationService.kt**: Locale.US/Locale.getDefault en 4 String.format para inmunidad regional.
+- **Resultado**: Los 3 archivos principales quedan con 0 warnings de linter.
 ## 04/07/2026 — Pantalla Inmersiva Focus Favorite + Postal Táctica
 - **FocusFavoriteScreen**: Rediseño completo sin Scaffold. Box raíz + contenedor drawWithContent + botones flotantes CircleShape.
 - **Captura de Postal**: GraphicsLayer.record → toImageBitmap() → PNG en caché → FileProvider → Intent ACTION_SEND image/png.
@@ -116,4 +121,5 @@
 - **MapScreen.kt**: Markers osmdroid con círculo programático vía IconCategory.toBitmap().
 - **SavedLocationsScreen.kt + DetailScreen.kt**: Iconos dinámicos vía IconCategory.fromKey().icon.
 - **Deploy**: BUILD SUCCESSFUL + installDebug en Pixel 9 Pro XL.
+
 
