@@ -322,7 +322,7 @@ class RouteViewModel(
 
     fun removeFavoriteFromRoute(routeId: Int, favoriteId: Int) { viewModelScope.launch { repository.removeFavoriteFromRoute(routeId, favoriteId) } }
 
-    fun saveSpecificLocation(name: String, address: String, latitude: Double, longitude: Double, comment: String = "", author: String = "", photoPath: String? = null, phoneNumber: String = "", email: String = "", isContact: Boolean = false, color: String = "#FFD700") {
+    fun saveSpecificLocation(name: String, address: String, latitude: Double, longitude: Double, comment: String = "", author: String = "", photoPath: String? = null, phoneNumber: String = "", email: String = "", isContact: Boolean = false, color: String = "#FFD700", iconCategory: String = "DEFAULT") {
         viewModelScope.launch(Dispatchers.IO) {
             val finalComment = if (photoPath != null) {
                 val datePart = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(Date())
@@ -332,7 +332,7 @@ class RouteViewModel(
             val details = geocoderUseCase.fetchLocationDetails(latitude, longitude)
             val country = details.second.ifBlank { "Desconocido" }
             val city = details.third.ifBlank { "Desconocida" }
-            repository.addSavedLocation(name, address, latitude, longitude, finalComment, author, photoPath, phoneNumber, email, isContact, country, city, color)
+            repository.addSavedLocation(name, address, latitude, longitude, comment = finalComment, author, photoPath, phoneNumber, email, isContact, country, city, color, iconCategory = iconCategory)
         }
     }
     fun updateSavedLocation(location: SavedLocation) { viewModelScope.launch(Dispatchers.IO) { repository.updateSavedLocation(location) } }
@@ -504,3 +504,5 @@ class RouteViewModel(
         viewModelScope.launch { shareUseCase.shareCompleteRoute(routeId, mapBitmap) }
     }
 }
+
+

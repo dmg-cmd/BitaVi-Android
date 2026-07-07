@@ -82,3 +82,28 @@ avigationBarsPadding(): colchón dinámico que empuja la barra por encima de la 
 - La barra de estado (hora/batería) se oculta automáticamente al tocar el mapa y reaparece al soltar. Es comportamiento estándar del SO, no un bug.
 - Pelear contra esto con FLAG_LAYOUT_NO_LIMITS o android:statusBarColor en themes.xml causa parpadeos y efectos secundarios en toda la app.
 - La solución estable es: themes.xml limpio, enableEdgeToEdge() en MainActivity, y bottom=40dp fijo en la Card en lugar de depender de insets dinámicos.
+
+## Geofencing Poligonal — Bounding Box Argentina (06/07/2026)
+- **Problema**: Coordenadas (0.0, 0.0) del Golfo de Guinea y rebotes de red transfronterizos corrompen la telemetría y las métricas de IA.
+- **Solución**: Validación geográfica en GeocoderUseCase con bounding box continental para Argentina:
+  - Latitud: -55.0 (Tierra del Fuego) a -20.0 (límite norte)
+  - Longitud: -75.0 (Cordillera) a -53.0 (límite este)
+- **Comportamiento**: Si una coordenada cae fuera de estos límites, etchLocationDetails() retorna "GPS: Fuera de cobertura" y etchAddress() retorna null, impidiendo que datos corruptos lleguen a la base de datos.
+- **Arquitectura**: Guarda defensiva en la capa de GeocoderUseCase, sin tocar LocationService, ViewModel ni UI.
+
+## ActivityRecognitionManager — Arranque Automático por Transiciones (06/07/2026)
+- **Problema**: El auto-arranque por velocidad GPS no reaccionaba porque el servicio pasivo no recibe updates frecuentes en Android 12+.
+- **Solución**: Sistema de reconocimiento de actividad física basado en Google Play Services ActivityTransition API.
+- **Componentes**:
+  - ActivityRecognitionManager: Suscribe transiciones de actividad (STILL, WALKING, RUNNING, BICYCLE, VEHICLE) con PendingIntent FLAG_MUTABLE.
+  - ActivityTransitionReceiver: BroadcastReceiver que captura eventos y puentea a LocationService via startForegroundService().
+  - handleAutoStartFromTransition(): Verifica auto-mode activo y tracking no iniciado, luego llama a startAutoNewRoute().
+- **Permiso requerido**: ACTIVITY_RECOGNITION (runtime en API 29+). Solicitado en MainActivity con el flujo escalonado de permisos.
+- **Arquitectura**: El manager vive en LocationService, no en UI, para persistencia en background.
+## Iconos Dinámicos por Categoría (07/07/2026)
+- **Categorías de Favoritos**: Ahora los favoritos se pueden etiquetar con 7 categorías: Favorito (⭐), Gastronomía (🍽), Transporte (🚗), Aeropuerto (✈), Descanso (🌳), Trabajo (🏢) y Parada Automática (📍).
+- **Icono en el Mapa**: Los marcadores en el mapa OpenStreetMap se dibujan como círculos programáticos (Canvas/Paint) con el color personalizado del favorito y borde blanco, reemplazando el antiguo resource drawable. Los iconos se diferencian por color y categoría.
+- **Icono en Listas**: En las pantallas de lista (SavedLocationsScreen) y detalle de ruta (DetailScreen), cada favorito muestra el icono Vector Material Design correspondiente a su categoría, tintado con el color personalizado.
+- **Paradas Automáticas**: Los marcadores generados por el sistema (Short Stop) usan la categoría AUTOMATIC con icono LocationOn y se distinguen visualmente de los favoritos manuales.
+- **Migración Automática**: Al actualizar la app, Room ejecuta automáticamente MIGRATION_11_12 (ALTER TABLE ADD COLUMN iconCategory TEXT NOT NULL DEFAULT 'DEFAULT'). Todos los favoritos existentes reciben el valor DEFAULT sin pérdida de datos.
+- **Selector en Diálogo de Guardado**: Al guardar un favorito (desde el mapa o desde la lista), un selector de categoría permite elegir entre las 7 opciones disponibles.

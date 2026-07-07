@@ -26,6 +26,8 @@ import com.example.util.ContactHashHelper
 import com.example.data.model.LocationPoint
 import com.example.data.model.Route
 import com.example.data.repository.RouteRepository
+import com.example.location.manager.StationaryAnchorManager
+import com.example.location.manager.ActivityRecognitionManager
 import com.example.ui.GeocoderUseCase
 import com.google.android.gms.location.*
 import kotlinx.coroutines.*
@@ -138,6 +140,8 @@ class LocationService : Service() {
     // BLE Proximity (Módulo 3B)
     private var alertNotifier: AlertNotifier? = null
     private var proximityManager: ProximityManager? = null
+    private val stationaryAnchorManager = StationaryAnchorManager()
+    private var activityRecognitionManager: ActivityRecognitionManager? = null
     private var isBleActive = false
     private var lastBleNotificationTime: Long = 0L
     private var contactUseCase: ContactUseCase? = null
@@ -155,6 +159,10 @@ class LocationService : Service() {
         private const val MAX_GPS_ACCURACY = AppConstants.Location.MAX_GPS_ACCURACY_METERS
         private const val TOLERANT_ACCURACY = AppConstants.Location.MAX_POCKET_ACCURACY_METERS
         private const val MAX_ALLOWED_SPEED_MPS = 15.0 // ~54 km/h - límite físico para descartar saltos de antena
+
+        // Acciones de ActivityTransitionReceiver
+        const val ACTION_AUTO_START_FROM_TRANSITION = "com.example.location.ACTION_AUTO_START_FROM_TRANSITION"
+        const val EXTRA_DETECTED_ACTIVITY = "com.example.location.EXTRA_DETECTED_ACTIVITY"
 
         // Activity Mode: tiempos de inercia
         private const val TIME_TO_UPGRADE = 10_000L   // 10s para subir de intensidad (inicio rápido)
@@ -260,6 +268,11 @@ class LocationService : Service() {
             screenFilter,
             ContextCompat.RECEIVER_NOT_EXPORTED
         )
+        // Inicializar el reconocimiento de actividad física para auto-arranque
+        activityRecognitionManager = ActivityRecognitionManager(this)
+        if (sharedPrefs.getBoolean("auto_mode", false)) {
+            activityRecognitionManager?.startTrackingTransitions()
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -294,6 +307,10 @@ class LocationService : Service() {
                 }
                 ACTION_UPDATE_SETTINGS -> {
                     // No hace falta lógica especial, solo procesar la siguiente ubicación con los nuevos flags de SharedPreferences
+                }
+                ACTION_AUTO_START_FROM_TRANSITION -> {
+                    val detectedActivity = intent?.getIntExtra(EXTRA_DETECTED_ACTIVITY, -1) ?: -1
+                    handleAutoStartFromTransition(detectedActivity)
                 }
             }
         } catch (e: Exception) {
@@ -442,12 +459,15 @@ class LocationService : Service() {
             locationWindow.removeFirst()
         }
 
+        // Anclaje estacionario: congelar posición si el usuario está quieto en interiores
+        val anchoredLocation = stationaryAnchorManager.processAnchor(location)
+
         val isAutoModeActive = sharedPrefs.getBoolean("auto_mode", false)
         val isNearMeEnabled = sharedPrefs.getBoolean("near_me_enabled", false)
 
         // Calcular velocidad entre puntos usando lastValidLocation (más fiable que location.speed)
         lastComputedSpeedMps = if (lastValidLocation != null) {
-            val dist = lastValidLocation!!.distanceTo(location)
+            val dist = lastValidLocation!!.distanceTo(anchoredLocation)
             val time = location.time - lastValidLocation!!.time
             if (time > 0) dist / (time / 1000f) else 0f
         } else 0f
@@ -497,7 +517,8 @@ class LocationService : Service() {
                             latitude = shortStopLat,
                             longitude = shortStopLon,
                             comment = comment,
-                            author = "Automático"
+                            author = "Automático",
+                            iconCategory = "AUTOMATIC"
                         )
                     }
                 }
@@ -571,12 +592,12 @@ class LocationService : Service() {
                 val routeId = activeRouteId
                 if (routeId == -1) return@launch
 
-                val accuracy = location.accuracy
+                val accuracy = anchoredLocation.accuracy
 
                 // Capa A: Odómetro tolerante (hasta 50m para el bolsillo)
                 if (accuracy <= TOLERANT_ACCURACY) {
-                    val distanceStep = lastValidLocation?.distanceTo(location) ?: 0f
-                    lastValidLocation = location
+                    val distanceStep = lastValidLocation?.distanceTo(anchoredLocation) ?: 0f
+                    lastValidLocation = anchoredLocation
                     lastMovementTimeMillis = System.currentTimeMillis()
 
                     if (distanceStep > 0) {
@@ -597,10 +618,10 @@ class LocationService : Service() {
                 if (accuracy <= MAX_GPS_ACCURACY) {
                     repository.addLocationPoint(
                         routeId = routeId,
-                        latitude = location.latitude,
-                        longitude = location.longitude,
-                        altitude = location.altitude,
-                        speed = location.speed
+                        latitude = anchoredLocation.latitude,
+                        longitude = anchoredLocation.longitude,
+                        altitude = anchoredLocation.altitude,
+                        speed = anchoredLocation.speed
                     )
                 }
 
@@ -907,6 +928,7 @@ class LocationService : Service() {
                 shortStopLat = 0.0
                 shortStopLon = 0.0
                 shortStopAddress = ""
+                stationaryAnchorManager.reset()
                 _elapsedTimeSeconds.value = 0L
                 _currentDistanceMeters.value = 0.0
 
@@ -916,10 +938,20 @@ class LocationService : Service() {
         }
     }
 
+    private fun handleAutoStartFromTransition(activityType: Int) {
+        if (activityType == -1) return
+        val autoModeActive = sharedPrefs.getBoolean("auto_mode", false)
+        if (autoModeActive && !_isTracking.value) {
+            Log.i(TAG, "Arranque Automatico Instantaneo provocado por transicion tipo: $activityType")
+            startAutoNewRoute()
+        }
+    }
+
     private fun shutdownService() {
         Log.d(TAG, "Iniciando apagado total del servicio.")
         fusedLocationClient.removeLocationUpdates(locationCallback)
         timerJob?.cancel()
+        activityRecognitionManager?.stopTrackingTransitions()
         
         if (wakeLock?.isHeld == true) {
             try { wakeLock?.release() } catch (_: Exception) { }
@@ -1034,3 +1066,7 @@ class LocationService : Service() {
         super.onDestroy()
     }
 }
+
+
+
+

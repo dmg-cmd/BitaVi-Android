@@ -54,4 +54,15 @@ object AppConstants {
         const val GROQ_API_KEY_IV_KEY = "groq_api_key_iv"
         const val DB_PASSPHRASE_KEY = "room_sqlcipher_key"
     }
+
+    object Geofencing {
+        const val MIN_LATITUDE = -55.0
+        const val MAX_LATITUDE = -20.0
+        const val MIN_LONGITUDE = -75.0
+        const val MAX_LONGITUDE = -53.0
+
+        fun isWithinBounds(lat: Double, lon: Double): Boolean {
+            return lat in MIN_LATITUDE..MAX_LATITUDE && lon in MIN_LONGITUDE..MAX_LONGITUDE
+        }
+    }
 }

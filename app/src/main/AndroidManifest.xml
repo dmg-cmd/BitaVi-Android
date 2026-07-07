@@ -19,6 +19,10 @@
     <uses-permission android:name="android.permission.WRITE_CONTACTS" />
     <!-- Permiso necesario para mantener el CPU activo durante el tracking -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+
+    <!-- Permiso para reconocimiento de actividad física (Android 10+) -->
+    <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
 
     <!-- BLE Proximity Permissions -->
     <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
@@ -46,6 +50,11 @@
             android:exported="false"
             android:foregroundServiceType="location|connectedDevice" />
 
+        <!-- Receptor de transiciones de actividad física (ActivityRecognition) -->
+        <receiver
+            android:name=".location.receiver.ActivityTransitionReceiver"
+            android:exported="false" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -70,3 +79,4 @@
     </application>
 
 </manifest>
+

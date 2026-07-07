@@ -2,6 +2,8 @@ package com.example
 
 import android.Manifest
 import android.content.SharedPreferences
+import android.content.ContextWrapper
+import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -157,6 +159,17 @@ import android.security.keystore.KeyPermanentlyInvalidatedException
 import javax.crypto.Cipher
 
 /**
+ * Busca de forma recursiva y segura una instancia de MainActivity en la jerarquía de Context.
+ */
+fun Context.findActivity(): MainActivity? {
+    var current = this
+    while (current is ContextWrapper) {
+        if (current is MainActivity) return current
+        current = current.baseContext
+    }
+    return null
+}
+/**
  * Actividad Principal que inicializa la capa de base de datos local (Room) y sirve de contenedor
  * de navegación reactiva bajo Compose.
  */
@@ -176,6 +189,16 @@ class MainActivity : FragmentActivity() {
     ) { isGranted ->
         if (isGranted) {
             checkAndRequestBackgroundLocation()
+        }
+    }
+
+    private val activityRecognitionPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            Toast.makeText(this, "Reconocimiento de actividad activado para auto-arranque", Toast.LENGTH_SHORT).show()
+        } else {
+            Toast.makeText(this, "El auto-arranque no funcionara sin este permiso", Toast.LENGTH_LONG).show()
         }
     }
 
@@ -363,6 +386,15 @@ class MainActivity : FragmentActivity() {
             checkAndRequestBackgroundLocation()
         }
 
+
+        // Solicitar permiso de reconocimiento de actividad fisica (API 29+) para auto-arranque
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACTIVITY_RECOGNITION)
+                != PackageManager.PERMISSION_GRANTED) {
+                activityRecognitionPermissionLauncher.launch(Manifest.permission.ACTIVITY_RECOGNITION)
+            }
+        }
+
         // --- CARGA DIRECTA DE API KEY desde EncryptedSharedPreferences ---
         lifecycleScope.launch {
             lifecycle.withStateAtLeast(Lifecycle.State.RESUMED) {
@@ -440,7 +472,7 @@ fun MainContainer(viewModel: RouteViewModel, encryptedPrefs: SharedPreferences) 
     var tempLat by remember { mutableStateOf(viewModel.defaultLatitude.toString()) }
     var tempLon by remember { mutableStateOf(viewModel.defaultLongitude.toString()) }
 
-    val mainActivity = context as MainActivity
+    val mainActivity = context.findActivity()
 
     // Selector para GUARDAR el respaldo (ZIP) en la carpeta elegida (Google Drive, etc)
     val saveBackupLauncher = rememberLauncherForActivityResult(
@@ -590,7 +622,7 @@ fun MainContainer(viewModel: RouteViewModel, encryptedPrefs: SharedPreferences) 
                             Text("Protección Biométrica")
                             Switch(checked = viewModel.isBiometricEnabled, onCheckedChange = { 
                                 val newState = it
-                                mainActivity.authenticateSimple { 
+                                mainActivity?.authenticateSimple { 
                                     viewModel.toggleBiometric(newState) 
                                 }
                             })
@@ -600,7 +632,7 @@ fun MainContainer(viewModel: RouteViewModel, encryptedPrefs: SharedPreferences) 
                     icon = { Icon(Icons.Default.Fingerprint, null) },
                     onClick = { 
                         val newState = !viewModel.isBiometricEnabled
-                        mainActivity.authenticateSimple {
+                        mainActivity?.authenticateSimple {
                             viewModel.toggleBiometric(newState)
                         }
                     }
@@ -659,7 +691,7 @@ fun MainContainer(viewModel: RouteViewModel, encryptedPrefs: SharedPreferences) 
                     icon = { Icon(Icons.Default.DeleteSweep, null) },
                     onClick = { 
                         scope.launch { drawerState.close() }
-                        mainActivity.authenticateSimple(subtitle = "Acción irreversible") {
+                        mainActivity?.authenticateSimple(subtitle = "Acción irreversible") {
                             showDeleteAllConfirm = true
                         }
                     }
@@ -1049,3 +1081,4 @@ fun AgenviajeDrawerHeader() {
         )
     }
 }
+

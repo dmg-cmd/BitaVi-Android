@@ -33,6 +33,7 @@ import com.example.ui.components.FullScreenPhotoDialog
 import com.example.ui.components.TourOverlay
 import com.example.ui.AiAnalysisState
 import com.example.ui.DetailAction
+import com.example.ui.model.IconCategory
 import com.example.ui.RouteViewModel
 import com.github.mikephil.charting.charts.LineChart
 import com.github.mikephil.charting.data.Entry
@@ -76,7 +77,7 @@ fun DetailScreen(
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     val km = (route?.distanceMeters ?: 0.0) / 1000.0
-                    val totalMs = if ((route?.endTime ?: 0) > (route?.startTime ?: 0)) route!!.endTime - route!!.startTime else 0L
+                    val totalMs = route?.let { r -> if ((r.endTime ?: 0) > (r.startTime ?: 0)) r.endTime - r.startTime else 0L } ?: 0L
                     val movingMs = if (points.size > 1) {
                         var acc = 0L
                         for (i in 1 until points.size) {
@@ -318,7 +319,7 @@ fun DetailScreen(
                                 supportingContent = { Text(fav.address, maxLines = 1) },
                                 leadingContent = {
                                     Icon(
-                                        Icons.Default.Star,
+                                        IconCategory.fromKey(fav.iconCategory).icon,
                                         null,
                                         tint = Color(android.graphics.Color.parseColor(fav.color)),
                                         modifier = Modifier.size(24.dp)
@@ -586,3 +587,4 @@ fun HelpItem(icon: ImageVector, title: String, description: String) {
         }
     }
 }
+

@@ -34,6 +34,7 @@ import com.example.ui.components.TourOverlay
 import com.example.ui.dialogs.DeleteConfirmationDialog
 import kotlinx.coroutines.launch
 import com.example.data.model.SavedLocation
+import com.example.ui.model.IconCategory
 import com.example.ui.RouteViewModel
 import org.osmdroid.util.GeoPoint
 
@@ -675,7 +676,7 @@ fun LocationCard(
                 ) {
                     Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
                         Icon(
-                            imageVector = Icons.Default.Star,
+                            imageVector = IconCategory.fromKey(location.iconCategory).icon,
                             contentDescription = null,
                             tint = Color(android.graphics.Color.parseColor(location.color)),
                             modifier = Modifier.size(28.dp)
@@ -817,3 +818,4 @@ fun LocationCard(
         onDismiss = { photoToZoom = null }
     )
 }
+

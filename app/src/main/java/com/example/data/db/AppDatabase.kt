@@ -12,13 +12,9 @@ import com.example.data.model.Route
 import com.example.data.model.RouteFavoriteCrossRef
 import com.example.data.model.Waypoint
 
-/**
- * Base de datos principal de la aplicación, que contiene las tablas de rutas,
- * ubicaciones y waypoints.
- */
 @Database(
     entities = [Route::class, LocationPoint::class, Waypoint::class, com.example.data.model.SavedLocation::class, RouteFavoriteCrossRef::class],
-    version = 11,
+    version = 12,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -29,13 +25,8 @@ abstract class AppDatabase : RoomDatabase() {
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
-        /**
-         * Objeto de migración vacío para proteger los datos al subir de versión (7 a 8).
-         * Hallazgo de auditoría A02.
-         */
         private val MIGRATION_7_8 = object : Migration(7, 8) {
             override fun migrate(db: SupportSQLiteDatabase) {
-                // Sin cambios estructurales, solo protege datos existentes
             }
         }
 
@@ -57,7 +48,6 @@ abstract class AppDatabase : RoomDatabase() {
 
         private val MIGRATION_9_10 = object : Migration(9, 10) {
             override fun migrate(db: SupportSQLiteDatabase) {
-                // Sin cambios estructurales, solo para permitir el salto de versión
             }
         }
 
@@ -67,9 +57,15 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_11_12 = object : Migration(11, 12) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE saved_locations ADD COLUMN iconCategory TEXT NOT NULL DEFAULT 'DEFAULT'")
+                android.util.Log.i("ROOM_MIGRATION", "Columna iconCategory inyectada en version 12.")
+            }
+        }
+
         fun getDatabase(context: Context, passphrase: ByteArray? = null): AppDatabase {
             return INSTANCE ?: synchronized(this) {
-                // Cargar librería nativa para SQLCipher (Nuevo en sqlcipher-android)
                 System.loadLibrary("sqlcipher")
 
                 val databaseBuilder = Room.databaseBuilder(
@@ -77,15 +73,14 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "localizador_database"
                 )
-                
-                // Cifrado de base de datos con SQLCipher (Hallazgo A01)
+
                 passphrase?.let {
                     val factory = SupportOpenHelperFactory(it)
                     databaseBuilder.openHelperFactory(factory)
                 }
 
                 val instance = databaseBuilder
-                    .addMigrations(MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11)
+                    .addMigrations(MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12)
                     .fallbackToDestructiveMigration()
                     .build()
                 INSTANCE = instance
@@ -93,9 +88,6 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
-        /**
-         * Fuerza el cierre de la conexión y limpia la instancia para permitir reinicialización
-         */
         fun destroyInstance() {
             INSTANCE?.close()
             INSTANCE = null

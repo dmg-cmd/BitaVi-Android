@@ -197,7 +197,8 @@ class RouteRepository(private val routeDao: RouteDao) {
         country: String = "Desconocido",
         city: String = "Desconocida",
         color: String = "#FFD700",
-        timestamp: Long = System.currentTimeMillis()
+        timestamp: Long = System.currentTimeMillis(),
+        iconCategory: String = "DEFAULT"
     ) {
         val location = com.example.data.model.SavedLocation(
             name = name,
@@ -280,3 +281,4 @@ class RouteRepository(private val routeDao: RouteDao) {
         return routeDao.getRoutesForFavorite(favoriteId)
     }
 }
+

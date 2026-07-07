@@ -4,9 +4,6 @@ import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
 
-/**
- * Entidad para guardar direcciones o puntos de interés fijos (favoritos).
- */
 @Entity(
     tableName = "saved_locations",
     indices = [Index(value = ["latitude", "longitude"], unique = true)]
@@ -26,5 +23,6 @@ data class SavedLocation(
     val isContact: Boolean = false,
     val country: String = "Desconocido",
     val city: String = "Desconocida",
-    val color: String = "#FFD700" // Dorado por defecto
+    val color: String = "#FFD700",
+    val iconCategory: String = "DEFAULT"
 )

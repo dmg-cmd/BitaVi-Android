@@ -40,6 +40,11 @@ import com.example.location.ActivityMode
 import com.example.location.LocationService
 import com.example.ui.components.FullScreenPhotoDialog
 import com.example.ui.components.TourOverlay
+import com.example.ui.components.BrandWatermark
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Paint
+import com.example.ui.model.IconCategory
 import com.example.ui.RouteViewModel
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.util.GeoPoint
@@ -140,21 +145,30 @@ fun MapScreen(viewModel: RouteViewModel, modifier: Modifier = Modifier) {
     val favoriteMarkers = remember { mutableMapOf<Int, Marker>() }
     val routePolylines = remember { mutableListOf<Polyline>() }
     
-    val personIcon = remember(isTracking) {
-        ContextCompat.getDrawable(context, org.osmdroid.library.R.drawable.person)!!.mutate().apply {
-            setTint(if (isTracking) android.graphics.Color.RED else android.graphics.Color.parseColor("#1B5E20"))
-        }.toBitmap()
+    val prevSegmentModes = remember { mutableListOf<ActivityMode>() }
+    var prevTotalPoints by remember { mutableStateOf(0) }
+    val circleIcon = remember(isTracking) {
+        val size = 48
+        val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        val fillColor = if (isTracking) android.graphics.Color.RED else android.graphics.Color.parseColor("#1B5E20")
+        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = fillColor
+            style = Paint.Style.FILL
+        }.run { canvas.drawCircle(size / 2f, size / 2f, size / 2f - 2f, this) }
+        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = 2f
+            color = android.graphics.Color.WHITE
+        }.run { canvas.drawCircle(size / 2f, size / 2f, size / 2f - 2f, this) }
+        bitmap
     }
-    val directionIcon = remember(isTracking) {
-        ContextCompat.getDrawable(context, org.osmdroid.library.R.drawable.next)!!.mutate().apply {
-            setTint(if (isTracking) android.graphics.Color.RED else android.graphics.Color.parseColor("#1B5E20"))
-        }.toBitmap()
-    }
-
     val getCachedIcon = { resId: Int, colorHex: String ->
         val key = "$resId-$colorHex"
         markerIconCache.getOrPut(key) {
-            ContextCompat.getDrawable(context, resId)!!.mutate().apply {
+            val d = ContextCompat.getDrawable(context, resId)
+                ?: error("resId")
+            d.mutate().apply {
                 setTint(android.graphics.Color.parseColor(colorHex))
             }
         }
@@ -314,16 +328,21 @@ fun MapScreen(viewModel: RouteViewModel, modifier: Modifier = Modifier) {
                     }
                     
                     // Sincronizar iconos de ubicación (solo si cambiaron por isTracking)
-                    locationOverlay.setPersonIcon(personIcon)
-                    locationOverlay.setDirectionIcon(directionIcon)
+                    locationOverlay.setPersonIcon(circleIcon)
+                    locationOverlay.setDirectionIcon(circleIcon)
 
                     var needsInvalidate = false
 
-                    // 1. Polyline segmentada por modo de actividad (reconstrucción completa)
-                    routePolylines.forEach { view.overlays.remove(it) }
-                    routePolylines.clear()
-                    if (routePoints.isNotEmpty()) {
-                        routePoints.toRouteSegments().forEach { seg ->
+                    // 1. Polyline segmentada por modo de actividad (OPTIMIZADA: diffing incremental)
+                    val newSegments = routePoints.toRouteSegments()
+                    val currentTotalPoints = routePoints.size
+                    val newModes = newSegments.map { it.mode }
+                    val structureChanged = newSegments.size != prevSegmentModes.size || newModes != prevSegmentModes
+                    if (structureChanged || currentTotalPoints <= prevTotalPoints) {
+                        // Reconstrucción completa solo cuando cambia estructura o hay reset
+                        routePolylines.forEach { view.overlays.remove(it) }
+                        routePolylines.clear()
+                        newSegments.forEach { seg ->
                             Polyline().apply {
                                 setPoints(seg.points)
                                 outlinePaint.color = seg.color
@@ -334,7 +353,23 @@ fun MapScreen(viewModel: RouteViewModel, modifier: Modifier = Modifier) {
                                 needsInvalidate = true
                             }
                         }
+                    } else if (currentTotalPoints > prevTotalPoints) {
+                        // Solo añadir puntos nuevos al último segmento
+                        val lastPolyline = routePolylines.lastOrNull()
+                        val lastSegment = newSegments.lastOrNull()
+                        if (lastPolyline != null && lastSegment != null) {
+                            val existingCount = lastPolyline.getPoints().size
+                            if (existingCount < lastSegment.points.size) {
+                                val newGeoPoints = lastSegment.points.drop(existingCount)
+                                newGeoPoints.forEach { lastPolyline.addPoint(it) }
+                                needsInvalidate = true
+                            }
+                        }
                     }
+                    // Actualizar tracking
+                    prevSegmentModes.clear()
+                    prevSegmentModes.addAll(newModes)
+                    prevTotalPoints = currentTotalPoints
                     // 2. Optimización de Waypoints (Diffing selectivo)
                     val currentWpIds = waypoints.map { it.id }.toSet()
                     if (waypointMarkers.keys.retainAll { id ->
@@ -400,7 +435,7 @@ fun MapScreen(viewModel: RouteViewModel, modifier: Modifier = Modifier) {
                             marker.position = newPos
                             marker.title = loc.name
                             marker.snippet = loc.address
-                            marker.icon = getCachedIcon(android.R.drawable.btn_star_big_on, loc.color)
+                            marker.icon = android.graphics.drawable.BitmapDrawable(context.resources, IconCategory.toBitmap(IconCategory.fromKey(loc.iconCategory), android.graphics.Color.parseColor(loc.color), 40))
                             needsInvalidate = true
                         }
                     }
@@ -547,6 +582,12 @@ fun MapScreen(viewModel: RouteViewModel, modifier: Modifier = Modifier) {
                 }
             }
         }
+        // Marca de agua adaptativa con contraste dinámico MD3
+        BrandWatermark(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(bottom = 100.dp, start = 8.dp)
+        )
     }
 
     if (showStartDialog) {
@@ -991,3 +1032,4 @@ fun MapScreen(viewModel: RouteViewModel, modifier: Modifier = Modifier) {
         )
     }
 }
+

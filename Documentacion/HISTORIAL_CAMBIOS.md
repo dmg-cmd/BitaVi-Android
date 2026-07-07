@@ -285,4 +285,75 @@ outeAnalytics() + a uxiliaryRoutes.
 - **Cambio 3 — Anti Auto-Stop**: lastUserActivityTimeMillis ahora se actualiza en cada tick del GPS (LocationService.kt:411), no solo con ACTION_SCREEN_ON. El auto-stop por inactividad de 5 min no se dispara mientras el teléfono se mueve aunque esté en el bolsillo.
 - **Cambio 4 — Timer reactivo**: delay(5000L) → delay(1000L) en el timer de tracking. El contador de tiempo ahora se siente instantáneo al sacar el celular.
 - **Archivos modificados**: AppConstants.kt, LocationService.kt.
-- **Respaldos**: RESPALDO_ANTERIOR/20260705_AppConstants.kt, 20260705_LocationService.kt.
+- **Respaldos**: RESPALDO_ANTERIOR/20260705_AppConstants.kt, 20260705_LocationService.kt.[06/07/2026 - Bloque de Contenci�n Cr�tica: Parche de Estabilizaci�n 5 puntos]
+- **A01 � Cast inseguro context as MainActivity**: Reemplazado `context as MainActivity` (ClassCastException potencial en ContextWrapper) por extensi�n defensiva `Context.findActivity(): MainActivity?` que recorre recursivamente la jerarqu�a de ContextWrapper. Usos de `authenticateSimple` migrados a safe call `?.`.
+- **A02 � Force unwrap !! en drawables**: Eliminados 3 `!!` en MapScreen.kt (personIcon, directionIcon, getCachedIcon). Reemplazados por `val d = getDrawable() ?: error("mensaje")` con fallback defensivo y `mutate().apply { setTint() }` correcto.
+- **A03 � Force unwrap route!! en DetailScreen**: Reemplazado `route!!.endTime - route!!.startTime` por `route?.let { r -> ... } ?: 0L` con smart cast seguro.
+- **A04 � Reconstrucci�n pesada de polil�neas en AndroidView**: Optimizado el bloque `update` de AndroidView. Ahora usa diffing incremental: solo reconstruye todas las polil�neas cuando cambia la estructura de segmentos (modo de actividad). En caso normal (nuevo punto GPS), solo a�ade los puntos delta al �ltimo segmento existente. Elimina ANR potencial en rutas largas.
+- **A05 � Permiso VIBRATE faltante**: Agregado `<uses-permission android:name="android.permission.VIBRATE" />` al AndroidManifest.xml para evitar SecurityException en Android 13+ al usar AlertNotifier.
+- **Archivos modificados**: MainActivity.kt, MapScreen.kt, DetailScreen.kt, AndroidManifest.xml.
+- **Respaldos**: RESPALDO_ANTERIOR/20260706_MainActivity.kt, 20260706_MapScreen.kt, 20260706_DetailScreen.kt, 20260706_AndroidManifest.xml.
+
+
+[06/07/2026 - Sprint v3.0: CinematicFilterManager — Filtro Cinemático Extraído]
+- **Nuevo archivo**: com.example.location.manager.CinematicFilterManager.kt
+- **Propósito**: Extraer la lógica de ventana deslizante GPS y filtro de velocidad de LocationService.kt a una clase inyectable, testeable y desacoplada.
+- **API pública**: ilter(location): Boolean — evalúa el punto contra la ventana cinemática (anti-(0,0), anti-salto de antena con tolerancia en curvas). eset() — limpia la ventana.
+- **Configurable**: maxAllowedSpeedMps (15.0 por defecto) y windowSize (5).
+- **Integración**: No rompe el pipeline existente. Devuelve Boolean simple; LocationService decide el resto (mode, persistencia, BLE).
+- **Build**: BUILD SUCCESSFUL sin warnings.
+- **Respaldos**: RESPALDO_ANTERIOR/20260706_CinematicFilterManager.kt.
+
+[06/07/2026 - Sprint v3.0: StationaryAnchorManager — Filtro de Anclaje Estacionario]
+- **Nuevo archivo**: com.example.location.manager.StationaryAnchorManager.kt
+- **Propósito**: Mitigar el "paseo fantasma" por rebote de señal en interiores. Cuando el usuario está quieto >2 min y la precisión GPS empeora (>20m), congela la posición, el odómetro y las coordenadas en DB hasta que una ráfaga de velocidad >0.5 m/s rompa el anclaje.
+- **API pública**: processAnchor(currentLocation): Location — devuelve ubicación anclada o la original. eset() — limpia estado al detener tracking.
+- **Refinamientos aplicados**:
+  - System.currentTimeMillis() en vez de location.time para medir duración de inactividad.
+  - Guarda ccuracyAnchorThreshold = 20f: solo ancla si la precisión se degrada (interiores).
+  - Liberación con histéresis: speed > speedThresholdMps * 2 (0.5 m/s) evita flapping.
+- **Inyección en LocationService.kt**: Llamado tras CinematicFilterManager.filter() en el pipeline. Afecta odómetro, DB y velocidad computada. No afecta _latestLocation (UI blue dot).
+- **Reset**: stationaryAnchorManager.reset() en stopTracking().
+- **Build**: BUILD SUCCESSFUL (0 errores). **Deploy**: installDebug exitoso en Pixel 9 Pro XL.
+- **Respaldos**: RESPALDO_ANTERIOR/20260706_StationaryAnchorManager.kt, 20260706_LocationService_beforeAnchor.kt.
+
+[06/07/2026 - Bloque C: Marca de Agua Adaptativa + Circulo Inercial]
+- **Nuevo archivo**: ui/components/BrandWatermark.kt - Composable que muestra "Agenviaje - v3.0.0" con MaterialTheme.colorScheme.onSurfaceVariant y alpha(0.6f). Contraste dinamico MD3 dia/noche.
+- **Req. #08 - Circulo Inercial**: Reemplazados personIcon y directionIcon por circleIcon programatico (Bitmap 48x48 via Canvas + Paint). Circulo con relleno (rojo tracking, verde reposo) y borde blanco. directionIcon usa el mismo circulo, eliminando rotacion magnetica. MyLocationNewOverlay intacto.
+- **Req. #09 - Marca de Agua**: Inyectada en Box raiz de MapScreen.kt con Alignment.BottomStart, margin bottom=100dp.
+- **Archivos**: MapScreen.kt (iconos + watermark), BrandWatermark.kt (nuevo).
+- **Build**: BUILD SUCCESSFUL (0 errores). Deploy: installDebug exitoso en Pixel 9 Pro XL.
+
+[06/07/2026 - Bloque B — Geofencing Poligonal: Bounding Box Argentina]
+- **AppConstants.kt**: Nuevo objeto Geofencing anidado con constantes de bounding box:
+  - MIN_LATITUDE = -55.0, MAX_LATITUDE = -20.0, MIN_LONGITUDE = -75.0, MAX_LONGITUDE = -53.0
+  - Función isWithinBounds(lat, lon): Boolean usando ranges de Kotlin (closed range, sin !!).
+- **GeocoderUseCase.kt**: Nueva función isValidCoordinate(lat, lon): Boolean con clamping Float→Double para sanitizar entrada. Guarda defensiva en etchLocationDetails() y etchAddress(): si la coordenada cae fuera del bounding box o es (0.0, 0.0), retorna inmediatamente "GPS: Fuera de cobertura" (fetchLocationDetails) o null (fetchAddress).
+- **Impacto**: Cero cambios en LocationService, Room DB, ViewModel o UI. La validación ocurre en la capa de GeocoderUseCase, antes de que el dato se consolide en el repositorio. Elimina puntos corruptos en el Atlántico y rebotes de red transfronterizos.
+- **Respaldos**: RESPALDO_ANTERIOR/20260706_AppConstants_Geofencing.kt, 20260706_GeocoderUseCase_Geofencing.kt.
+- **Compilación**: BUILD SUCCESSFUL (0 errores). Deploy: installDebug exitoso en Pixel 9 Pro XL.
+
+[06/07/2026 - Frente #01: ActivityRecognitionManager — Arranque Automático por Transiciones Físicas]
+- **Problema**: El auto-arranque existente (solo por velocidad GPS en processNewLocation()) no reaccionaba en frío. GPS pasivo no recibe updates frecuentes, y Android 12+ puede matar el listener de ubicación en segundo plano.
+- **Solución — Sistema de reconocimiento de actividad física con Google Play Services**:
+  - **ActivityRecognitionManager.kt** (NUEVO): Clase en com.example.location.manager que encapsula la API de ActivityTransition. Suscribe/desuscribe PendingIntent con FLAG_MUTABLE (requerido en Android 12+). Monitorea transiciones ENTER/EXIT de STILL, WALKING, RUNNING, ON_BICYCLE, IN_VEHICLE.
+  - **ActivityTransitionReceiver.kt** (NUEVO): BroadcastReceiver en com.example.location.receiver que captura los eventos del SO y puentea a LocationService via ACTION_AUTO_START_FROM_TRANSITION. Usa startForegroundService() para Android 12+.
+  - **LocationService.kt**: Nuevas constantes ACTION_AUTO_START_FROM_TRANSITION + EXTRA_DETECTED_ACTIVITY en companion object. Handler en when(action) que llama a handleAutoStartFromTransition(). Manager inicializado en onCreate() y detenido en shutdownService().
+  - **AndroidManifest.xml**: Agregado <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" /> y <receiver android:name=".location.receiver.ActivityTransitionReceiver" android:exported="false" />.
+  - **MainActivity.kt**: Nuevo ctivityRecognitionPermissionLauncher (registerForActivityResult). Solicitud runtime de ACTIVITY_RECOGNITION en el flujo de permisos escalonados (API 29+).
+- **Arquitectura**: ActivityRecognitionManager vive en LocationService (no en UI), asegurando persistencia aunque la app se cierre. MainActivity solo maneja la solicitud de permiso.
+- **Respaldos**: RESPALDO_ANTERIOR/20260706_LocationService_ActivityRecognition.kt, 20260706_MainActivity_ActivityRecognition.kt, 20260706_AndroidManifest_ActivityRecognition.xml.
+- **Compilacion**: BUILD SUCCESSFUL (0 errores). **Deploy**: installDebug exitoso en Pixel 9 Pro XL.
+
+[07/07/2026 - Frente #08: Iconos Dinámicos y Migración DB v11→v12]
+- **AppDatabase.kt**: Versión 11→12 con MIGRATION_11_12 que ejecuta ALTER TABLE saved_locations ADD COLUMN iconCategory TEXT NOT NULL DEFAULT 'DEFAULT'. AddMigrations actualizado para incluir la nueva migración. fallbackToDestructiveMigration preservado como red de seguridad.
+- **IconCategory.kt** (EXISTENTE): Enum con 7 categorías (DEFAULT/GASTRONOMIA/TRANSPORTE/AVION/PARQUE/TRABAJO/AUTOMATIC). Cada una con key String, icon ImageVector, label String. Companion con fromKey() lookup + toBitmap() que genera círculo relleno programático con borde blanco para osmdroid.
+- **SavedLocation.kt**: Entidad Room con nuevo campo iconCategory: String = "DEFAULT". Compatible con registros existentes vía NOT NULL DEFAULT.
+- **RouteRepository.kt**: addSavedLocation() ahora acepta parámetro iconCategory: String = "DEFAULT" con propagación al constructor de SavedLocation. addWaypoint() corregido (iconCategory removido, inexistente en Waypoint).
+- **RouteViewModel.kt**: saveSpecificLocation() ahora acepta parámetro iconCategory con named parameter en la llamada a repository.
+- **LocationService.kt**: Auto-stop markers ahora usan iconCategory = "AUTOMATIC" para distinguir paradas automáticas de favoritos manuales.
+- **MapScreen.kt**: Marcadores osmdroid usan IconCategory.toBitmap() programático en vez de getCachedIcon con resource drawable. Marker.icon recibe BitmapDrawable con círculo coloreado según loc.color + categoría.
+- **SavedLocationsScreen.kt**: Icono en lista usa IconCategory.fromKey(location.iconCategory).icon en lugar de Icons.Default.Star estático.
+- **DetailScreen.kt**: Icono en lista de favoritos vinculados usa IconCategory.fromKey(fav.iconCategory).icon en lugar de Icons.Default.Star estático.
+- **Backups**: RESPALDO_ANTERIOR/20250707_*.kt para AppDatabase, IconCategory, MapScreen, SavedLocationsScreen, DetailScreen, RouteViewModel, RouteRepository.
+- **Compilación**: BUILD SUCCESSFUL (0 errores). **Deploy**: installDebug exitoso en Pixel 9 Pro XL.

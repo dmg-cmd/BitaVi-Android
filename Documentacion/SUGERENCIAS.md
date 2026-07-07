@@ -14,3 +14,4 @@
 ## Prioridad 3: Investigación (04/07/2026)
 - [ ] **Modo Inmersivo del Pixel**: Investigar si se puede personalizar el comportamiento nativo (ocultación de status bar al tocar el mapa) sin romper el renderizado de Compose. Alternativa: aceptar el comportamiento por defecto del SO.
 - [ ] **Watermark definitivo**: Una vez confirmado el layout, decidir estilo final del texto "agenviaje" en la card (verde neón debug vs elegante alpha=0.4).
+

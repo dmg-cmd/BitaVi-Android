@@ -106,3 +106,14 @@
   - DisposableEffect/WindowManager: Innecesario, SideEffect simple es suficiente.
 - **Lección aprendida**: El modo inmersivo del Pixel es nativo e inevitable al tocar un MapView. Pelear contra él rompe el renderizado. La solución es adaptar el layout (bottom fijo) en lugar de force tear la transparencia.
 - **Rollback base**: Se restauró RESPALDO_ANTERIOR/20260704_FocusFavoriteScreen_v4.kt (20:53, 258 líneas, Box + GraphicsLayer + fitsSystemWindows=false). Único parche: bottom=40dp en la Card.
+
+## 07/07/2026 — Migración DB v11→v12 + Iconos Dinámicos (Frente #08)
+- **AppDatabase.kt**: Versión 12 con MIGRATION_11_12 (ALTER TABLE saved_locations ADD COLUMN iconCategory TEXT NOT NULL DEFAULT 'DEFAULT').
+- **IconCategory.kt**: Enum con 7 categorías, fromKey() y toBitmap() programático para osmdroid.
+- **SavedLocation.kt**: Nuevo campo iconCategory: String = "DEFAULT".
+- **RouteRepository.kt + RouteViewModel.kt**: Parámetro iconCategory en addSavedLocation/saveSpecificLocation.
+- **LocationService.kt**: Auto-stop markers usan iconCategory = "AUTOMATIC".
+- **MapScreen.kt**: Markers osmdroid con círculo programático vía IconCategory.toBitmap().
+- **SavedLocationsScreen.kt + DetailScreen.kt**: Iconos dinámicos vía IconCategory.fromKey().icon.
+- **Deploy**: BUILD SUCCESSFUL + installDebug en Pixel 9 Pro XL.
+
