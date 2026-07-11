@@ -160,10 +160,6 @@ class LocationService : Service() {
         private const val NOTIFICATION_ID = 1205
 
         // Filtro de ruido GPS inteligente (valores centralizados en AppConstants)
-        private const val MIN_DISTANCE_THRESHOLD = AppConstants.Location.MIN_DISTANCE_THRESHOLD_METERS
-        private const val MIN_TIME_DELTA_MS = AppConstants.Location.MIN_TIME_DELTA_MILLIS
-        private const val MIN_DISTANCE_DELTA = AppConstants.Location.MOVEMENT_TRIGGER_THRESHOLD_METERS
-        private const val MAX_VALID_SPEED_MPS = AppConstants.Location.MAX_SPEED_METERS_PER_SECOND
         private const val MAX_GPS_ACCURACY = AppConstants.Location.MAX_GPS_ACCURACY_METERS
         private const val TOLERANT_ACCURACY = AppConstants.Location.MAX_POCKET_ACCURACY_METERS
 
@@ -213,11 +209,9 @@ class LocationService : Service() {
         val latestLocation = _latestLocation.asStateFlow()
 
 
-        private val _elapsedTimeSeconds = MutableStateFlow(0L)
-        val elapsedTimeSeconds = _elapsedTimeSeconds.asStateFlow()
+        private var _elapsedTimeSeconds = 0L
 
-        private val _currentDistanceMeters = MutableStateFlow(0.0)
-        val currentDistanceMeters = _currentDistanceMeters.asStateFlow()
+        private var _currentDistanceMeters = 0.0
 
         private val _currentActivityMode = MutableStateFlow(ActivityMode.STOPPED)
         val currentActivityMode = _currentActivityMode.asStateFlow()
@@ -405,7 +399,7 @@ class LocationService : Service() {
             // Si la ruta ya existía, recuperamos su distancia histórica para continuar acumulando
             val existingRoute = repository.getRouteById(routeId)
             totalDistanceMeters = existingRoute?.distanceMeters ?: 0.0
-            _currentDistanceMeters.value = totalDistanceMeters
+            _currentDistanceMeters = totalDistanceMeters
 
             // Consultar las coordenadas previas para tener continuidad si es una reanudación
             val previousPoints = repository.getLocationPointsSync(routeId)
@@ -627,7 +621,7 @@ class LocationService : Service() {
 
                     if (distanceStep > 0) {
                         totalDistanceMeters += distanceStep
-                        _currentDistanceMeters.value = totalDistanceMeters
+                        _currentDistanceMeters = totalDistanceMeters
 
                         val currentRoute = repository.getRouteById(routeId)
                         if (currentRoute != null) {
@@ -792,7 +786,7 @@ class LocationService : Service() {
             val route = repository.getRouteById(routeId) ?: return@launch
             val km = totalDistanceMeters / 1000.0
             val formattedDistance = String.format(Locale.US, "%.2f km", km)
-            val formattedTime = formatElapsedTime(_elapsedTimeSeconds.value)
+            val formattedTime = formatElapsedTime(_elapsedTimeSeconds)
 
             val contentText = "Distancia: $formattedDistance | Tiempo: $formattedTime"
             val notification = buildNotification(route.name, contentText)
@@ -804,12 +798,12 @@ class LocationService : Service() {
 
     private fun startTimer() {
         timerJob?.cancel()
-        startTimeMillis = System.currentTimeMillis() - (_elapsedTimeSeconds.value * 1000L)
+        startTimeMillis = System.currentTimeMillis() - (_elapsedTimeSeconds * 1000L)
         timerJob = serviceScope.launch {
             while (isActive) {
                 val now = System.currentTimeMillis()
                 val elapsed = (now - startTimeMillis) / 1000L
-                _elapsedTimeSeconds.value = elapsed
+                _elapsedTimeSeconds = elapsed
 
                 // COMPROBACIÓN 1: Inactividad (15 minutos) - SOLO SI EL USUARIO QUIERE AUTO-MODE
                 val isAutoModeActive = sharedPrefs.getBoolean("auto_mode", false)
@@ -947,8 +941,8 @@ class LocationService : Service() {
 
             withContext(Dispatchers.Main) {
                 // Limpiar contadores pero mantener el servicio vivo
-                _elapsedTimeSeconds.value = 0L
-                _currentDistanceMeters.value = totalDistanceMeters
+                _elapsedTimeSeconds = 0L
+                _currentDistanceMeters = totalDistanceMeters
                 lastValidLocation = null
                 
                 // Reiniciar seguimiento con el nuevo ID
@@ -1011,8 +1005,8 @@ class LocationService : Service() {
                 shortStopAddress = ""
                 stationaryAnchorManager.reset()
                 cinematicFilter.reset()
-                _elapsedTimeSeconds.value = 0L
-                _currentDistanceMeters.value = 0.0
+                _elapsedTimeSeconds = 0L
+                _currentDistanceMeters = 0.0
 
                 // Purgar alertas y restablecer el modo síncronamente
                 isSignalLost = false

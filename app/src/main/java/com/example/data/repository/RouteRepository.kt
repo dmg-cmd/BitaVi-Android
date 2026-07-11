@@ -22,7 +22,6 @@ class RouteRepository(private val routeDao: RouteDao) {
     val allRoutes: Flow<List<Route>> = routeDao.getAllRoutesFlow()
 
     // Flujo de la ruta activa actualmente
-    val activeRouteFlow: Flow<Route?> = routeDao.getActiveRouteFlow()
 
     /**
      * Inicia una nueva ruta guardando su registro inicial y finalizando de forma preventiva
@@ -184,13 +183,7 @@ class RouteRepository(private val routeDao: RouteDao) {
         return routeDao.getWaypointsForRoute(routeId)
     }
 
-    suspend fun removeWaypointPhoto(waypointId: Int) {
-        routeDao.clearWaypointPhoto(waypointId)
-    }
 
-    suspend fun removeFavoritePhoto(favoriteId: Int) {
-        routeDao.clearFavoritePhoto(favoriteId)
-    }
 
     // --- Operaciones de Lugares Guardados (Favoritos) ---
 

@@ -25,8 +25,6 @@ interface RouteDao {
     @Update
     suspend fun updateRoute(route: Route)
 
-    @Delete
-    suspend fun deleteRoute(route: Route)
 
     @Query("DELETE FROM routes WHERE id = :routeId")
     suspend fun deleteRouteById(routeId: Int)
@@ -46,9 +44,6 @@ interface RouteDao {
 
     @Query("SELECT * FROM routes WHERE isActive = 1 LIMIT 1")
     suspend fun getActiveRoute(): Route?
-
-    @Query("SELECT * FROM routes WHERE isActive = 1 LIMIT 1")
-    fun getActiveRouteFlow(): Flow<Route?>
 
 
     // --- Operaciones de Puntos de Ubicación ---
@@ -155,17 +150,5 @@ interface RouteDao {
     """)
     suspend fun getFavoritesForRoute(routeId: Int): List<SavedLocation>
 
-    @Query("""
-        SELECT r.* FROM routes r
-        INNER JOIN route_favorite_cross_ref rf ON r.id = rf.routeId
-        WHERE rf.favoriteId = :favoriteId
-    """)
-    fun getRoutesForFavoriteFlow(favoriteId: Int): Flow<List<Route>>
 
-    @Query("""
-        SELECT r.* FROM routes r
-        INNER JOIN route_favorite_cross_ref rf ON r.id = rf.routeId
-        WHERE rf.favoriteId = :favoriteId
-    """)
-    suspend fun getRoutesForFavorite(favoriteId: Int): List<Route>
 }
