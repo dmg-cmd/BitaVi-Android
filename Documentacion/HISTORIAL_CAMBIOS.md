@@ -1,3 +1,11 @@
+[11/07/2026 - Fase 6: Purgas Finales (authenticateWithCrypto, shareScreenshot, PhotoInfoWindow, shareCompleteRoute, isFavoriteLinked, saveFavoritePoint)]
+- **MainActivity.kt**: Eliminada función uthenticateWithCrypto() (L217-244). Preservada uthenticateSimple() (3 callers vivos).
+- **ShareUseCase.kt**: Eliminada shareCompleteRoute() (L48-108): lógica de compartición con mapa + fotos + FileProvider.
+- **RouteViewModel.kt**: Eliminadas isFavoriteLinked() (L302-303, single-expression body) y saveFavoritePoint() (L309-318, con geocoder + DB). Preservada cleanDuplicateFavorites() (caller vivo en L130).
+- **ExperienceMapScreen.kt**: Eliminadas shareScreenshot() (L173-193, captura decorView + FileProvider) y class PhotoInfoWindow (L484-555, InfoWindow osmdroid con CircleCropTransformation). photoItems preservado.
+- **Método**: Reemplazo del brace-counting por eliminación por rango de línea exacto (previene corrupción de estructura).
+- **Respaldos**: RESPALDO_ANTERIOR/20260711_*.kt (4 archivos modificados).
+- **Compilación**: BUILD SUCCESSFUL (0 errores).
 [11/07/2026 - Limpieza de Menú Duplicado: Eliminación de IconButton flotante superior]
 - **MainActivity.kt**: Eliminado bloque IconButton (hamburguesa) de la capa superior absoluta (zIndex=99) que se superponía al mapa en NavRoutes.TRACKING. Se removió también el parámetro onMenuClick = { drawerState.open() } de la llamada a MapScreen().
 - **MapScreen.kt**: Eliminado parámetro onMenuClick: () -> Unit de la firma del composable. El callback estaba muerto (nunca se invocaba dentro del componente).
@@ -453,3 +461,4 @@ eplace en la lambda de exportación ZIP.
 - **Archivos modificados**: app/src/main/java/com/example/MainActivity.kt (bottomBar líneas 774-969 reemplazadas).
 - **Respaldos**: RESPALDO_ANTERIOR/20260711_MainActivity.kt.
 - **Compilación**: BUILD SUCCESSFUL (0 errores).
+

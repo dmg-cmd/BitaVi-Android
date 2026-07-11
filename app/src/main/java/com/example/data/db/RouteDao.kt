@@ -77,10 +77,10 @@ interface RouteDao {
     // --- Operaciones de Lugares Guardados (Favoritos) ---
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertSavedLocation(location: com.example.data.model.SavedLocation): Long
+    suspend fun insertSavedLocation(location: SavedLocation): Long
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
-    suspend fun insertIfNew(location: com.example.data.model.SavedLocation): Long
+    suspend fun insertIfNew(location: SavedLocation): Long
 
     @Query("UPDATE saved_locations SET photoPath = :photoPath WHERE latitude = :lat AND longitude = :lon")
     suspend fun updatePhotoPathByLatLon(lat: Double, lon: Double, photoPath: String?)
@@ -100,22 +100,22 @@ interface RouteDao {
     suspend fun cleanOrphanedRelations()
 
     @Update
-    suspend fun updateSavedLocation(location: com.example.data.model.SavedLocation)
+    suspend fun updateSavedLocation(location: SavedLocation)
 
     @Query("UPDATE saved_locations SET color = :color WHERE id = :id")
     suspend fun updateSavedLocationColor(id: Int, color: String)
 
     @Query("SELECT * FROM saved_locations ORDER BY timestamp DESC")
-    fun getAllSavedLocationsFlow(): Flow<List<com.example.data.model.SavedLocation>>
+    fun getAllSavedLocationsFlow(): Flow<List<SavedLocation>>
 
     @Query("SELECT * FROM saved_locations")
-    suspend fun getAllSavedLocations(): List<com.example.data.model.SavedLocation>
+    suspend fun getAllSavedLocations(): List<SavedLocation>
 
 
     @Query("SELECT * FROM saved_locations WHERE id = :id")
-    fun getSavedLocationByIdFlow(id: Int): Flow<com.example.data.model.SavedLocation?>
+    fun getSavedLocationByIdFlow(id: Int): Flow<SavedLocation?>
     @Delete
-    suspend fun deleteSavedLocation(location: com.example.data.model.SavedLocation)
+    suspend fun deleteSavedLocation(location: SavedLocation)
 
     @Query("DELETE FROM routes")
     suspend fun deleteAllRoutes()

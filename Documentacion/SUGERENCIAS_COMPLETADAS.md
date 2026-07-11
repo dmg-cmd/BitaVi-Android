@@ -135,3 +135,13 @@
 - **IndicadorTranslucidoContenedor**: Refactor backward-compatible con nuevo parámetro overrideColor.
 - **RouteSegmenter**: Segmentos de ruta SIN_SENAL se renderizan en rojo #DC3545 en el mapa.
 - **Compilación**: BUILD SUCCESSFUL (0 errores, 0 warnings).
+
+## 11/07/2026 — Fase 6: Eliminación de 6 Funciones Muertas
+- **authenticateWithCrypto**: Eliminada de MainActivity.kt (biométrica con cipher, 28 líneas). authenticateSimple preservada.
+- **shareCompleteRoute**: Eliminada de ShareUseCase.kt (61 líneas, generaba resumen vía Intent ACTION_SEND/SEND_MULTIPLE).
+- **shareScreenshot**: Eliminada de ExperienceMapScreen.kt (21 líneas, captura decorView + FileProvider).
+- **PhotoInfoWindow**: Eliminada de ExperienceMapScreen.kt (72 líneas, InfoWindow osmdroid con CircleCropTransformation, sin instanciaciones).
+- **isFavoriteLinked**: Eliminada de RouteViewModel.kt (2 líneas, single-expression Flow<Boolean>).
+- **saveFavoritePoint**: Eliminada de RouteViewModel.kt (10 líneas, insertaba favorito con geocoder).
+- **Método**: Eliminación por rango de línea exacto (sin brace-counting) para evitar corrupción sintáctica.
+

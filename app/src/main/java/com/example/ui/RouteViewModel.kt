@@ -299,23 +299,11 @@ class RouteViewModel(
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
     fun getFavoritesForRouteFlow(routeId: Int): Flow<List<SavedLocation>> = repository.getFavoritesForRouteFlow(routeId)
 
-    fun isFavoriteLinked(routeId: Int, favoriteId: Int): Flow<Boolean> =
-        repository.getFavoritesForRouteFlow(routeId).map { favorites -> favorites.any { it.id == favoriteId } }.distinctUntilChanged()
 
     fun addFavoriteToRoute(routeId: Int, favoriteId: Int) { viewModelScope.launch { repository.addFavoriteToRoute(routeId, favoriteId) } }
 
     fun removeFavoriteFromRoute(routeId: Int, favoriteId: Int) { viewModelScope.launch { repository.removeFavoriteFromRoute(routeId, favoriteId) } }
 
-    fun saveFavoritePoint(latitude: Double, longitude: Double, label: String) {
-        viewModelScope.launch {
-            val locationResult = geocoderUseCase.fetchCityAndCountry(latitude, longitude)
-            val finalLabel = locationResult.fold(
-                onSuccess = { geoText -> "$label ($geoText)" },
-                onFailure = { "$label (Ubicación Georreferenciada)" }
-            )
-            repository.insertFavorite(latitude, longitude, finalLabel)
-        }
-    }
 
     fun saveSpecificLocation(name: String, address: String, latitude: Double, longitude: Double, comment: String = "", author: String = "", photoPath: String? = null, phoneNumber: String = "", email: String = "", isContact: Boolean = false, color: String = "#FFD700") {
         viewModelScope.launch(Dispatchers.IO) {

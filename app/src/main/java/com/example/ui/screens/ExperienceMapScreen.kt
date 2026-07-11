@@ -170,27 +170,6 @@ fun ExperienceMapScreen(
 
     val activity = context as? Activity
 
-    fun shareScreenshot() {
-        val a = activity ?: return
-        android.os.Handler(a.mainLooper).post {
-            try {
-                val bitmap = a.window.decorView.drawToBitmap()
-                val cacheFile = File(context.cacheDir, "screenshot_${routeId}.png")
-                FileOutputStream(cacheFile).use { fos -> bitmap.compress(Bitmap.CompressFormat.PNG, 100, fos) }
-                val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", cacheFile)
-                val intent = Intent(Intent.ACTION_SEND).apply {
-                    type = "image/png"
-                    putExtra(Intent.EXTRA_STREAM, uri)
-                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                }
-                val chooser = Intent.createChooser(intent, "Compartir pantalla")
-                chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                context.startActivity(chooser)
-            } catch (e: Exception) {
-                Toast.makeText(context, "Error al capturar: ${e.message}", Toast.LENGTH_SHORT).show()
-            }
-        }
-    }
 
     val photoItems = remember(waypoints, linkedFavorites) {
         val items = mutableListOf<PhotoItem>()
@@ -481,75 +460,3 @@ class GuideLinesOverlay(
     }
 }
 
-class PhotoInfoWindow(
-    mapView: MapView,
-    private val onPhotoClick: ((String) -> Unit)? = null
-) : InfoWindow(R.layout.info_window_layout, mapView) {
-
-    private var pendingPhotoPath: String? = null
-
-    fun setPhoto(photoPath: String) {
-        pendingPhotoPath = photoPath
-    }
-
-    override fun onOpen(item: Any?) {
-        val marker = item as? Marker ?: return
-        val context = mView.context
-        val density = context.resources.displayMetrics.density
-
-        val layout = mView as LinearLayout
-        layout.orientation = LinearLayout.VERTICAL
-        layout.setPadding(
-            (12 * density).toInt(), (8 * density).toInt(),
-            (12 * density).toInt(), (8 * density).toInt()
-        )
-        layout.setBackgroundColor(android.graphics.Color.WHITE)
-        layout.removeAllViews()
-
-        TextView(context).apply {
-            text = marker.title ?: ""
-            gravity = android.view.Gravity.CENTER
-            setTextColor(android.graphics.Color.BLACK)
-            textSize = 14f
-            setTypeface(null, android.graphics.Typeface.BOLD)
-            layoutParams = ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-            layout.addView(this)
-        }
-
-        val path = pendingPhotoPath
-        if (!path.isNullOrBlank()) {
-            ImageView(context).apply {
-                layoutParams = ViewGroup.LayoutParams(
-                    (150 * density).toInt(),
-                    (150 * density).toInt()
-                )
-                scaleType = ImageView.ScaleType.CENTER_CROP
-                load(path) {
-                    crossfade(true)
-                    transformations(CircleCropTransformation())
-                }
-                setOnClickListener {
-                    onPhotoClick?.invoke(path)
-                }
-                layout.addView(this)
-            }
-        } else {
-            TextView(context).apply {
-                text = "Sin foto"
-                gravity = android.view.Gravity.CENTER
-                setTextColor(android.graphics.Color.GRAY)
-                textSize = 12f
-                layoutParams = ViewGroup.LayoutParams(
-                    (150 * density).toInt(),
-                    (100 * density).toInt()
-                )
-                layout.addView(this)
-            }
-        }
-    }
-
-    override fun onClose() {}
-}
