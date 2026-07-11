@@ -2,6 +2,7 @@ package com.example.ui.screens
 
 import android.content.Intent
 import android.net.Uri
+import androidx.core.net.toUri
 import android.widget.Toast
 import android.content.pm.PackageManager
 import androidx.core.content.ContextCompat
@@ -750,7 +751,7 @@ fun LocationCard(
                             AssistChip(
                                 onClick = {
                                     val intent = Intent(Intent.ACTION_DIAL).apply {
-                                        data = Uri.parse("tel:${location.phoneNumber}")
+                                        data = "tel:${location.phoneNumber}".toUri()
                                     }
                                     context.startActivity(intent)
                                 },
@@ -762,7 +763,7 @@ fun LocationCard(
                             AssistChip(
                                 onClick = {
                                     val intent = Intent(Intent.ACTION_SENDTO).apply {
-                                        data = Uri.parse("mailto:${location.email}")
+                                        data = "mailto:${location.email}".toUri()
                                     }
                                     context.startActivity(intent)
                                 },
@@ -785,12 +786,12 @@ fun LocationCard(
                         // Ver en Google Maps
                         TextButton(onClick = {
                             val uri = "geo:${location.latitude},${location.longitude}?q=${location.latitude},${location.longitude}(${location.name})"
-                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(uri))
+                            val intent = Intent(Intent.ACTION_VIEW, uri.toUri())
                             try {
                                 context.startActivity(intent)
                             } catch (_: Exception) {
                                 val browserUri = "https://www.google.com/maps/search/?api=1&query=${location.latitude},${location.longitude}"
-                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(browserUri)))
+                                context.startActivity(Intent(Intent.ACTION_VIEW, browserUri.toUri()))
                             }
                         }) {
                             Icon(Icons.Default.Map, null, modifier = Modifier.size(18.dp))

@@ -2,6 +2,7 @@ package com.example.data.export
 
 import android.content.Context
 import android.net.Uri
+import androidx.core.net.toUri
 import android.util.JsonWriter
 import androidx.core.content.FileProvider
 import com.example.data.model.LocationPoint
@@ -507,7 +508,7 @@ class RouteExchanger(
 
     private fun resolvePhotoFile(sourcePath: String): File? {
         return try {
-            val uri = Uri.parse(sourcePath)
+            val uri = sourcePath.toUri()
             val filename = uri.lastPathSegment ?: return null
             File(imagesDir, filename)
         } catch (_: Exception) {
@@ -517,7 +518,7 @@ class RouteExchanger(
 
     private fun String.extractFilename(): String? {
         return try {
-            Uri.parse(this).lastPathSegment
+            this.toUri().lastPathSegment
         } catch (_: Exception) {
             null
         }

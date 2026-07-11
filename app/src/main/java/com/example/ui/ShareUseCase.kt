@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
+import androidx.core.net.toUri
 import androidx.core.content.FileProvider
 import com.example.data.model.SavedLocation
 import com.example.data.repository.RouteRepository
@@ -28,7 +29,7 @@ class ShareUseCase(
         }
 
         Intent(Intent.ACTION_SEND).apply {
-            val photoUri = location.photoPath?.takeIf { it.isNotBlank() }?.let { Uri.parse(it) }
+            val photoUri = location.photoPath?.takeIf { it.isNotBlank() }?.let { it.toUri() }
             if (photoUri != null) {
                 type = "image/*"
                 putExtra(Intent.EXTRA_STREAM, photoUri)
@@ -82,7 +83,7 @@ class ShareUseCase(
 
         waypoints.forEach { wp ->
             wp.photoPath?.let { path ->
-                try { imageUris.add(Uri.parse(path)) } catch (_: Exception) { }
+                try { imageUris.add(path.toUri()) } catch (_: Exception) { }
             }
         }
 

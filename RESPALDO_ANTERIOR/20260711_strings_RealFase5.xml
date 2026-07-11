@@ -1,0 +1,9 @@
+<resources>
+    <string name="app_name">BiTaRu</string>
+    <string name="drawer_title_header">BiTaRu</string>
+    <string name="drawer_subtitle_header">Bitácora Táctica de Rutas</string>
+    <string name="notification_service_title">BiTaRu activo</string>
+    <string name="notification_service_description">Monitoreando tu bitácora de viaje en segundo plano...</string>
+    <string name="biometric_subtitle">Coloque su huella para abrir BiTaRu</string>
+    <string name="share_footer">Generado por BiTaRu</string>
+</resources>
