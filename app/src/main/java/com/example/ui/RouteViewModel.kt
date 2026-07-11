@@ -344,7 +344,7 @@ class RouteViewModel(
             val details = geocoderUseCase.fetchLocationDetails(latitude, longitude)
             val country = details.second.ifBlank { "Desconocido" }
             val city = details.third.ifBlank { "Desconocida" }
-            repository.addSavedLocation(name, address, latitude, longitude, comment = finalComment, author, photoPath, phoneNumber, email, isContact, country, city, color, iconCategory = iconCategory)
+            repository.addSavedLocation(name, address, latitude, longitude, comment = finalComment, author, photoPath, phoneNumber, email, isContact, country, city, color)
         }
     }
     fun updateSavedLocation(location: SavedLocation) { viewModelScope.launch(Dispatchers.IO) { repository.updateSavedLocation(location) } }
@@ -516,5 +516,6 @@ class RouteViewModel(
         viewModelScope.launch { shareUseCase.shareCompleteRoute(routeId, mapBitmap) }
     }
 }
+
 
 

@@ -42,6 +42,9 @@ import java.util.concurrent.ConcurrentLinkedDeque
 import java.util.concurrent.TimeUnit
 import java.util.LinkedList
 import java.util.Locale
+import java.text.SimpleDateFormat
+import java.util.Date
+import kotlin.time.Duration.Companion.seconds
 
 enum class ActivityMode { STOPPED, WALKING, BIKING, DRIVING, SIN_SENAL }
 
@@ -105,15 +108,6 @@ class LocationService : Service() {
         }
     }
 
-    private fun flushPreRecordingBuffer(): List<Location> {
-        val snapshot = mutableListOf<Location>()
-        var loc = preRecordingBuffer.pollFirst()
-        while (loc != null) {
-            snapshot.add(loc)
-            loc = preRecordingBuffer.pollFirst()
-        }
-        return snapshot
-    }
 
     // 🛡️ Mapeo blindado con argumentos nominales explícitos para evitar corrupciones de orden
     private fun Location.toBufferPoint(routeId: Int): LocationPoint = LocationPoint(
@@ -126,8 +120,6 @@ class LocationService : Service() {
     )
 
     // Variables para refinamiento de Modo Automático
-    private var consecutiveMovements = 0
-    private val REQUIRED_CONFIRMATIONS = 3 // Subimos a 3 lecturas seguidas para mayor seguridad
     private var lastAutoStartTimeMillis: Long = 0L // Para evitar reinicios infinitos rápidos
 
     // Velocidad sostenida para auto-arranque (Módulo 3C)
@@ -174,7 +166,6 @@ class LocationService : Service() {
         private const val MAX_VALID_SPEED_MPS = AppConstants.Location.MAX_SPEED_METERS_PER_SECOND
         private const val MAX_GPS_ACCURACY = AppConstants.Location.MAX_GPS_ACCURACY_METERS
         private const val TOLERANT_ACCURACY = AppConstants.Location.MAX_POCKET_ACCURACY_METERS
-        private const val MAX_ALLOWED_SPEED_MPS = 15.0 // ~54 km/h - límite físico para descartar saltos de antena
 
         // Acciones de ActivityTransitionReceiver
         const val ACTION_AUTO_START_FROM_TRANSITION = "com.example.location.ACTION_AUTO_START_FROM_TRANSITION"
@@ -221,8 +212,6 @@ class LocationService : Service() {
         private val _latestLocation = MutableStateFlow<Location?>(null)
         val latestLocation = _latestLocation.asStateFlow()
 
-        private val _currentAccuracy = MutableStateFlow(Float.MAX_VALUE)
-        val currentAccuracy = _currentAccuracy.asStateFlow()
 
         private val _elapsedTimeSeconds = MutableStateFlow(0L)
         val elapsedTimeSeconds = _elapsedTimeSeconds.asStateFlow()
@@ -464,7 +453,6 @@ class LocationService : Service() {
     private fun processNewLocation(location: Location) {
         // Actualizamos siempre la ubicación "Live" para la UI
         _latestLocation.value = location
-        _currentAccuracy.value = location.accuracy
 
         // Marcar que el GPS sigue activo (antes de cualquier filtro)
         lastGpsUpdateTimeMillis = System.currentTimeMillis()
@@ -554,7 +542,6 @@ class LocationService : Service() {
                             longitude = shortStopLon,
                             comment = comment,
                             author = "Automático",
-                            iconCategory = "AUTOMATIC"
                         )
                     }
                 }
@@ -670,26 +657,6 @@ class LocationService : Service() {
         }
     }
 
-    private fun isLocationValid(location: Location): Boolean {
-        if (location.accuracy > MAX_GPS_ACCURACY) return false
-
-        val last = lastValidLocation ?: return true
-
-        val timeDelta = location.time - last.time
-        val distanceStep = last.distanceTo(location)
-
-        if (timeDelta < MIN_TIME_DELTA_MS && distanceStep < MIN_DISTANCE_DELTA) return false
-        if (distanceStep < MIN_DISTANCE_THRESHOLD) return false
-
-        if (timeDelta > 0) {
-            val speedMps = distanceStep / (timeDelta / 1000f)
-            if (speedMps > MAX_VALID_SPEED_MPS) return false
-        }
-
-        if (location.accuracy > MAX_GPS_ACCURACY) return false
-
-        return true
-    }
 
     private fun updateActivityMode(speedKmh: Float) {
         val newMode = when {
@@ -866,7 +833,7 @@ class LocationService : Service() {
                     requestLocationUpdates(5000L, 2f)
                 }
 
-                delay(1000L) // Revisar cada 1 segundo
+                delay(1.seconds) // Revisar cada 1 segundo
             }
         }
     }
@@ -880,7 +847,7 @@ class LocationService : Service() {
         watchdogJob?.cancel()
         watchdogJob = serviceScope.launch {
             while (isActive) {
-                delay(5000L)
+                delay(5.seconds)
                 if (lastGpsTickTime > 0 && _currentActivityMode.value != ActivityMode.STOPPED && _currentActivityMode.value != ActivityMode.SIN_SENAL) {
                     val timeSinceLastFix = SystemClock.elapsedRealtime() - lastGpsTickTime
                     if (timeSinceLastFix > 15000L && !isSignalLost) {
@@ -946,7 +913,7 @@ class LocationService : Service() {
 
     private fun startAutoNewRoute(backfillPoints: List<LocationPoint> = emptyList()) {
         serviceScope.launch {
-            val dateStr = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault()).format(java.util.Date())
+            val dateStr = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date())
             val newName = "Auto-Ruta $dateStr"
             val newRouteId = repository.startNewRoute(newName)
             
@@ -1187,6 +1154,7 @@ class LocationService : Service() {
         super.onDestroy()
     }
 }
+
 
 
 

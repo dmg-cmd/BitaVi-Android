@@ -57,9 +57,6 @@ class RouteRepository(private val routeDao: RouteDao) {
         return routeDao.insertRoute(route).toInt()
     }
 
-    suspend fun getActiveRouteSync(): Route? {
-        return routeDao.getActiveRoute()
-    }
 
     suspend fun getRouteById(id: Int): Route? {
         return routeDao.getRouteById(id)
@@ -220,7 +217,6 @@ class RouteRepository(private val routeDao: RouteDao) {
         city: String = "Desconocida",
         color: String = "#FFD700",
         timestamp: Long = System.currentTimeMillis(),
-        iconCategory: String = "DEFAULT"
     ) {
         val location = com.example.data.model.SavedLocation(
             name = name,
@@ -295,13 +291,7 @@ class RouteRepository(private val routeDao: RouteDao) {
 
 
     fun getSavedLocationByIdFlow(id: Int): Flow<SavedLocation?> = routeDao.getSavedLocationByIdFlow(id)
-    fun getRoutesForFavoriteFlow(favoriteId: Int): Flow<List<Route>> {
-        return routeDao.getRoutesForFavoriteFlow(favoriteId)
-    }
 
-    suspend fun getRoutesForFavorite(favoriteId: Int): List<Route> {
-        return routeDao.getRoutesForFavorite(favoriteId)
-    }
 }
 
 

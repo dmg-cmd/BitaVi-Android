@@ -1,6 +1,5 @@
 package com.example.ui.screens
 
-import com.example.ui.SegmentoRuta
 import com.example.ui.toRouteSegments
 import android.app.Activity
 import android.content.Intent
@@ -33,18 +32,12 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Save
-import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -61,11 +54,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import androidx.core.graphics.toColorInt
 import androidx.core.view.drawToBitmap
 import coil.compose.AsyncImage
 import coil.load
@@ -86,13 +79,9 @@ import org.osmdroid.views.overlay.gestures.RotationGestureOverlay
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.ZoomOutMap
-import com.example.data.model.LocationPoint
 import org.osmdroid.views.overlay.infowindow.InfoWindow
 import java.io.File
 import java.io.FileOutputStream
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 data class PhotoItem(
     val id: Int,
@@ -108,13 +97,10 @@ data class PhotoItem(
 fun ExperienceMapScreen(
     viewModel: RouteViewModel,
     routeId: Int,
-    onBack: () -> Unit,
-    modifier: Modifier = Modifier
 ) {
     android.util.Log.d("EXPERIENCE_MAP", "Screen composed, routeId=$routeId")
 
     val context = LocalContext.current
-    val route by viewModel.selectedDetailRoute.collectAsState()
     val points by viewModel.selectedDetailPoints.collectAsState()
     val waypoints by viewModel.selectedDetailWaypoints.collectAsState()
     val linkedFavorites by viewModel.getFavoritesForRouteFlow(routeId).collectAsState(initial = emptyList())
@@ -182,12 +168,6 @@ fun ExperienceMapScreen(
 
     val activity = context as? Activity
 
-    val saveZipLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
-        if (uri != null) {
-            viewModel.saveRouteZipToUri(routeId, uri)
-        }
-    }
-
     fun shareScreenshot() {
         val a = activity ?: return
         android.os.Handler(a.mainLooper).post {
@@ -228,7 +208,7 @@ fun ExperienceMapScreen(
         val key = "$resId-$colorHex"
         markerIconCache.getOrPut(key) {
             ContextCompat.getDrawable(context, resId)!!.mutate().apply {
-                setTint(android.graphics.Color.parseColor(colorHex))
+                setTint(colorHex.toColorInt())
             }
         }
     }
@@ -456,7 +436,6 @@ fun ExperienceMapScreen(
             }
         }
 
-
     FullScreenPhotoDialog(
         photoUri = photoToZoom,
         onDismiss = { photoToZoom = null }
@@ -474,7 +453,7 @@ class GuideLinesOverlay(
         if (mv.width <= 0) return
 
         val paint = android.graphics.Paint().apply {
-            color = android.graphics.Color.parseColor("#FF8800")
+            color = "#FF8800".toColorInt()
             alpha = 180
             strokeWidth = 4f
             style = android.graphics.Paint.Style.STROKE

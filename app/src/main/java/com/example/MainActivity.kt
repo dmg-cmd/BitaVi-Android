@@ -440,7 +440,7 @@ fun MainContainer(viewModel: RouteViewModel, encryptedPrefs: SharedPreferences) 
     var currentDetailRouteId by remember { mutableStateOf<Int?>(null) }
     var currentExperienceRouteId by remember { mutableStateOf<Int?>(null) }
     var currentRouteAnalyticsId by remember { mutableStateOf<Int?>(null) }
-    var currentFocusFavoriteId by mutableIntStateOf(0)
+    var currentFocusFavoriteId by remember { mutableIntStateOf(0) }
     LaunchedEffect(currentRoute) {
         if (currentRoute !in NavRoutes.auxiliaryRoutes) {
             currentDetailRouteId = null
@@ -1041,7 +1041,6 @@ fun MainContainer(viewModel: RouteViewModel, encryptedPrefs: SharedPreferences) 
                 ExperienceMapScreen(
                     viewModel = viewModel,
                     routeId = routeId,
-                    onBack = { navController.popBackStack() }
                 )
             }
             composable(
@@ -1104,5 +1103,7 @@ fun AgenviajeDrawerHeader() {
         )
     }
 }
+
+
 
 

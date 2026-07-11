@@ -1,6 +1,5 @@
 package com.example.ui.screens
 
-import com.example.ui.SegmentoRuta
 import com.example.ui.toRouteSegments
 import android.Manifest
 import android.content.pm.PackageManager
@@ -9,7 +8,6 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -18,19 +16,18 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.key
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -49,7 +46,6 @@ import com.example.ui.components.FullScreenPhotoDialog
 import com.example.ui.components.TourOverlay
 import com.example.ui.components.BrandWatermark
 import com.example.ui.components.TopBarLocalizador
-import com.example.ui.components.DashboardActividadFlotante
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
@@ -78,8 +74,6 @@ fun MapScreen(
     val context = LocalContext.current
     val isTracking by viewModel.isTrackingLive.collectAsState()
     val latestLocation by viewModel.latestLocationLive.collectAsState()
-    val elapsedSeconds by viewModel.elapsedSecondsLive.collectAsState()
-    val distanceMeters by viewModel.distanceMetersLive.collectAsState()
     val activityMode by viewModel.currentActivityMode.collectAsState()
     val routePoints by viewModel.activeRoutePoints.collectAsState()
     val waypoints by viewModel.activeRouteWaypoints.collectAsState()
@@ -522,7 +516,7 @@ fun MapScreen(
                     }
                 },
                 modoTrafico = modoTraficoText,
-                velocidad = "${String.format(Locale.getDefault(), "%.1f", (latestLocation?.speed ?: 0f) * 3.6f)} km/h"
+                velocidad = "${String.format(LocalConfiguration.current.locales[0], "%.1f", (latestLocation?.speed ?: 0f) * 3.6f)} km/h"
             )
 
             if (showAddressBox && viewModel.currentAddress != null) {
@@ -1091,6 +1085,7 @@ fun IndicadorTranslucidoContenedor(
         }
     }
 }
+
 
 
 
