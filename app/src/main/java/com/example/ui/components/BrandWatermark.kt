@@ -11,10 +11,10 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun BrandWatermark(
     modifier: Modifier = Modifier,
-    version: String = "v3.0.0"
+    version: String = "v3.2.2-RC1"
 ) {
     Text(
-        text = "Agenviaje — ",
+        text = "BiTaRu — $version",
         style = MaterialTheme.typography.labelSmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = modifier

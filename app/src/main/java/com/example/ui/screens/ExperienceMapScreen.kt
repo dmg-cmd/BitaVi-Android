@@ -41,6 +41,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -81,6 +82,11 @@ import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.Overlay
 import org.osmdroid.views.overlay.Polyline
+import org.osmdroid.views.overlay.gestures.RotationGestureOverlay
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.material.icons.filled.Explore
+import androidx.compose.material.icons.filled.ZoomOutMap
+import com.example.data.model.LocationPoint
 import org.osmdroid.views.overlay.infowindow.InfoWindow
 import java.io.File
 import java.io.FileOutputStream
@@ -114,12 +120,66 @@ fun ExperienceMapScreen(
     val linkedFavorites by viewModel.getFavoritesForRouteFlow(routeId).collectAsState(initial = emptyList())
 
     val mapView = remember { MapView(context) }
+    val rotationGestureOverlay = remember { RotationGestureOverlay(mapView) }.apply {
+        isEnabled = true
+    }
     var photoToZoom by remember { mutableStateOf<String?>(null) }
     val scrollState = rememberScrollState()
     var overlayScrollOffset by remember { mutableIntStateOf(0) }
     LaunchedEffect(scrollState.value) { overlayScrollOffset = scrollState.value }
     val panelItems = remember { mutableStateListOf<PhotoItem>() }
     val sortedPoints by remember(points) { derivedStateOf { points.sortedBy { it.timestamp } } }
+    
+    // 🧭 Controles de simulación y motor de orientación para visualización de experiencias
+    var isAutoRotationEnabled by remember { mutableStateOf(false) }
+    var currentIndex by remember { mutableIntStateOf(0) }
+    var experienceBearing by remember { mutableStateOf(0f) }
+
+    // Cálculo del rumbo secuencial óptimo mediante derivedStateOf
+    val targetBearing by remember(sortedPoints, currentIndex) {
+        derivedStateOf {
+            val currentPoint = sortedPoints.getOrNull(currentIndex)
+            val nextPoint = sortedPoints.getOrNull(currentIndex + 1)
+            if (currentPoint != null && nextPoint != null) {
+                val p1 = GeoPoint(currentPoint.latitude, currentPoint.longitude)
+                val p2 = GeoPoint(nextPoint.latitude, nextPoint.longitude)
+                p1.bearingTo(p2).toFloat()
+            } else {
+                experienceBearing
+            }
+        }
+    }
+
+    LaunchedEffect(targetBearing) {
+        experienceBearing = targetBearing
+    }
+
+    // Timer para avance automático de telemetría si está activo el recorrido (panning cada 2.5s)
+    LaunchedEffect(isAutoRotationEnabled) {
+        if (isAutoRotationEnabled) {
+            if (currentIndex >= sortedPoints.size - 1) {
+                currentIndex = 0
+            }
+            while (isAutoRotationEnabled && currentIndex < sortedPoints.size - 1) {
+                kotlinx.coroutines.delay(2500L)
+                currentIndex++
+            }
+            if (currentIndex >= sortedPoints.size - 1) {
+                isAutoRotationEnabled = false
+            }
+        }
+    }
+
+    // Centrado suave de cámara sobre el nodo enfocado de la simulación
+    LaunchedEffect(currentIndex) {
+        if (isAutoRotationEnabled && sortedPoints.isNotEmpty()) {
+            val currentPoint = sortedPoints.getOrNull(currentIndex)
+            if (currentPoint != null) {
+                mapView.controller.animateTo(GeoPoint(currentPoint.latitude, currentPoint.longitude))
+            }
+        }
+    }
+
     val activity = context as? Activity
 
     val saveZipLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
@@ -210,6 +270,7 @@ fun ExperienceMapScreen(
                                 setTileSource(TileSourceFactory.MAPNIK)
                                 setMultiTouchControls(true)
                                 zoomController.setVisibility(CustomZoomButtonsController.Visibility.NEVER)
+                                overlays.add(rotationGestureOverlay)
                             }
                         },
                          update = { view ->
@@ -267,6 +328,23 @@ fun ExperienceMapScreen(
                                 ))
                             }
 
+                            // 🧭 Modo Navegación de Experiencia (Rotación Automática y Suavizado)
+                            if (isAutoRotationEnabled) {
+                                val currentOrientation = view.mapOrientation
+                                val deltaAngle = experienceBearing - currentOrientation
+                                
+                                // Normalización estricta del delta de ángulo
+                                val normalizedDiff = ((deltaAngle + 180f) % 360f - 360f) % 360f + 180f
+                                
+                                if (Math.abs(normalizedDiff) > 1.0f) {
+                                    // Filtro Lerp de baja frecuencia (alpha = 0.15f)
+                                    view.mapOrientation = currentOrientation + (normalizedDiff * 0.15f)
+                                }
+                            } else if (!isAutoRotationEnabled && view.mapOrientation != 0f) {
+                                // Si se desactiva y el mapa está girado, volvemos a 0f
+                                view.mapOrientation = 0f
+                            }
+
                             view.invalidate()
                         }
                         )
@@ -322,6 +400,55 @@ fun ExperienceMapScreen(
                                     }
                                 }
                             }
+                        }
+                    }
+                }
+
+                // Botones flotantes abajo a la izquierda (Alineados verticalmente en columna)
+                if (points.isNotEmpty()) {
+                    Column(
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .padding(bottom = 32.dp, start = 16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        // Botón de Auto-Rotación/Simulación de Experiencia
+                        androidx.compose.material3.FloatingActionButton(
+                            onClick = {
+                                isAutoRotationEnabled = !isAutoRotationEnabled
+                                if (!isAutoRotationEnabled) {
+                                    mapView.mapOrientation = 0f
+                                }
+                            },
+                            containerColor = if (isAutoRotationEnabled) MaterialTheme.colorScheme.primaryContainer else Color.White
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Explore,
+                                contentDescription = "Simular Ruta",
+                                tint = if (isAutoRotationEnabled) MaterialTheme.colorScheme.onPrimaryContainer else Color.Black
+                            )
+                        }
+
+                        // Botón de Centrar vista en toda la ruta
+                        androidx.compose.material3.FloatingActionButton(
+                            onClick = {
+                                isAutoRotationEnabled = false
+                                mapView.mapOrientation = 0f
+                                val geoPoints = sortedPoints.map { GeoPoint(it.latitude, it.longitude) }
+                                if (geoPoints.isNotEmpty()) {
+                                    try {
+                                        val boundingBox = BoundingBox.fromGeoPoints(geoPoints)
+                                        mapView.zoomToBoundingBox(boundingBox, true, 100)
+                                    } catch (_: Exception) {}
+                                }
+                            },
+                            containerColor = Color.White
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.ZoomOutMap,
+                                contentDescription = "Ver Todo",
+                                tint = Color.Black
+                            )
                         }
                     }
                 }

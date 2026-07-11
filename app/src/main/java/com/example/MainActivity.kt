@@ -15,20 +15,24 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.biometric.BiometricPrompt
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.defaultMinSize
-import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.zIndex
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AirplanemodeActive
 import androidx.compose.material.icons.filled.CloudOff
@@ -49,6 +53,7 @@ import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.Place
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.SettingsBackupRestore
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.TableChart
@@ -86,6 +91,7 @@ import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -760,113 +766,65 @@ fun MainContainer(viewModel: RouteViewModel, encryptedPrefs: SharedPreferences) 
             HelpDialog(onDismiss = { showHelpDialog = false })
         }
 
-        Scaffold(
-            modifier = Modifier.fillMaxSize(),
-            // topBar eliminado — todo migrado a bottomBar unificada
+        Box(modifier = Modifier.fillMaxSize()) {
+            Scaffold(
+                modifier = Modifier.fillMaxSize(),
+                // topBar eliminado — todo migrado a bottomBar unificada
 
         bottomBar = {
-            Column {
-                val isTrackingActive by viewModel.isTrackingLive.collectAsState()
-                if (isTrackingActive) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color(0xFF1C1B1F))
+            ) {
+                // 🛰️ SUB-CAPA ALFA: BARRA DE SERVICIO ACTIVO
+                val isTrackingByService by viewModel.isTrackingLive.collectAsState()
+                if (isTrackingByService) {
                     Surface(
-                        color = Color(0xFF21005D),
-                        contentColor = Color.White
+                        color = Color(0xFF2ECC71).copy(alpha = 0.15f),
+                        modifier = Modifier.fillMaxWidth()
                     ) {
                         Row(
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Icon(Icons.Default.LocationSearching, null, tint = Color.White, modifier = Modifier.size(14.dp))
-                                Text("Servicio activo • Grabando recorrido...", fontSize = 11.sp, fontWeight = FontWeight.Medium)
-                            }
-                            Text("0.3 MB", fontSize = 10.sp, color = Color.White.copy(alpha = 0.7f), fontWeight = FontWeight.Bold)
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .background(Color(0xFF2ECC71), CircleShape)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Servicio activo • Grabando ruta en búnker",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color(0xFF2ECC71),
+                                fontWeight = FontWeight.Bold
+                            )
                         }
                     }
                 }
 
-                Surface(tonalElevation = 3.dp, shadowElevation = 8.dp, color = MaterialTheme.colorScheme.surface) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .defaultMinSize(minHeight = 72.dp)
-                            .navigationBarsPadding()
-                            .padding(horizontal = 16.dp, vertical = 8.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        when {
-                            currentRoute in NavRoutes.baseRoutes -> {
-                                IconButton(onClick = { scope.launch { drawerState.open() } }) {
-                                    Icon(Icons.Default.Menu, "Menú")
-                                }
-                            }
-                            currentRoute in NavRoutes.auxiliaryRoutes -> {
-                                IconButton(onClick = { navController.popBackStack() }) {
-                                    Icon(Icons.AutoMirrored.Filled.ArrowBack, "Volver")
-                                }
-                            }
-                        }
-
-                        // ─── CENTER ZONE: dynamic per route ───
-                        when (currentRoute) {
-                            NavRoutes.TRACKING, NavRoutes.HISTORY, NavRoutes.SAVED_LOCATIONS -> {
-                                Row(
-                                    modifier = Modifier.weight(1f),
-                                    horizontalArrangement = Arrangement.SpaceEvenly
-                                ) {
-                                    NavigationBarItem(
-                                        selected = currentRoute == NavRoutes.TRACKING,
-                                        onClick = {
-                                            navController.navigate(NavRoutes.TRACKING) {
-                                                popUpTo(navController.graph.startDestinationId) { saveState = true }
-                                                launchSingleTop = true; restoreState = true
-                                            }
-                                        },
-                                        icon = { Icon(if (currentRoute == NavRoutes.TRACKING) Icons.Filled.Map else Icons.Outlined.Map, "Mapa") },
-                                        label = { Text("Mapa", fontWeight = FontWeight.SemiBold, fontSize = 9.sp) },
-                                        modifier = Modifier.height(48.dp)
-                                    )
-                                    NavigationBarItem(
-                                        selected = currentRoute == NavRoutes.SAVED_LOCATIONS,
-                                        onClick = {
-                                            navController.navigate(NavRoutes.SAVED_LOCATIONS) {
-                                                popUpTo(navController.graph.startDestinationId) { saveState = true }
-                                                launchSingleTop = true; restoreState = true
-                                            }
-                                        },
-                                        icon = { Icon(if (currentRoute == NavRoutes.SAVED_LOCATIONS) Icons.Filled.Place else Icons.Default.Place, "Favoritos") },
-                                        label = { Text("Favoritos", fontWeight = FontWeight.SemiBold, fontSize = 9.sp) },
-                                        modifier = Modifier.height(48.dp)
-                                    )
-                                    NavigationBarItem(
-                                        selected = currentRoute == NavRoutes.HISTORY,
-                                        onClick = {
-                                            navController.navigate(NavRoutes.HISTORY) {
-                                                popUpTo(navController.graph.startDestinationId) { saveState = true }
-                                                launchSingleTop = true; restoreState = true
-                                            }
-                                        },
-                                        icon = { Icon(if (currentRoute == NavRoutes.HISTORY) Icons.Filled.History else Icons.Outlined.History, "Historial") },
-                                        label = { Text("Historial", fontWeight = FontWeight.SemiBold, fontSize = 9.sp) },
-                                        modifier = Modifier.height(48.dp)
-                                    )
-                                }
-                            }
-                            NavRoutes.DETAIL -> {
-                                Row(
-                                    modifier = Modifier.weight(1f),
-                                    horizontalArrangement = Arrangement.SpaceEvenly,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
+                // 🛰️ SUB-CAPA BETA: FILA FLOTANTE CONTEXTUAL (GPS + ACCIONES)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 16.dp, top = 6.dp, end = 16.dp, bottom = 2.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Zona Izquierda: Botones contextuales de DETAIL / EXPERIENCE_MAP
+                    Box(modifier = Modifier.weight(1f)) {
+                        if (currentRoute == NavRoutes.DETAIL || currentRoute == NavRoutes.EXPERIENCE_MAP) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                if (currentRoute == NavRoutes.DETAIL) {
                                     IconButton(onClick = {
                                         currentDetailRouteId?.let { navController.navigate(NavRoutes.experienceMap(it)) }
-                                    }) { Icon(Icons.Default.Explore, "Mapa de experiencia", tint = Color(0xFF7C4DFF)) }
-                                    IconButton(onClick = { viewModel.detailAction = DetailAction.ShowSheet }) { Icon(Icons.Default.BookmarkBorder, "Favoritos") }
+                                    }) {
+                                        Icon(Icons.Default.Explore, "Mapa de experiencia", tint = Color(0xFF7C4DFF))
+                                    }
+                                    IconButton(onClick = { viewModel.detailAction = DetailAction.ShowSheet }) {
+                                        Icon(Icons.Default.BookmarkBorder, "Favoritos")
+                                    }
                                     IconButton(onClick = {
                                         val name = viewModel.selectedDetailRoute.value?.name ?: ""
                                         viewModel.detailAction = DetailAction.ShowEditDialog(name)
@@ -883,13 +841,7 @@ fun MainContainer(viewModel: RouteViewModel, encryptedPrefs: SharedPreferences) 
                                         )
                                     }
                                 }
-                            }
-                            NavRoutes.EXPERIENCE_MAP -> {
-                                Row(
-                                    modifier = Modifier.weight(1f),
-                                    horizontalArrangement = Arrangement.SpaceEvenly,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
+                                if (currentRoute == NavRoutes.EXPERIENCE_MAP) {
                                     IconButton(onClick = {
                                         val a = context as? android.app.Activity ?: return@IconButton
                                         android.os.Handler(a.mainLooper).post {
@@ -916,42 +868,111 @@ fun MainContainer(viewModel: RouteViewModel, encryptedPrefs: SharedPreferences) 
                                 }
                             }
                         }
+                    }
 
-                        // ─── RIGHT ZONE: GPS capsule + Help ───
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            val hasSignal = latestLocation != null
-                            val isTracking by viewModel.isTrackingLive.collectAsState()
-                            Surface(
-                                shape = RoundedCornerShape(percent = 50),
-                                color = if (hasSignal) Color(0xFF1B5E20) else MaterialTheme.colorScheme.secondaryContainer,
-                                modifier = Modifier.padding(end = 4.dp)
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(3.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = if (hasSignal) Icons.Default.GpsFixed else Icons.Default.GpsOff,
-                                        contentDescription = null,
-                                        tint = if (hasSignal) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.size(11.dp)
-                                    )
-                                    Text(
-                                        text = if (hasSignal) "${latestLocation?.accuracy?.toInt() ?: 0}m"
-                                               else if (isTracking) "BÚSQUEDA" else "GPS OK",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (hasSignal) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
-                                        fontSize = 9.sp
-                                    )
-                                }
-                            }
-                            IconButton(onClick = { showHelpDialog = true }, modifier = Modifier.size(36.dp)) {
-                                Icon(Icons.AutoMirrored.Filled.HelpOutline, "Ayuda", modifier = Modifier.size(18.dp))
-                            }
+                    // Zona Derecha: Cápsula GPS dinámica
+                    Surface(
+                        color = Color.White.copy(alpha = 0.08f),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            val gpsColor = if ((latestLocation?.accuracy ?: 100f) < 10f) Color(0xFF2ECC71) else Color(0xFFE74C3C)
+                            Box(modifier = Modifier.size(6.dp).background(gpsColor, CircleShape))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "GPS: ${latestLocation?.accuracy?.let { "${it.toInt()}m" } ?: "Sin Señal"}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color.White.copy(alpha = 0.85f),
+                                fontWeight = FontWeight.Medium
+                            )
                         }
                     }
+                }
+
+                // 🛰️ SUB-CAPA GAMMA: NAVIGATION BAR MATRICIAL (4 SLOTS PUROS)
+                NavigationBar(
+                    containerColor = Color(0xFF1C1B1F),
+                    contentColor = Color.White,
+                    tonalElevation = 0.dp,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    // SLOT 1: MENÚ LATERAL / MAPA
+                    NavigationBarItem(
+                        selected = currentRoute == NavRoutes.TRACKING,
+                        onClick = {
+                            if (currentRoute != NavRoutes.TRACKING) {
+                                navController.navigate(NavRoutes.TRACKING) {
+                                    popUpTo(navController.graph.startDestinationId) { saveState = true }
+                                    launchSingleTop = true; restoreState = true
+                                }
+                            } else {
+                                scope.launch { drawerState.open() }
+                            }
+                        },
+                        icon = { Icon(Icons.Default.Menu, contentDescription = "Menú / Mapa") },
+                        label = { Text("Mapa") },
+                        colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = Color(0xFF3498DB),
+                            selectedTextColor = Color(0xFF3498DB),
+                            unselectedIconColor = Color.White.copy(alpha = 0.60f),
+                            indicatorColor = Color(0xFF3498DB).copy(alpha = 0.12f)
+                        )
+                    )
+                    // SLOT 2: FAVORITOS
+                    NavigationBarItem(
+                        selected = currentRoute == NavRoutes.SAVED_LOCATIONS,
+                        onClick = {
+                            if (currentRoute != NavRoutes.SAVED_LOCATIONS) {
+                                navController.navigate(NavRoutes.SAVED_LOCATIONS) {
+                                    popUpTo(navController.graph.startDestinationId) { saveState = true }
+                                    launchSingleTop = true; restoreState = true
+                                }
+                            }
+                        },
+                        icon = { Icon(Icons.Default.Favorite, contentDescription = "Favoritos") },
+                        label = { Text("Favoritos") },
+                        colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = Color(0xFF2ECC71),
+                            selectedTextColor = Color(0xFF2ECC71),
+                            unselectedIconColor = Color.White.copy(alpha = 0.60f),
+                            indicatorColor = Color(0xFF2ECC71).copy(alpha = 0.12f)
+                        )
+                    )
+                    // SLOT 3: HISTORIAL TÁCTICO
+                    NavigationBarItem(
+                        selected = currentRoute == NavRoutes.HISTORY,
+                        onClick = {
+                            if (currentRoute != NavRoutes.HISTORY) {
+                                navController.navigate(NavRoutes.HISTORY) {
+                                    popUpTo(navController.graph.startDestinationId) { saveState = true }
+                                    launchSingleTop = true; restoreState = true
+                                }
+                            }
+                        },
+                        icon = { Icon(Icons.Default.History, contentDescription = "Historial") },
+                        label = { Text("Historial") },
+                        colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = Color(0xFF3498DB),
+                            selectedTextColor = Color(0xFF3498DB),
+                            unselectedIconColor = Color.White.copy(alpha = 0.60f),
+                            indicatorColor = Color(0xFF3498DB).copy(alpha = 0.12f)
+                        )
+                    )
+                    // SLOT 4: ASISTENCIA OPERATIVA
+                    NavigationBarItem(
+                        selected = false,
+                        onClick = { showHelpDialog = true },
+                        icon = { Icon(Icons.AutoMirrored.Filled.HelpOutline, contentDescription = "Ayuda") },
+                        label = { Text("Ayuda") },
+                        colors = NavigationBarItemDefaults.colors(
+                            unselectedIconColor = Color(0xFFE74C3C),
+                            unselectedTextColor = Color(0xFFE74C3C),
+                            indicatorColor = Color(0xFFE74C3C).copy(alpha = 0.12f)
+                        )
+                    )
                 }
             }
         }
@@ -1050,7 +1071,9 @@ fun MainContainer(viewModel: RouteViewModel, encryptedPrefs: SharedPreferences) 
         }
     }
     }
-}
+    }  // Cierra ModalNavigationDrawer content lambda
+}  // Cierra composable principal
+
 
 /**
  * Componible auxiliar para compatibilidad de pruebas de compilación y capturas.
@@ -1081,4 +1104,5 @@ fun AgenviajeDrawerHeader() {
         )
     }
 }
+
 

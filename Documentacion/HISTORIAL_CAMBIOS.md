@@ -1,3 +1,19 @@
+[11/07/2026 - Limpieza de Menú Duplicado: Eliminación de IconButton flotante superior]
+- **MainActivity.kt**: Eliminado bloque IconButton (hamburguesa) de la capa superior absoluta (zIndex=99) que se superponía al mapa en NavRoutes.TRACKING. Se removió también el parámetro onMenuClick = { drawerState.open() } de la llamada a MapScreen().
+- **MapScreen.kt**: Eliminado parámetro onMenuClick: () -> Unit de la firma del composable. El callback estaba muerto (nunca se invocaba dentro del componente).
+- **TopBarLocalizador.kt**: Padding corregido de start = 72.dp (residual del botón eliminado) a horizontal = 16.dp simétrico. La cabecera ahora ocupa el ancho completo balanceado.
+- **UX**: Se unifica la navegación MD3. El drawer se abre exclusivamente desde el IconButton ☰ de la barra inferior (NavigationBar), eliminando redundancia y confusión visual.
+- **Respaldos**: RESPALDO_ANTERIOR/20260711_0943_MainActivity.kt, _MapScreen.kt, _TopBarLocalizador.kt.
+- **Compilación**: BUILD SUCCESSFUL + installDebug en Pixel 9 Pro XL.
+[09/07/2026 - Watchdog de Señal GNSS + Dashboard Actividad Flotante]
+- **LocationService.kt**: ActivityMode expandido con SIN_SENAL. Nuevo watchdog GPS que monitorea el tiempo desde el último update del GPS_PROVIDER. Si pasan 15s sin tick satelital y el modo actual no es STOPPED/SIN_SENAL, conmuta automáticamente a ActivityMode.SIN_SENAL. Al recuperar señal GPS, restaura el modo cinemático previo (preAlertActivityMode). Variables: lastGpsTickTime, isSignalLost, preAlertActivityMode, watchdogJob.
+- **IndicadorTranslucidoContenedor** (en MapScreen.kt): Nuevo parámetro overrideColor: Color con valor por defecto Color(0xFF1C1B1F).copy(alpha = 0.65f) para compatibilidad backward. Permite inyección dinámica de color de alerta.
+- **DashboardActividadFlotante.kt** (nuevo en ui/components/): Componente Compose que consume IndicadorTranslucidoContenedor con animación animateColorAsState. En estado normal: fondo oscuro translúcido, modo de tráfico + velocidad. En SIN_SENAL: fondo rojo táctico #DC3545 al 75% alpha, etiqueta "ESTATUS SATELLITE", texto "⚠️ SIN SEÑAL", velocidad oculta.
+- **MapScreen.kt**: Dashboard inline reemplazado por DashboardActividadFlotante. Clickable preservado para toggle de dirección.
+- **RouteSegmenter.kt**: toSegmentColor() y toSolidColor() expandidos con SIN_SENAL -> rojo #DC3545 para segmentos de ruta grabados durante pérdida de señal.
+- **Respaldos**: RESPALDO_ANTERIOR/20260709_LocationService.kt.bak, 20260709_MapScreen.kt.bak.
+- **Compilación**: BUILD SUCCESSFUL (0 errores, 0 warnings).
+
 [07/07/2026 - Bloque B: Guarda de Contingencia 3min + Bloque C: Dashboard MD3]
 - **StationaryAnchorManager.kt**: Nueva función shouldForceStop() que monitorea accuracy >25m por 3 minutos continuos. Al dispararse, retorna true para forzar parada automática vía stopTrackingWithAutoRestart(). Preserva processAnchor() intacto.
 - **LocationService.kt**: Inyección de la guarda en processNewLocation() línea 465, justo después de stationaryAnchorManager.processAnchor(). Si shouldForceStop() retorna true, corta el pipeline con return temprano.
@@ -345,7 +361,8 @@ outeAnalytics() + a uxiliaryRoutes.
 [06/07/2026 - Sprint v3.0: CinematicFilterManager — Filtro Cinemático Extraído]
 - **Nuevo archivo**: com.example.location.manager.CinematicFilterManager.kt
 - **Propósito**: Extraer la lógica de ventana deslizante GPS y filtro de velocidad de LocationService.kt a una clase inyectable, testeable y desacoplada.
-- **API pública**: ilter(location): Boolean — evalúa el punto contra la ventana cinemática (anti-(0,0), anti-salto de antena con tolerancia en curvas). eset() — limpia la ventana.
+- **API pública**: ilter(location): Boolean — evalúa el punto contra la ventana cinemática (anti-(0,0), anti-salto de antena con tolerancia en curvas). 
+eset() — limpia la ventana.
 - **Configurable**: maxAllowedSpeedMps (15.0 por defecto) y windowSize (5).
 - **Integración**: No rompe el pipeline existente. Devuelve Boolean simple; LocationService decide el resto (mode, persistencia, BLE).
 - **Build**: BUILD SUCCESSFUL sin warnings.
@@ -354,7 +371,8 @@ outeAnalytics() + a uxiliaryRoutes.
 [06/07/2026 - Sprint v3.0: StationaryAnchorManager — Filtro de Anclaje Estacionario]
 - **Nuevo archivo**: com.example.location.manager.StationaryAnchorManager.kt
 - **Propósito**: Mitigar el "paseo fantasma" por rebote de señal en interiores. Cuando el usuario está quieto >2 min y la precisión GPS empeora (>20m), congela la posición, el odómetro y las coordenadas en DB hasta que una ráfaga de velocidad >0.5 m/s rompa el anclaje.
-- **API pública**: processAnchor(currentLocation): Location — devuelve ubicación anclada o la original. eset() — limpia estado al detener tracking.
+- **API pública**: processAnchor(currentLocation): Location — devuelve ubicación anclada o la original. 
+eset() — limpia estado al detener tracking.
 - **Refinamientos aplicados**:
   - System.currentTimeMillis() en vez de location.time para medir duración de inactividad.
   - Guarda ccuracyAnchorThreshold = 20f: solo ancla si la precisión se degrada (interiores).
@@ -409,3 +427,29 @@ outeAnalytics() + a uxiliaryRoutes.
 
 
 
+
+[10/07/2026 - Refactor BottomBar MD3: NavigationBar nativa con colores de alta luminancia]
+- **MainActivity.kt**: Reemplazo completo de la Row personalizada (líneas 798-961) por NavigationBar MD3 estándar:
+  - Inyectados colores de alta luminancia anti-reflejo por NavigationBarItem: Mapa (Azul Satelital #3498DB), Favoritos (Verde Esmeralda #2ECC71), Historial (Azul Satelital #3498DB).
+  - Botón de Ayuda transformado a 4º NavigationBarItem en Rojo Transmisor (#E74C3C) con onClick directo a showHelpDialog.
+  - GPS Capsule preservada en extremo derecho con Surface nativa (RoundedCornerShape 50%) y lógica de precisión existente.
+  - Menú hamburguesa (zIndex 99f) en capa superior absoluta verificado: márgenes relativos no colisionan con AndroidView de osmdroid.
+  - Navegación dinámica preservada: Detail (4 IconButtons + RouteOptionsMenu) y ExperienceMap (Share/Save ZIP).
+- **Importaciones**: Añadido NavigationBarItemDefaults para configuración de colores por ítem.
+- **Iconos**: Favoritos corregido a Icons.Default.Place (compatible con la versión actual de Material Icons).
+- **Correcciones**: Replace → 
+eplace en la lambda de exportación ZIP.
+- **Respaldos**: RESPALDO_ANTERIOR/20260710_MainActivity.kt.
+- **Compilación**: BUILD SUCCESSFUL (0 errores).
+
+[11/07/2026 - Corrección Estructural: Efecto Compresión en BottomBar (Opción C)]
+- **Problema**: Los botones centrales (Mapa, Favoritos, Historial, Ayuda) sufrían colapso de espacio en el extremo derecho de la barra inferior en Pixel 9 Pro XL. Causa raíz: mezcla de NavigationBarItem + IconButton + Row intrusa con GPS capsule dentro del NavigationBar MD3, rompiendo la distribución proporcional equitativa.
+- **Solución**: Reestructuración completa de bottomBar en 3 sub-capas planas dentro de Column:
+  - **Sub-capa Alfa**: Barra de tracking activo (preservada con estado reactivo real iewModel.isTrackingLive)
+  - **Sub-capa Beta**: Fila flotante contextual que aísla la cápsula GPS dinámica (con precisión latestLocation?.accuracy) y los botones contextuales de DETAIL/EXPERIENCE_MAP fuera del NavigationBar
+  - **Sub-capa Gamma**: NavigationBar plana con 4 NavigationBarItems puros (Menu/Mapa, Favoritos, Historial, Ayuda) sin contenedores intermedios ni restricciones de ancho rígidas
+- **Preservado**: Tracking bar, GPS capsule dinámica con código de colores (verde <10m, rojo ≥10m), botones contextuales de DetailScreen (Explore, Bookmark, Edit, RouteOptionsMenu) y ExperienceMapScreen (Share, Save ZIP), navegación con popUpTo + launchSingleTop + restoreState, showHelpDialog.
+- **Eliminado**: Row intrusa con GPS capsule dentro de NavigationBar, .width(60.dp) en Help, .navigationBarsPadding() (innecesario con Scaffold), IconButton sueltos como hijos directos de NavigationBar, import navigationBarsPadding.
+- **Archivos modificados**: app/src/main/java/com/example/MainActivity.kt (bottomBar líneas 774-969 reemplazadas).
+- **Respaldos**: RESPALDO_ANTERIOR/20260711_MainActivity.kt.
+- **Compilación**: BUILD SUCCESSFUL (0 errores).

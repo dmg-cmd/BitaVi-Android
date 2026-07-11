@@ -42,6 +42,7 @@ Localizador Pro es una herramienta avanzada de seguimiento GPS para Android, dis
 - **Eliminar Ruta (Menú `⋮`):** Borra permanentemente la ruta, sus puntos GPS, waypoints y fotos asociadas tras confirmación del usuario.
 
 ## Especificaciones Técnicas
+- **Barra de Navegación Inferior MD3**: Implementada con NavigationBar nativa de Material 3. Colores diferenciados por pestaña: Mapa (Azul Satelital #3498DB), Favoritos (Verde Esmeralda #2ECC71), Historial (Azul Satelital), Ayuda (Rojo Transmisor #E74C3C). Incluye GPS Capsule de precisión en el extremo derecho.
 - **Arquitectura:** MVVM (Model-View-ViewModel) con Jetpack Compose.
 - **Base de Datos:** Room (Versión 10), con SQLCipher y 5 tablas (routes, location_points, waypoints, saved_locations, route_favorite_cross_ref).
 - **Motor de IA:** Groq API (Llama 3.3 70B) vía Retrofit.
@@ -107,3 +108,21 @@ avigationBarsPadding(): colchón dinámico que empuja la barra por encima de la 
 - **Paradas Automáticas**: Los marcadores generados por el sistema (Short Stop) usan la categoría AUTOMATIC con icono LocationOn y se distinguen visualmente de los favoritos manuales.
 - **Migración Automática**: Al actualizar la app, Room ejecuta automáticamente MIGRATION_11_12 (ALTER TABLE ADD COLUMN iconCategory TEXT NOT NULL DEFAULT 'DEFAULT'). Todos los favoritos existentes reciben el valor DEFAULT sin pérdida de datos.
 - **Selector en Diálogo de Guardado**: Al guardar un favorito (desde el mapa o desde la lista), un selector de categoría permite elegir entre las 7 opciones disponibles.
+
+## Watchdog de Señal GNSS y Alertas Visuales (09/07/2026)
+- **Monitoreo GNSS Activo**: `LocationService.kt` implementa un watchdog de salud satelital (`startGpsWatchdog`) que evalúa cada 5 segundos si el dispositivo ha dejado de recibir actualizaciones del proveedor satelital (`GPS_PROVIDER`) por más de 15 segundos estando en movimiento.
+- **Conmutación a SIN_SENAL**: Si el watchdog detecta la pérdida de ticks satelitales, almacena el modo previo (`preAlertActivityMode`), conmutando el estado a `ActivityMode.SIN_SENAL` y actualizando el StateFlow público de Compose para alertar a la interfaz gráfica. Al recuperar la cobertura del GPS, el sistema reestablece automáticamente el modo cinemático previo.
+- **Dashboard Flotante de Alerta**: `DashboardActividadFlotante.kt` reacciona de forma dinámica ante el estado `SIN_SENAL` aplicando un color rojo de alerta táctica (`#DC3545` con 75% alpha) con una transición animada suave de 400ms (`animateColorAsState`).
+- **Ocultamiento de Datos Fuera de Cobertura**: Mientras el dispositivo permanece en estado de alerta (`SIN_SENAL`), la interfaz oculta automáticamente el valor de velocidad actual (que podría ser errático o nulo) y muestra la etiqueta "ESTATUS SATELLITE" con la advertencia "⚠️ SIN SEÑAL".
+
+
+## 11/07/2026 — Corrección Estructural BottomBar (Opción C)
+- **Efecto Compresión Eliminado**: La barra inferior se reestructuró en 3 sub-capas planas dentro de una Column para eliminar el colapso de botones en el extremo derecho.
+- **Capa 1 — Tracking Activo**: Barra superior verde translúcida "Servicio activo • Grabando ruta en búnker" cuando el LocationService reporta grabación activa.
+- **Capa 2 — Fila Flotante Contextual**: Aísla la cápsula GPS dinámica (precisión satelital con código de colores: verde <10m, rojo ≥10m) y los botones contextuales de las pantallas DetailScreen (Mapa de Experiencia, Favoritos, Editar nombre, Menú de opciones) y ExperienceMapScreen (Compartir pantalla, Guardar ZIP).
+- **Capa 3 — NavigationBar MD3 Plana**: 4 NavigationBarItems puros sin contenedores intermedios:
+  - Mapa (Azul #3498DB): Abre drawer si ya está en tracking, navega si no.
+  - Favoritos (Verde #2ECC71): Navega a SavedLocations.
+  - Historial (Azul #3498DB): Navega a History.
+  - Ayuda (Rojo #E74C3C): Abre diálogo de ayuda global.
+- **Beneficio Técnico**: Al eliminar la Row intrusa y los IconButton sueltos como hijos directos del NavigationBar, el motor de layout MD3 recupera la distribución equitativa del ancho, eliminando el amontonamiento en el Pixel 9 Pro XL.

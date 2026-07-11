@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Environment
+import android.os.ParcelFileDescriptor
 import android.util.Xml
 import android.widget.Toast
 import androidx.core.content.FileProvider
@@ -20,37 +21,65 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+/**
+ * Caso de uso responsable de la orquestación de la importación y exportación de rutas.
+ * Asegura el confinamiento de hilos de persistencia en Dispatchers.IO y evita
+ * la fatiga de RAM (OutOfMemoryError) escribiendo directamente a archivos en streaming.
+ */
 class RouteExportUseCase(
     private val context: Context,
     private val repository: RouteRepository,
     private val exchanger: RouteExchanger
 ) {
 
+    /**
+     * Exporta secuencialmente una ruta a formato CSV y la comparte mediante un Intent.
+     */
     suspend fun exportCsv(routeId: Int) = withContext(Dispatchers.IO) {
         try {
             val route = repository.getRouteById(routeId) ?: return@withContext
             val points = repository.getLocationPointsSync(routeId)
-            val sb = StringBuilder("Fecha,Lat,Lon\n")
-            points.forEach { sb.append("${it.timestamp},${it.latitude},${it.longitude}\n") }
-            saveCsvFile(sb.toString(), route.name)
+            val fileName = "export_${System.currentTimeMillis()}.csv"
+            val file = context.getFileStreamPath(fileName)
+
+            file.outputStream().bufferedWriter(Charsets.UTF_8).use { writer ->
+                writer.write("Fecha,Lat,Lon\n")
+                points.forEach { p ->
+                    writer.write("${p.timestamp},${p.latitude},${p.longitude}\n")
+                }
+            }
+            shareFile(file, "text/csv")
         } catch (_: Exception) { }
     }
 
+    /**
+     * Exporta en streaming un conjunto de rutas agrupadas en un único archivo GPX.
+     */
     suspend fun exportGpx(routeIds: Set<Int>) = withContext(Dispatchers.IO) {
         try {
-            val sb = StringBuilder("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<gpx version=\"1.1\">\n")
-            routeIds.forEach { id ->
-                val route = repository.getRouteById(id) ?: return@forEach
-                val points = repository.getLocationPointsSync(id)
-                sb.append("<trk><name>${route.name}</name><trkseg>\n")
-                points.forEach { sb.append("<trkpt lat=\"${it.latitude}\" lon=\"${it.longitude}\"></trkpt>\n") }
-                sb.append("</trkseg></trk>\n")
+            val fileName = "export_${System.currentTimeMillis()}.gpx"
+            val file = context.getFileStreamPath(fileName)
+
+            file.outputStream().bufferedWriter(Charsets.UTF_8).use { writer ->
+                writer.write("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<gpx version=\"1.1\">\n")
+                routeIds.forEach { id ->
+                    val route = repository.getRouteById(id) ?: return@forEach
+                    val points = repository.getLocationPointsSync(id)
+                    writer.write("<trk><name>${route.name.escapeXml()}</name><trkseg>\n")
+                    points.forEach { p ->
+                        writer.write("<trkpt lat=\"${p.latitude}\" lon=\"${p.longitude}\"></trkpt>\n")
+                    }
+                    writer.write("</trkseg></trk>\n")
+                }
+                writer.write("</gpx>")
             }
-            sb.append("</gpx>")
-            saveGpxFile(sb.toString())
+            shareFile(file, "application/gpx+xml")
         } catch (_: Exception) { }
     }
 
+    /**
+     * Importa de forma secuencial una ruta a partir de una traza GPX externa.
+     */
     suspend fun importGpx(uri: Uri): Boolean = withContext(Dispatchers.IO) {
         try {
             val inputStream = context.contentResolver.openInputStream(uri) ?: return@withContext false
@@ -68,7 +97,14 @@ class RouteExportUseCase(
                         if (routeId == -1) routeId = repository.startNewRoute(routeName)
                         val lat = parser.getAttributeValue(null, "lat")?.toDouble() ?: 0.0
                         val lon = parser.getAttributeValue(null, "lon")?.toDouble() ?: 0.0
-                        val pt = LocationPoint(routeId = routeId, latitude = lat, longitude = lon, altitude = 0.0, speed = 0f, timestamp = System.currentTimeMillis())
+                        val pt = LocationPoint(
+                            routeId = routeId,
+                            latitude = lat,
+                            longitude = lon,
+                            altitude = 0.0,
+                            speed = 0f,
+                            timestamp = System.currentTimeMillis()
+                        )
                         repository.addLocationPoints(listOf(pt))
                     }
                 }
@@ -78,6 +114,9 @@ class RouteExportUseCase(
         } catch (_: Exception) { false }
     }
 
+    /**
+     * Exporta una ruta y todas sus dependencias en formato ZIP y la comparte.
+     */
     suspend fun exportZip(routeId: Int) = withContext(Dispatchers.IO) {
         try {
             val route = repository.getRouteById(routeId)
@@ -104,6 +143,9 @@ class RouteExportUseCase(
         }
     }
 
+    /**
+     * Guarda la exportación consolidada de la ruta en la URI del SAF provista por el usuario.
+     */
     suspend fun saveZipToUri(routeId: Int, uri: Uri): Boolean = withContext(Dispatchers.IO) {
         try {
             context.contentResolver.openOutputStream(uri)?.use { outputStream ->
@@ -122,6 +164,9 @@ class RouteExportUseCase(
         }
     }
 
+    /**
+     * Exporta la ruta consolidada utilizando el tipo de archivo MIME centralizado en constantes.
+     */
     suspend fun exportRouteAsZip(routeId: Int) = withContext(Dispatchers.IO) {
         try {
             val route = repository.getRouteById(routeId)
@@ -148,6 +193,9 @@ class RouteExportUseCase(
         }
     }
 
+    /**
+     * Importa de forma asíncrona una ruta relacional desde una URI de archivo ZIP.
+     */
     suspend fun importZip(uri: Uri): Boolean = withContext(Dispatchers.IO) {
         try {
             context.contentResolver.openInputStream(uri)?.use { inputStream ->
@@ -170,14 +218,11 @@ class RouteExportUseCase(
         return File(context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS), fileName)
     }
 
-    private fun saveCsvFile(content: String, routeName: String) {
+    private fun shareFile(file: File, mimeType: String) {
         try {
-            val fileName = "export_${System.currentTimeMillis()}.csv"
-            context.openFileOutput(fileName, Context.MODE_PRIVATE).use { it.write(content.toByteArray()) }
-            val file = context.getFileStreamPath(fileName)
             val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
             val intent = Intent(Intent.ACTION_SEND).apply {
-                type = "text/csv"
+                type = mimeType
                 putExtra(Intent.EXTRA_STREAM, uri)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
@@ -187,20 +232,11 @@ class RouteExportUseCase(
         } catch (_: Exception) { }
     }
 
-    private fun saveGpxFile(content: String) {
-        try {
-            val fileName = "export_${System.currentTimeMillis()}.gpx"
-            context.openFileOutput(fileName, Context.MODE_PRIVATE).use { it.write(content.toByteArray()) }
-            val file = context.getFileStreamPath(fileName)
-            val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
-            val intent = Intent(Intent.ACTION_SEND).apply {
-                type = "application/gpx+xml"
-                putExtra(Intent.EXTRA_STREAM, uri)
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            }
-            val chooser = Intent.createChooser(intent, "Exportar")
-            chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            context.startActivity(chooser)
-        } catch (_: Exception) { }
+    private fun String.escapeXml(): String {
+        return this.replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace("\"", "&quot;")
+            .replace("'", "&apos;")
     }
 }

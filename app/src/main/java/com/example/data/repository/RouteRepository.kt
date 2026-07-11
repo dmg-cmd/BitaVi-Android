@@ -7,6 +7,10 @@ import com.example.data.model.RouteFavoriteCrossRef
 import com.example.data.model.SavedLocation
 import com.example.data.model.Waypoint
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
+import android.util.Log
 
 /**
  * Repositorio que unifica el acceso a datos para las rutas, puntos GPS y waypoints.
@@ -70,26 +74,40 @@ class RouteRepository(private val routeDao: RouteDao) {
     }
 
     /**
-     * Finaliza una ruta activa de forma controlada actualizando estadísticas finales.
+     * Cierra la ruta activa calculando estadísticas finales de forma atómica.
+     * 🛡️ Usa NonCancellable para sobrevivir a la destrucción del servicio emisor.
      */
-    suspend fun stopActiveRoute(routeId: Int, distanceMeters: Double, activityMode: String = "WALKING") {
-        val route = routeDao.getRouteById(routeId)
-        val points = routeDao.getLocationPointsForRoute(routeId)
-        
-        if (route != null) {
-            val maxSpeed = if (points.isNotEmpty()) points.maxOf { it.speed } else 0f
-            val avgSpeed = if (points.isNotEmpty()) points.map { it.speed }.average().toFloat() else 0f
+    suspend fun stopActiveRoute(
+        routeId: Int, 
+        distanceMeters: Double, 
+        activityMode: String = "WALKING"
+    ): Boolean = withContext(NonCancellable + Dispatchers.IO) {
+        try {
+            val route = routeDao.getRouteById(routeId)
+            val points = routeDao.getLocationPointsForRoute(routeId)
             
-            routeDao.updateRoute(
-                route.copy(
-                    isActive = false,
-                    endTime = System.currentTimeMillis(),
-                    distanceMeters = distanceMeters,
-                    maxSpeed = maxSpeed,
-                    avgSpeed = avgSpeed,
-                    activityMode = activityMode
+            if (route != null) {
+                val maxSpeed = if (points.isNotEmpty()) points.maxOf { it.speed } else 0f
+                val avgSpeed = if (points.isNotEmpty()) points.map { it.speed }.average().toFloat() else 0f
+                
+                routeDao.updateRoute(
+                    route.copy(
+                        isActive = false,
+                        endTime = System.currentTimeMillis(),
+                        distanceMeters = distanceMeters,
+                        maxSpeed = maxSpeed,
+                        avgSpeed = avgSpeed,
+                        activityMode = activityMode
+                    )
                 )
-            )
+                true
+            } else {
+                Log.w("RouteRepository", "⚠️ Se intentó cerrar una ruta inexistente: ID $routeId")
+                false
+            }
+        } catch (e: Exception) {
+            Log.e("RouteRepository", "🚨 Error catastrófico en la persistencia final de ruta $routeId", e)
+            false
         }
     }
 

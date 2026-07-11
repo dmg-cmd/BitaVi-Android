@@ -1,3 +1,8 @@
+## 09/07/2026 — Watchdog de Señal y Dashboard Flotante (Watchdog de señal GPS y Refactor BC)
+- **LocationService.kt**: Integración y activación del Watchdog de señal de satélite (`startGpsWatchdog()`). Ahora el watchdog se inicia con el tracking y se detiene automáticamente en pausa o finalización de ruta, evitando fugas de memoria o cambios erráticos de estado.
+- **DashboardActividadFlotante.kt**: Consumo seguro del contenedor translúcido y transición animada de color (rojo 0xFFDC3545 al 75% alpha en alerta y normal 0xFF1C1B1F al 65% alpha).
+- **MapScreen.kt**: Refactorización de `IndicadorTranslucidoContenedor` para inyección elástica de color de fondo y reemplazo del dashboard inline original.
+
 ## 07/07/2026 — Saneamiento de Deuda Técnica (Fase 0: Zero Warnings)
 - **MapScreen.kt**: Eliminación de 8+ warnings de linter: variables muertas, KTX, performClick, actualPoints, retainAll, resources hoisting, Locale, toColorInt.
 - **FocusFavoriteScreen.kt**: Corrección de getDrawable deprecado + lowercase(Locale.ROOT).
@@ -123,3 +128,10 @@
 - **Deploy**: BUILD SUCCESSFUL + installDebug en Pixel 9 Pro XL.
 
 
+
+## 09/07/2026 — Watchdog de Señal GNSS + Dashboard Actividad Flotante
+- **Watchdog GNSS**: Nuevo sistema de monitoreo de salud satelital en LocationService. Detecta pérdida de señal GPS después de 15s sin updates del GPS_PROVIDER y conmuta automáticamente a ActivityMode.SIN_SENAL. Al recuperar señal, restaura el modo cinemático previo atómicamente.
+- **DashboardActividadFlotante**: Nuevo componente UI que reemplaza el dashboard inline. Fondo oscuro translúcido en estado normal, rojo táctico #DC3545 al 75% alpha en pérdida de señal. Velocidad oculta automáticamente durante SIN_SENAL. Animación suave de 400ms en transiciones.
+- **IndicadorTranslucidoContenedor**: Refactor backward-compatible con nuevo parámetro overrideColor.
+- **RouteSegmenter**: Segmentos de ruta SIN_SENAL se renderizan en rojo #DC3545 en el mapa.
+- **Compilación**: BUILD SUCCESSFUL (0 errores, 0 warnings).

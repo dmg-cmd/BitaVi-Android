@@ -1,0 +1,9 @@
+<resources>
+    <string name="app_name">Agenviaje</string>
+    <string name="drawer_title_header">Agenviaje</string>
+    <string name="drawer_subtitle_header">Bitácora Táctica de Caminos</string>
+    <string name="notification_service_title">Agenviaje activo</string>
+    <string name="notification_service_description">Monitoreando tu bitácora de viaje en segundo plano...</string>
+    <string name="biometric_subtitle">Coloque su huella para abrir Agenviaje</string>
+    <string name="share_footer">Generado por Agenviaje</string>
+</resources>

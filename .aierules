@@ -11,6 +11,8 @@ Al finalizar cada tarea o antes de cerrar la sesión, el agente DEBE:
 3. **Actualizar `Documentacion/DOCUMENTACION.md`**: Reflejar cambios en la funcionalidad para el usuario.
 4. **Actualizar `Documentacion/SUGERENCIAS.md`**: Marcar tareas completadas.
 5. **Actualizar `Documentacion/SUGERENCIAS_COMPLETADAS.md`**: Mover las tareas finalizadas aquí.
+6. **Archivos Walkthrough**: Guardar todos los informes de verificación (walkthrough) generados en la carpeta `Documentacion/Walkthroughs/` nombrándolos con la fecha y hora de ocurrencia (ej: `walkthrough_AAAAMMDD_HHMM_[tema].md`).
+
 
 ## Protocolo de Ejecución
 - Una vez que el usuario dice **"implementa"**, el agente ejecuta **todo** sin pedir aprobación intermedia: respaldos, edición de código, comandos shell (gradlew, adb, git, etc.), actualización de documentación y deploy.

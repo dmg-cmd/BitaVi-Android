@@ -2,6 +2,7 @@ package com.example.data.export
 
 import android.content.Context
 import android.net.Uri
+import android.util.JsonWriter
 import androidx.core.content.FileProvider
 import com.example.data.model.LocationPoint
 import com.example.data.model.Route
@@ -18,14 +19,21 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.BufferedWriter
 import java.io.File
 import java.io.FileOutputStream
 import java.io.InputStream
 import java.io.OutputStream
+import java.io.OutputStreamWriter
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
 
+/**
+ * Motor de empaquetado e intercambio consolidado de rutas de telemetría.
+ * Implementa la serialización secuencial (Streaming) con JsonWriter de Android
+ * para prevenir excepciones OutOfMemoryError en trayectos extensos.
+ */
 class RouteExchanger(
     private val context: Context,
     private val repository: RouteRepository
@@ -50,12 +58,14 @@ class RouteExchanger(
 
             // 1. ruta.json
             zos.putNextEntry(ZipEntry("ruta.json"))
-            zos.write(buildRutaJson(route, points, waypoints).toString().toByteArray())
+            val writer = BufferedWriter(OutputStreamWriter(zos, Charsets.UTF_8))
+            writeRutaJsonStream(writer, route, points, waypoints)
             zos.closeEntry()
 
             // 2. favoritos.json
             zos.putNextEntry(ZipEntry("favoritos.json"))
-            zos.write(buildFavoritosJson(favorites, crossRefs).toString().toByteArray())
+            val favWriter = BufferedWriter(OutputStreamWriter(zos, Charsets.UTF_8))
+            writeFavoritosJsonStream(favWriter, favorites, crossRefs)
             zos.closeEntry()
 
             // 3. fotos
@@ -75,32 +85,57 @@ class RouteExchanger(
         }
     }
 
-    suspend fun exportRouteAsZip(routeId: Int, outputStream: OutputStream): Result<Unit> = runCatching {
-        val route = repository.getRouteById(routeId) ?: throw Exception("Ruta no encontrada")
-        val points = repository.getLocationPointsSync(routeId)
-        val waypoints = repository.getWaypointsSync(routeId)
-        val favorites = repository.getFavoritesForRoute(routeId)
+    /**
+     * Exporta de forma asíncrona y en streaming una ruta con todas sus entidades
+     * relacionadas en un archivo comprimido ZIP.
+     */
+    suspend fun exportRouteAsZip(routeId: Int, outputStream: OutputStream): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            val route = repository.getRouteById(routeId) ?: throw Exception("Ruta no encontrada")
+            val points = repository.getLocationPointsSync(routeId)
+            val waypoints = repository.getWaypointsSync(routeId)
+            val favorites = repository.getFavoritesForRoute(routeId)
+            val crossRefs = favorites.map { RouteFavoriteCrossRef(routeId = routeId, favoriteId = it.id) }
 
-        ZipOutputStream(outputStream).use { zipOut ->
-            zipOut.putNextEntry(ZipEntry("track.gpx"))
-            zipOut.write(buildGpxString(route.name, points).toByteArray(Charsets.UTF_8))
-            zipOut.closeEntry()
+            ZipOutputStream(outputStream).use { zipOut ->
+                val writer = java.io.BufferedWriter(java.io.OutputStreamWriter(zipOut, Charsets.UTF_8))
 
-            zipOut.putNextEntry(ZipEntry("telemetry.csv"))
-            zipOut.write(buildCsvString(route, points).toByteArray(Charsets.UTF_8))
-            zipOut.closeEntry()
-
-            val photoFiles = collectPhotoFilenames(waypoints, favorites)
-            for ((filename, sourcePath) in photoFiles) {
-                val file = resolvePhotoFile(sourcePath) ?: continue
-                if (!file.exists()) continue
-                zipOut.putNextEntry(ZipEntry("media/$filename"))
-                file.inputStream().use { it.copyTo(zipOut) }
+                // 1. ruta.json (Persistencia relacional)
+                zipOut.putNextEntry(ZipEntry("ruta.json"))
+                writeRutaJsonStream(writer, route, points, waypoints)
                 zipOut.closeEntry()
+
+                // 2. favoritos.json (Lugares favoritos asociados)
+                zipOut.putNextEntry(ZipEntry("favoritos.json"))
+                writeFavoritosJsonStream(writer, favorites, crossRefs)
+                zipOut.closeEntry()
+
+                // 3. track.gpx (Compartido social estándar)
+                zipOut.putNextEntry(ZipEntry("track.gpx"))
+                writeGpxStream(writer, route.name, points)
+                zipOut.closeEntry()
+
+                // 4. telemetry.csv (Compartido CSV)
+                zipOut.putNextEntry(ZipEntry("telemetry.csv"))
+                writeCsvStream(writer, route, points)
+                zipOut.closeEntry()
+
+                // 5. fotos (Multimedia asociada)
+                val photoFiles = collectPhotoFilenames(waypoints, favorites)
+                for ((filename, sourcePath) in photoFiles) {
+                    val file = resolvePhotoFile(sourcePath) ?: continue
+                    if (!file.exists()) continue
+                    zipOut.putNextEntry(ZipEntry("fotos/$filename"))
+                    file.inputStream().use { it.copyTo(zipOut) }
+                    zipOut.closeEntry()
+                }
             }
         }
     }
 
+    /**
+     * Importa una ruta a partir de un flujo ZIP de entrada.
+     */
     suspend fun importarRuta(inputStream: InputStream) = withContext(Dispatchers.IO) {
         val timestamp = System.currentTimeMillis()
         val tempDir = File(context.cacheDir, "import_$timestamp").also { it.mkdirs() }
@@ -142,39 +177,37 @@ class RouteExchanger(
         }
     }
 
-    // ─── Construcción de GPX y CSV para el Súper ZIP Social ───
+    // ─── ESTRUCTURA DE ESCRITURA EN STREAMING (GPX y CSV) ───
 
-    private fun buildGpxString(name: String, points: List<LocationPoint>): String {
+    private fun writeGpxStream(writer: java.io.Writer, name: String, points: List<LocationPoint>) {
         val dateFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).apply {
             timeZone = TimeZone.getTimeZone("UTC")
         }
-        val sb = StringBuilder()
-        sb.appendLine("<?xml version=\"1.0\" encoding=\"UTF-8\"?>")
-        sb.appendLine("<gpx version=\"1.1\" creator=\"LocalizadorPro\" xmlns=\"http://www.topografix.com/GPX/1/1\">")
-        sb.appendLine("<trk><name>${name.escapeXml()}</name><trkseg>")
+        writer.write("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
+        writer.write("<gpx version=\"1.1\" creator=\"LocalizadorPro\" xmlns=\"http://www.topografix.com/GPX/1/1\">\n")
+        writer.write("<trk><name>${name.escapeXml()}</name><trkseg>\n")
         points.forEach { p ->
-            sb.appendLine("<trkpt lat=\"${p.latitude}\" lon=\"${p.longitude}\">")
-            sb.appendLine("<ele>${p.altitude}</ele>")
-            sb.appendLine("<speed>${p.speed}</speed>")
-            sb.appendLine("<time>${dateFormat.format(Date(p.timestamp))}</time>")
-            sb.appendLine("</trkpt>")
+            writer.write("<trkpt lat=\"${p.latitude}\" lon=\"${p.longitude}\">\n")
+            writer.write("<ele>${p.altitude}</ele>\n")
+            writer.write("<speed>${p.speed}</speed>\n")
+            writer.write("<time>${dateFormat.format(Date(p.timestamp))}</time>\n")
+            writer.write("</trkpt>\n")
         }
-        sb.appendLine("</trkseg></trk>")
-        sb.appendLine("</gpx>")
-        return sb.toString()
+        writer.write("</trkseg></trk>\n")
+        writer.write("</gpx>\n")
+        writer.flush()
     }
 
-    private fun buildCsvString(route: Route, points: List<LocationPoint>): String {
-        val sb = StringBuilder()
-        sb.appendLine("# Route: ${route.name}")
-        sb.appendLine("# Activity Mode: ${route.activityMode}")
-        sb.appendLine("# Total Points: ${points.size}")
-        sb.appendLine("timestamp_ms,latitude,longitude,altitude_m,speed_ms,speed_kmh,activity_mode")
+    private fun writeCsvStream(writer: java.io.Writer, route: Route, points: List<LocationPoint>) {
+        writer.write("# Route: ${route.name}\n")
+        writer.write("# Activity Mode: ${route.activityMode}\n")
+        writer.write("# Total Points: ${points.size}\n")
+        writer.write("timestamp_ms,latitude,longitude,altitude_m,speed_ms,speed_kmh,activity_mode\n")
         points.forEach { p ->
             val speedKmh = String.format(Locale.US, "%.2f", p.speed * 3.6f)
-            sb.appendLine("${p.timestamp},${p.latitude},${p.longitude},${p.altitude},${p.speed},$speedKmh,${route.activityMode}")
+            writer.write("${p.timestamp},${p.latitude},${p.longitude},${p.altitude},${p.speed},$speedKmh,${route.activityMode}\n")
         }
-        return sb.toString()
+        writer.flush()
     }
 
     private fun String.escapeXml(): String {
@@ -185,79 +218,100 @@ class RouteExchanger(
             .replace("'", "&apos;")
     }
 
-    // ─── Construcción de JSON ───
+    // ─── ESCRITURA EN STREAMING CON JSONWRITER (ruta.json y favoritos.json) ───
 
-    private fun buildRutaJson(route: Route, points: List<LocationPoint>, waypoints: List<Waypoint>): JSONObject {
-        return JSONObject().apply {
-            put("route", JSONObject().apply {
-                put("name", route.name)
-                put("startTime", route.startTime)
-                put("endTime", route.endTime)
-                put("distanceMeters", route.distanceMeters)
-                put("isActive", route.isActive)
-                put("maxSpeed", route.maxSpeed.toDouble())
-                put("avgSpeed", route.avgSpeed.toDouble())
-            })
-            put("locationPoints", JSONArray().apply {
-                points.forEach { p ->
-                    put(JSONObject().apply {
-                        put("latitude", p.latitude)
-                        put("longitude", p.longitude)
-                        put("altitude", p.altitude)
-                        put("speed", p.speed.toDouble())
-                        put("timestamp", p.timestamp)
-                    })
-                }
-            })
-            put("waypoints", JSONArray().apply {
-                waypoints.forEach { wp ->
-                    put(JSONObject().apply {
-                        put("name", wp.name)
-                        put("description", wp.description)
-                        put("latitude", wp.latitude)
-                        put("longitude", wp.longitude)
-                        put("photoFile", wp.photoPath?.extractFilename())
-                        put("author", wp.author)
-                        put("color", wp.color)
-                        put("timestamp", wp.timestamp)
-                    })
-                }
-            })
+    private fun writeRutaJsonStream(writer: java.io.Writer, route: Route, points: List<LocationPoint>, waypoints: List<Waypoint>) {
+        val jsonWriter = JsonWriter(writer)
+        jsonWriter.beginObject()
+
+        // 1. "route" object
+        jsonWriter.name("route")
+        jsonWriter.beginObject()
+        jsonWriter.name("name").value(route.name)
+        jsonWriter.name("startTime").value(route.startTime)
+        jsonWriter.name("endTime").value(route.endTime)
+        jsonWriter.name("distanceMeters").value(route.distanceMeters)
+        jsonWriter.name("isActive").value(route.isActive)
+        jsonWriter.name("maxSpeed").value(route.maxSpeed.toDouble())
+        jsonWriter.name("avgSpeed").value(route.avgSpeed.toDouble())
+        jsonWriter.endObject()
+
+        // 2. "locationPoints" array
+        jsonWriter.name("locationPoints")
+        jsonWriter.beginArray()
+        points.forEach { p ->
+            jsonWriter.beginObject()
+            jsonWriter.name("latitude").value(p.latitude)
+            jsonWriter.name("longitude").value(p.longitude)
+            jsonWriter.name("altitude").value(p.altitude)
+            jsonWriter.name("speed").value(p.speed.toDouble())
+            jsonWriter.name("timestamp").value(p.timestamp)
+            jsonWriter.endObject()
         }
+        jsonWriter.endArray()
+
+        // 3. "waypoints" array
+        jsonWriter.name("waypoints")
+        jsonWriter.beginArray()
+        waypoints.forEach { wp ->
+            jsonWriter.beginObject()
+            jsonWriter.name("name").value(wp.name)
+            jsonWriter.name("description").value(wp.description)
+            jsonWriter.name("latitude").value(wp.latitude)
+            jsonWriter.name("longitude").value(wp.longitude)
+            jsonWriter.name("photoFile").value(wp.photoPath?.extractFilename() ?: "")
+            jsonWriter.name("author").value(wp.author)
+            jsonWriter.name("color").value(wp.color)
+            jsonWriter.name("timestamp").value(wp.timestamp)
+            jsonWriter.endObject()
+        }
+        jsonWriter.endArray()
+
+        jsonWriter.endObject()
+        jsonWriter.flush()
     }
 
-    private fun buildFavoritosJson(favorites: List<SavedLocation>, crossRefs: List<RouteFavoriteCrossRef>): JSONObject {
-        return JSONObject().apply {
-            put("favorites", JSONArray().apply {
-                favorites.forEach { fav ->
-                    put(JSONObject().apply {
-                        put("name", fav.name)
-                        put("address", fav.address)
-                        put("latitude", fav.latitude)
-                        put("longitude", fav.longitude)
-                        put("comment", fav.comment)
-                        put("photoFile", fav.photoPath?.extractFilename())
-                        put("author", fav.author)
-                        put("phoneNumber", fav.phoneNumber)
-                        put("email", fav.email)
-                        put("isContact", fav.isContact)
-                        put("color", fav.color)
-                        put("country", fav.country)
-                        put("city", fav.city)
-                        put("timestamp", fav.timestamp)
-                    })
-                }
-            })
-            put("crossRefs", JSONArray().apply {
-                crossRefs.forEach { ref ->
-                    val fav = favorites.find { it.id == ref.favoriteId } ?: return@forEach
-                    put(JSONObject().apply {
-                        put("favoriteLatitude", fav.latitude)
-                        put("favoriteLongitude", fav.longitude)
-                    })
-                }
-            })
+    private fun writeFavoritosJsonStream(writer: java.io.Writer, favorites: List<SavedLocation>, crossRefs: List<RouteFavoriteCrossRef>) {
+        val jsonWriter = JsonWriter(writer)
+        jsonWriter.beginObject()
+
+        // 1. "favorites" array
+        jsonWriter.name("favorites")
+        jsonWriter.beginArray()
+        favorites.forEach { fav ->
+            jsonWriter.beginObject()
+            jsonWriter.name("name").value(fav.name)
+            jsonWriter.name("address").value(fav.address)
+            jsonWriter.name("latitude").value(fav.latitude)
+            jsonWriter.name("longitude").value(fav.longitude)
+            jsonWriter.name("comment").value(fav.comment)
+            jsonWriter.name("photoFile").value(fav.photoPath?.extractFilename() ?: "")
+            jsonWriter.name("author").value(fav.author)
+            jsonWriter.name("phoneNumber").value(fav.phoneNumber)
+            jsonWriter.name("email").value(fav.email)
+            jsonWriter.name("isContact").value(fav.isContact)
+            jsonWriter.name("color").value(fav.color)
+            jsonWriter.name("country").value(fav.country)
+            jsonWriter.name("city").value(fav.city)
+            jsonWriter.name("timestamp").value(fav.timestamp)
+            jsonWriter.endObject()
         }
+        jsonWriter.endArray()
+
+        // 2. "crossRefs" array
+        jsonWriter.name("crossRefs")
+        jsonWriter.beginArray()
+        crossRefs.forEach { ref ->
+            val fav = favorites.find { it.id == ref.favoriteId } ?: return@forEach
+            jsonWriter.beginObject()
+            jsonWriter.name("favoriteLatitude").value(fav.latitude)
+            jsonWriter.name("favoriteLongitude").value(fav.longitude)
+            jsonWriter.endObject()
+        }
+        jsonWriter.endArray()
+
+        jsonWriter.endObject()
+        jsonWriter.flush()
     }
 
     // ─── Procesamiento de Importación ───
@@ -275,18 +329,48 @@ class RouteExchanger(
         )
         val newRouteId = repository.insertRouteDirectly(newRoute)
 
-        val pointsArray = payload.getJSONArray("locationPoints")
+        val pointsArray = when {
+            payload.has("locationPoints") -> payload.getJSONArray("locationPoints")
+            payload.has("points") -> payload.getJSONArray("points")
+            else -> JSONArray()
+        }
+
         if (pointsArray.length() > 0) {
             val points = mutableListOf<LocationPoint>()
             for (i in 0 until pointsArray.length()) {
                 val p = pointsArray.getJSONObject(i)
+                val lat = when {
+                    p.has("latitude") -> p.getDouble("latitude")
+                    p.has("lat") -> p.getDouble("lat")
+                    else -> 0.0
+                }
+                val lon = when {
+                    p.has("longitude") -> p.getDouble("longitude")
+                    p.has("lon") -> p.getDouble("lon")
+                    else -> 0.0
+                }
+                val alt = when {
+                    p.has("altitude") -> p.getDouble("altitude")
+                    p.has("alt") -> p.getDouble("alt")
+                    else -> 0.0
+                }
+                val spd = when {
+                    p.has("speed") -> p.getDouble("speed").toFloat()
+                    p.has("spd") -> p.getDouble("spd").toFloat()
+                    else -> 0.0f
+                }
+                val ts = when {
+                    p.has("timestamp") -> p.getLong("timestamp")
+                    p.has("time") -> p.getLong("time")
+                    else -> System.currentTimeMillis()
+                }
                 points.add(LocationPoint(
                     routeId = newRouteId,
-                    latitude = p.getDouble("latitude"),
-                    longitude = p.getDouble("longitude"),
-                    altitude = p.getDouble("altitude"),
-                    speed = p.getDouble("speed").toFloat(),
-                    timestamp = p.getLong("timestamp")
+                    latitude = lat,
+                    longitude = lon,
+                    altitude = alt,
+                    speed = spd,
+                    timestamp = ts
                 ))
             }
             repository.addLocationPoints(points)

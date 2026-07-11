@@ -18,11 +18,14 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.key
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -45,6 +48,8 @@ import com.example.location.LocationService
 import com.example.ui.components.FullScreenPhotoDialog
 import com.example.ui.components.TourOverlay
 import com.example.ui.components.BrandWatermark
+import com.example.ui.components.TopBarLocalizador
+import com.example.ui.components.DashboardActividadFlotante
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
@@ -63,9 +68,13 @@ import org.osmdroid.events.ScrollEvent
 import org.osmdroid.events.ZoomEvent
 import org.osmdroid.views.overlay.mylocation.GpsMyLocationProvider
 import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay
+import org.osmdroid.views.overlay.gestures.RotationGestureOverlay
 
 @Composable
-fun MapScreen(viewModel: RouteViewModel, modifier: Modifier = Modifier) {
+fun MapScreen(
+    viewModel: RouteViewModel,
+    modifier: Modifier = Modifier
+) {
     val context = LocalContext.current
     val isTracking by viewModel.isTrackingLive.collectAsState()
     val latestLocation by viewModel.latestLocationLive.collectAsState()
@@ -77,6 +86,7 @@ fun MapScreen(viewModel: RouteViewModel, modifier: Modifier = Modifier) {
     val savedLocations by viewModel.allSavedLocations.collectAsState()
     val scope = rememberCoroutineScope()
 
+
     var showStartDialog by remember { mutableStateOf(false) }
     var showWaypointDialog by remember { mutableStateOf(false) }
     var showSaveLocationDialog by remember { mutableStateOf(false) }
@@ -86,6 +96,8 @@ fun MapScreen(viewModel: RouteViewModel, modifier: Modifier = Modifier) {
     
     // Control de Mapa: Seguimiento vs Manual
     var lastInteractionTime by remember { mutableStateOf(0L) }
+    var isNavigationModeEnabled by remember { mutableStateOf(false) }
+    var mapOrientation by remember { mutableFloatStateOf(0f) }
 
     var capturedPhotoUri by remember { mutableStateOf<android.net.Uri?>(null) }
     var photoGpsLocation by remember { mutableStateOf<Pair<Double, Double>?>(null) }
@@ -137,6 +149,9 @@ fun MapScreen(viewModel: RouteViewModel, modifier: Modifier = Modifier) {
 
     val mapView = remember { MapView(context) }
     val locationOverlay = remember { MyLocationNewOverlay(GpsMyLocationProvider(context), mapView) }
+    val rotationGestureOverlay = remember { RotationGestureOverlay(mapView) }.apply {
+        isEnabled = true
+    }
 
     // --- CACHES PARA OPTIMIZACIÓN DE RENDERIZADO (Hallazgo A11) ---
     val markerIconCache = remember { mutableMapOf<String, android.graphics.drawable.Drawable>() }
@@ -244,12 +259,15 @@ fun MapScreen(viewModel: RouteViewModel, modifier: Modifier = Modifier) {
         }
     }
 
-    Box(modifier = modifier.fillMaxSize().pointerInput(Unit) {
-        detectTapGestures(onPress = {
-            lastInteractionTime = System.currentTimeMillis()
-            LocationService.reportUserActivity()
-        })
-    }) {
+    Box(modifier = modifier
+        .fillMaxSize()
+        .pointerInput(Unit) {
+            detectTapGestures(onPress = {
+                lastInteractionTime = System.currentTimeMillis()
+                LocationService.reportUserActivity()
+            })
+        }
+    ) {
         AndroidView(
             modifier = Modifier.fillMaxSize(),
             factory = {
@@ -291,15 +309,17 @@ fun MapScreen(viewModel: RouteViewModel, modifier: Modifier = Modifier) {
                     // Nota: setDirectionArrow requiere Bitmaps, lo haremos de forma simple con el icono estándar pero resaltado
                     
                     overlays.add(locationOverlay)
+                    overlays.add(rotationGestureOverlay)
                     
                     // Escuchar cambios de zoom del usuario
                     addMapListener(object : MapListener {
                         override fun onScroll(event: ScrollEvent?): Boolean {
-                            // Detectamos el scroll pero no bloqueamos el hilo
+                            mapOrientation = mapView.mapOrientation
                             return false
                         }
                         override fun onZoom(event: ZoomEvent?): Boolean {
                             lastInteractionTime = System.currentTimeMillis()
+                            mapOrientation = mapView.mapOrientation
                             return false
                         }
                     })
@@ -321,10 +341,33 @@ fun MapScreen(viewModel: RouteViewModel, modifier: Modifier = Modifier) {
                 try {
                     view.setUseDataConnection(!viewModel.isOfflineMode)
                     
+                    if (mapOrientation != view.mapOrientation) {
+                        mapOrientation = view.mapOrientation
+                    }
+                    
                     val isManual = lastInteractionTime != 0L
                     val isNavigating = viewModel.mapTargetLocation != null
                     if (isManual || isNavigating) {
                         locationOverlay.disableFollowLocation()
+                    } else {
+                        locationOverlay.enableFollowLocation()
+                        
+                        // 🧭 Modo Navegación Táctica: Control de rotación automática
+                        if (isNavigationModeEnabled && latestLocation != null && latestLocation!!.hasBearing()) {
+                            val targetOrientation = -latestLocation!!.bearing
+                            val currentOrientation = view.mapOrientation
+                            val deltaAngle = targetOrientation - currentOrientation
+                            
+                            // Normalizar diferencia de ángulo a [-180, 180] para evitar rotaciones de 360 grados innecesarias
+                            val normalizedDiff = ((deltaAngle + 180f) % 360f - 360f) % 360f + 180f
+                            
+                            // Suavizado por Lerp (Factor de amortiguación alpha = 0.15f)
+                            if (Math.abs(normalizedDiff) > 1.0f) {
+                                view.mapOrientation = currentOrientation + (normalizedDiff * 0.15f)
+                            }
+                        } else if (!isNavigationModeEnabled && view.mapOrientation != 0f) {
+                            view.mapOrientation = 0f
+                        }
                     }
                     
                     // Sincronizar iconos de ubicación (solo si cambiaron por isTracking)
@@ -447,12 +490,29 @@ fun MapScreen(viewModel: RouteViewModel, modifier: Modifier = Modifier) {
             }
         )
 
-        // DASHBOARD DE ACTIVIDAD MD3: modo + telemetría
-        Card(
+        // ------------------------------------------------------------------------
+        // 🔥 CAPA 2: COMPONENTES FLOTANTES SUPERIORES (EJE Z ELEVADO)
+        // ------------------------------------------------------------------------
+
+        // 🛡️ CONTROL 2: Barra de Telemetría y Geocodificador
+        // Posee un padding start de 72.dp para encajar milimétricamente al lado del botón
+        Column(
             modifier = Modifier
-                .padding(16.dp)
-                .align(Alignment.TopStart)
-                .clickable {
+                .fillMaxWidth()
+                .align(Alignment.TopCenter)
+                .zIndex(1f) // Se mantiene por debajo del botón flotante del menú
+        ) {
+            // 1. Barra de identidad e interactividad táctica superior
+            val modoTraficoText = when (activityMode) {
+                ActivityMode.STOPPED -> "🛑 Detenido"
+                ActivityMode.WALKING -> "🚶 Caminata"
+                ActivityMode.BIKING -> "🚴 Bicicleta"
+                ActivityMode.DRIVING -> "🚗 Vehículo"
+                ActivityMode.SIN_SENAL -> "⚠️ SIN SEÑAL"
+            }
+
+            TopBarLocalizador(
+                onLocalizadorClick = {
                     if (!showAddressBox) {
                         viewModel.fetchCurrentAddress()
                         showAddressBox = true
@@ -461,150 +521,95 @@ fun MapScreen(viewModel: RouteViewModel, modifier: Modifier = Modifier) {
                         viewModel.clearCurrentAddress()
                     }
                 },
-            shape = RoundedCornerShape(12.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = Color(0xCC1A1A2E)
-            ),
-            elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
-        ) {
-            // Barra de acento lateral izquierdo según modo
-            val modeColor = when (activityMode) {
-                ActivityMode.STOPPED -> Color(0xFFFFD600)
-                ActivityMode.WALKING -> Color(0xFF4CAF50)
-                ActivityMode.BIKING -> Color(0xFF2196F3)
-                ActivityMode.DRIVING -> Color(0xFFFF5252)
-            }
-            Row(modifier = Modifier.height(IntrinsicSize.Min)) {
-                Box(
+                modoTrafico = modoTraficoText,
+                velocidad = "${String.format(Locale.getDefault(), "%.1f", (latestLocation?.speed ?: 0f) * 3.6f)} km/h"
+            )
+
+            if (showAddressBox && viewModel.currentAddress != null) {
+                // 2. Separación sutil e indicador de calle
+                Spacer(modifier = Modifier.height(4.dp))
+                IndicadorTranslucidoContenedor(
                     modifier = Modifier
-                        .width(4.dp)
-                        .fillMaxHeight()
-                        .background(modeColor)
-                )
-                Column(modifier = Modifier.padding(12.dp)) {
-                    // Fila hero: icono + modo + velocidad
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
+                        .clickable {
+                            showAddressBox = false
+                            viewModel.clearCurrentAddress()
+                        }
+                ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = when (activityMode) {
-                                ActivityMode.STOPPED -> Icons.Default.StopCircle
-                                ActivityMode.WALKING -> Icons.AutoMirrored.Filled.DirectionsWalk
-                                ActivityMode.BIKING -> Icons.AutoMirrored.Filled.DirectionsBike
-                                ActivityMode.DRIVING -> Icons.Default.DirectionsCar
-                            },
-                            contentDescription = null,
-                            tint = modeColor,
-                            modifier = Modifier.size(28.dp)
-                        )
-                        Spacer(Modifier.width(10.dp))
+                        Icon(Icons.Default.Place, null, tint = Color.White, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
                         Text(
-                            text = when (activityMode) {
-                                ActivityMode.STOPPED -> "Detenido"
-                                ActivityMode.WALKING -> "Caminando"
-                                ActivityMode.BIKING -> "En Bicicleta"
-                                ActivityMode.DRIVING -> "En Vehículo"
-                            },
-                            color = modeColor,
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Spacer(Modifier.weight(1f))
-                        Text(
-                            text = "${String.format(Locale.getDefault(), "%.1f", (latestLocation?.speed ?: 0f) * 3.6f)} km/h",
+                            text = viewModel.currentAddress!!,
                             color = Color.White,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 2
                         )
                     }
-                    // Stats secundarias (solo en tracking)
-                    if (isTracking) {
-                        Spacer(Modifier.height(4.dp))
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                "${String.format(Locale.getDefault(), "%.2f km", distanceMeters/1000)}",
-                                color = Color.White.copy(alpha = 0.85f),
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Medium
-                            )
-                            Spacer(Modifier.width(16.dp))
-                            val h = elapsedSeconds/3600; val m = (elapsedSeconds%3600)/60; val s = elapsedSeconds%60
-                            Text(
-                                String.format(Locale.getDefault(), "%02d:%02d:%02d hs", h, m, s),
-                                color = Color.White.copy(alpha = 0.85f),
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Medium
-                            )
-                        }
-                    }
-                    // Telemetría fina (LAT/LON/ALT)
-                    Spacer(Modifier.height(4.dp))
-                    latestLocation.let { loc ->
-                        if (loc != null) {
-                            Text(
-                                "LAT: ${String.format(Locale.getDefault(), "%.6f", loc.latitude)}  LON: ${String.format(Locale.getDefault(), "%.6f", loc.longitude)}",
-                                color = Color.White.copy(alpha = 0.55f),
-                                fontSize = 9.sp
-                            )
-                            Text(
-                                "ALT: ${String.format(Locale.getDefault(), "%.1f", loc.altitude)}m",
-                                color = Color(0xFF4CAF50).copy(alpha = 0.8f),
-                                fontSize = 9.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        } else {
-                            Text("GPS...", color = Color.Yellow, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
                 }
             }
         }
 
-        // Cuadro de Calle (A la derecha, semi transparente y letra más grande)
-        if (showAddressBox && viewModel.currentAddress != null) {
-            Surface(
-                color = Color.Black.copy(alpha = 0.5f), // Más transparente
-                shape = RoundedCornerShape(8.dp),
-                modifier = Modifier
-                    .padding(top = 16.dp, end = 16.dp)
-                    .align(Alignment.TopEnd) // Posición a la derecha
-                    .widthIn(max = 250.dp)
-                    .clickable { 
-                        showAddressBox = false 
-                        viewModel.clearCurrentAddress()
-                    }
-            ) {
-                Row(modifier = Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Place, null, tint = Color.White, modifier = Modifier.size(14.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        text = viewModel.currentAddress!!, 
-                        color = Color.White, 
-                        fontSize = 15.sp, // Letra más grande (era 13)
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 2
-                    )
+        // ------------------------------------------------------------------------
+        // CAPA 3: COMPONENTES FLOTANTES INFERIORES
+        // ------------------------------------------------------------------------
+
+        // Botones flotantes abajo a la izquierda (Alineados verticalmente en columna)
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(bottom = 32.dp, start = 16.dp)
+                .zIndex(1f),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            val isMapRotated = Math.abs(mapOrientation) > 0.1f
+            if (isMapRotated) {
+                FloatingActionButton(
+                    onClick = {
+                        mapView.mapOrientation = 0f
+                        mapOrientation = 0f
+                        isNavigationModeEnabled = false
+                    },
+                    containerColor = Color(0xFF3498DB), // 🔥 Azul Satelital Homologado
+                    contentColor = Color.White,
+                    elevation = FloatingActionButtonDefaults.elevation(4.dp)
+                ) {
+                    Icon(Icons.Default.CompassCalibration, contentDescription = "Fijar Norte")
                 }
             }
+
+            FloatingActionButton(
+                onClick = { 
+                    lastInteractionTime = 0L
+                    viewModel.clearMapTarget()
+                    locationOverlay.enableFollowLocation()
+                    latestLocation?.let { mapView.controller.animateTo(GeoPoint(it.latitude, it.longitude)) } 
+                },
+                containerColor = Color(0xFF3498DB), // 🔥 Azul Satelital Homologado
+                contentColor = Color.White,
+                elevation = FloatingActionButtonDefaults.elevation(4.dp)
+            ) { Icon(Icons.Default.MyLocation, contentDescription = "Volver a posición") }
         }
 
-        // Botones flotantes
-        FloatingActionButton(
-            onClick = { 
-                lastInteractionTime = 0L
-                viewModel.clearMapTarget()
-                locationOverlay.enableFollowLocation()
-                latestLocation?.let { mapView.controller.animateTo(GeoPoint(it.latitude, it.longitude)) } 
-            },
-            modifier = Modifier.align(Alignment.BottomStart).padding(bottom = 32.dp, start = 16.dp),
-            containerColor = Color.White
-        ) { Icon(Icons.Default.MyLocation, null) }
-
-        Box(modifier = Modifier.align(Alignment.BottomEnd).padding(bottom = 24.dp, end = 16.dp)) {
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(bottom = 32.dp, end = 16.dp)
+                .zIndex(1f)
+        ) {
             if (!isTracking) {
                 ExtendedFloatingActionButton(
                     onClick = { viewModel.generateSuggestedRouteName { newRouteName = it; showStartDialog = true } },
-                    icon = { Icon(Icons.Default.PlayArrow, null) },
-                    text = { Text("Grabar") }
-                )
+                    containerColor = Color(0xFF2ECC71), // 🔥 Verde Esmeralda de Grabación Activa
+                    contentColor = Color.White,
+                    elevation = FloatingActionButtonDefaults.elevation(6.dp)
+                ) {
+                    Icon(Icons.Default.PlayArrow, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Grabar", fontWeight = FontWeight.Bold)
+                }
             } else {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     FloatingActionButton(onClick = { showWaypointDialog = true }) { Icon(Icons.Default.AddLocationAlt, null) }
@@ -616,7 +621,7 @@ fun MapScreen(viewModel: RouteViewModel, modifier: Modifier = Modifier) {
         BrandWatermark(
             modifier = Modifier
                 .align(Alignment.BottomStart)
-                .padding(bottom = 100.dp, start = 8.dp)
+                .padding(bottom = 168.dp, start = 8.dp)
         )
     }
 
@@ -1060,6 +1065,30 @@ fun MapScreen(viewModel: RouteViewModel, modifier: Modifier = Modifier) {
                 viewModel.marcarTourVisto("actividad")
             }
         )
+    }
+
+
+}
+
+/**
+ * Contenedor genérico translúcido de alta visibilidad diurna.
+ * 🛡️ Respeta la regla de evitar elevación tonal para bloquear grises indeseados.
+ */
+@Composable
+fun IndicadorTranslucidoContenedor(
+    modifier: Modifier = Modifier,
+    overrideColor: Color = Color(0xFF1C1B1F).copy(alpha = 0.65f),
+    content: @Composable () -> Unit
+) {
+    Surface(
+        modifier = modifier,
+        shape = MaterialTheme.shapes.medium,
+        color = overrideColor, // Inyeccion elastica de color (alerta o default)
+        tonalElevation = 0.dp // Fuerza la anulación de capas grises sólidas automáticas de MD3
+    ) {
+        Box(modifier = Modifier.padding(12.dp)) {
+            content()
+        }
     }
 }
 

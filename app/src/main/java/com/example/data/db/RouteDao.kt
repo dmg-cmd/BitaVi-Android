@@ -59,10 +59,10 @@ interface RouteDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertLocationPoints(points: List<LocationPoint>)
 
-    @Query("SELECT * FROM location_points WHERE routeId = :routeId ORDER BY timestamp ASC")
+    @Query("SELECT * FROM location_points WHERE route_id = :routeId ORDER BY timestamp ASC")
     fun getLocationPointsForRouteFlow(routeId: Int): Flow<List<LocationPoint>>
 
-    @Query("SELECT * FROM location_points WHERE routeId = :routeId ORDER BY timestamp ASC")
+    @Query("SELECT * FROM location_points WHERE route_id = :routeId ORDER BY timestamp ASC")
     suspend fun getLocationPointsForRoute(routeId: Int): List<LocationPoint>
 
 

@@ -22,6 +22,7 @@ fun ActivityMode.toSegmentColor(): Int = when (this) {
     ActivityMode.WALKING -> android.graphics.Color.rgb(76, 175, 80)
     ActivityMode.BIKING -> android.graphics.Color.rgb(33, 150, 243)
     ActivityMode.DRIVING -> android.graphics.Color.rgb(255, 82, 82)
+    ActivityMode.SIN_SENAL -> android.graphics.Color.argb(128, 220, 53, 69)
 }
 
 fun ActivityMode.toSolidColor(): Int = when (this) {
@@ -29,6 +30,7 @@ fun ActivityMode.toSolidColor(): Int = when (this) {
     ActivityMode.WALKING -> android.graphics.Color.rgb(76, 175, 80)
     ActivityMode.BIKING -> android.graphics.Color.rgb(33, 150, 243)
     ActivityMode.DRIVING -> android.graphics.Color.rgb(255, 82, 82)
+    ActivityMode.SIN_SENAL -> android.graphics.Color.rgb(220, 53, 69)
 }
 
 fun List<LocationPoint>.toRouteSegments(): List<SegmentoRuta> {

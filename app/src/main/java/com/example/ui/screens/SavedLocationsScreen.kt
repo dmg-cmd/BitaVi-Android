@@ -18,8 +18,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -30,6 +32,9 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import androidx.compose.animation.AnimatedVisibility
 import com.example.ui.components.FullScreenPhotoDialog
+
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import com.example.ui.components.TourOverlay
 import com.example.ui.dialogs.DeleteConfirmationDialog
 import kotlinx.coroutines.launch
@@ -48,6 +53,7 @@ fun SavedLocationsScreen(
     onFocusFavorite: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
+
     val locations by viewModel.allSavedLocations.collectAsState()
     val groupedFavorites by viewModel.groupedFavorites.collectAsState()
     val context = LocalContext.current
@@ -134,6 +140,15 @@ fun SavedLocationsScreen(
 
     Scaffold(
         modifier = modifier,
+        topBar = {
+            TopAppBar(
+                title = { Text("Favoritos y Destacados", fontWeight = FontWeight.Bold) },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color(0xFF1C1B1F).copy(alpha = 0.90f),
+                    titleContentColor = Color.White
+                )
+            )
+        },
         floatingActionButton = {
             Column(horizontalAlignment = Alignment.End) {
                 SmallFloatingActionButton(
@@ -636,6 +651,8 @@ fun SavedLocationsScreen(
             }
         )
     }
+
+
 }
 
 @Composable
@@ -790,7 +807,7 @@ fun LocationCard(
                                     putExtra(android.provider.ContactsContract.Intents.Insert.PHONE, location.phoneNumber)
                                     putExtra(android.provider.ContactsContract.Intents.Insert.EMAIL, location.email)
                                     putExtra(android.provider.ContactsContract.Intents.Insert.POSTAL, location.address)
-                                    putExtra(android.provider.ContactsContract.Intents.Insert.NOTES, "Agenviaje: ${location.comment}")
+                                    putExtra(android.provider.ContactsContract.Intents.Insert.NOTES, "BiTaRu: ${location.comment}")
                                 }
                                 context.startActivity(intent)
                             }) {

@@ -8,6 +8,8 @@ import android.content.IntentFilter
 import android.content.SharedPreferences
 import android.content.pm.ServiceInfo
 import android.location.Location
+import android.location.LocationManager
+import android.os.SystemClock
 import android.os.Build
 import android.os.HandlerThread
 import android.os.IBinder
@@ -16,6 +18,8 @@ import android.os.PowerManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
+import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKey
 import com.example.MainActivity
 import com.example.data.db.AppDatabase
 import com.example.R
@@ -39,7 +43,7 @@ import java.util.concurrent.TimeUnit
 import java.util.LinkedList
 import java.util.Locale
 
-enum class ActivityMode { STOPPED, WALKING, BIKING, DRIVING }
+enum class ActivityMode { STOPPED, WALKING, BIKING, DRIVING, SIN_SENAL }
 
 /**
  * Servicio en primer plano (Foreground Service) que gestiona el seguimiento GPS en tiempo real.
@@ -67,13 +71,20 @@ class LocationService : Service() {
     private var activeRouteId: Int = -1
     private var totalDistanceMeters: Double = 0.0
     private var lastValidLocation: Location? = null
-    private val locationWindow = LinkedList<Location>()
+    private val cinematicFilter = com.example.location.manager.CinematicFilterManager(
+        maxAllowedSpeedMps = AppConstants.Location.MAX_SPEED_METERS_PER_SECOND.toDouble(),
+        autoStopSpeedMps = AppConstants.Location.AUTO_STOP_SPEED_MPS.toDouble()
+    )
     private var lastStopLocation: Location? = null
 
     private var timerJob: Job? = null
     private var startTimeMillis: Long = 0L
     private var lastMovementTimeMillis: Long = System.currentTimeMillis()
     private var lastGpsUpdateTimeMillis: Long = System.currentTimeMillis()
+    private var lastGpsTickTime: Long = 0L
+    private var isSignalLost: Boolean = false
+    private var preAlertActivityMode: ActivityMode = ActivityMode.STOPPED
+    private var watchdogJob: Job? = null
     private var routeStartTimeMillis: Long = 0L
     private var isWaitingForMovement: Boolean = false
     private var activeRouteName: String = "Ruta"
@@ -104,13 +115,14 @@ class LocationService : Service() {
         return snapshot
     }
 
-    private fun Location.toBufferPoint(routeId: Int) = LocationPoint(
+    // 🛡️ Mapeo blindado con argumentos nominales explícitos para evitar corrupciones de orden
+    private fun Location.toBufferPoint(routeId: Int): LocationPoint = LocationPoint(
         routeId = routeId,
-        latitude = latitude,
-        longitude = longitude,
-        altitude = altitude,
-        speed = speed,
-        timestamp = time
+        latitude = this.latitude,
+        longitude = this.longitude,
+        altitude = this.altitude,
+        speed = this.speed,
+        timestamp = if (this.time > 0) this.time else System.currentTimeMillis() // Salvaguarda si el GPS da 0
     )
 
     // Variables para refinamiento de Modo Automático
@@ -224,7 +236,30 @@ class LocationService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        val database = AppDatabase.getDatabase(applicationContext)
+        
+        // 🛡️ Obtención simétrica de clave de descifrado para SQLCipher en segundo plano
+        val dbPassphrase = try {
+            val masterKey = MasterKey.Builder(this, AppConstants.Preferences.MASTER_KEY_ALIAS)
+                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+                .setUserAuthenticationRequired(false)
+                .build()
+
+            val encryptedPrefs = EncryptedSharedPreferences.create(
+                this,
+                AppConstants.Preferences.ENCRYPTED_PREFS_FILE,
+                masterKey,
+                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+            )
+            
+            encryptedPrefs.getString(AppConstants.Preferences.DB_PASSPHRASE_KEY, null)?.toByteArray()
+        } catch (e: Exception) {
+            Log.e(TAG, "🚨 Error crítico recuperando clave de cifrado en servicio", e)
+            null
+        }
+
+        // Inicialización simétrica blindada
+        val database = AppDatabase.getDatabase(applicationContext, dbPassphrase)
         repository = RouteRepository(database.routeDao())
 
         // Inicializar WakeLock para evitar que el sistema suspenda el CPU
@@ -398,6 +433,7 @@ class LocationService : Service() {
 
             requestLocationUpdates(interval, distance)
             startTimer()
+            startGpsWatchdog()
         }
     }
 
@@ -432,6 +468,15 @@ class LocationService : Service() {
 
         // Marcar que el GPS sigue activo (antes de cualquier filtro)
         lastGpsUpdateTimeMillis = System.currentTimeMillis()
+        // Watchdog: Monitoreo de salud GNSS para deteccion de perdida de senhal
+        if (location.provider == LocationManager.GPS_PROVIDER) {
+            lastGpsTickTime = SystemClock.elapsedRealtime()
+            if (isSignalLost) {
+                isSignalLost = false
+                _currentActivityMode.value = preAlertActivityMode
+                Log.d(TAG, "Señal GPS recuperada. Restaurando modo: $preAlertActivityMode")
+            }
+        }
         lastUserActivityTimeMillis = System.currentTimeMillis()
 
         // Fase 1: Precisión mínima - descartar puntos con accuracy > 50m
@@ -440,31 +485,11 @@ class LocationService : Service() {
             return
         }
 
-        // Fase 2: Ventana móvil de 5 puntos con filtro cinemático de velocidad
-        if (locationWindow.isNotEmpty()) {
-            val lastPoint = locationWindow.last()
-
-            val distanceMeters = lastPoint.distanceTo(location)
-            val timeDeltaSeconds = (location.time - lastPoint.time) / 1000.0
-
-            if (timeDeltaSeconds > 0) {
-                val calculatedSpeed = distanceMeters / timeDeltaSeconds
-                if (calculatedSpeed > MAX_ALLOWED_SPEED_MPS) {
-                    val msg = String.format(Locale.US, "⚠️ Salto de antena detectado: %.2f m/s (%.2f km/h). Punto descartado.", calculatedSpeed, calculatedSpeed * 3.6)
-                    Log.w(TAG, msg)
-                    return
-                }
-            }
-        }
-
-        // Punto válido: agregar a la ventana deslizante de 5 posiciones
-        locationWindow.addLast(location)
-        if (locationWindow.size > 5) {
-            locationWindow.removeFirst()
-        }
+        // Fase 2: Filtrado y procesamiento cinemático y autostop
+        val filteredLocation = cinematicFilter.filterAndProcess(location) ?: return
 
         // Anclaje estacionario: congelar posición si el usuario está quieto en interiores
-        val anchoredLocation = stationaryAnchorManager.processAnchor(location)
+        val anchoredLocation = stationaryAnchorManager.processAnchor(filteredLocation)
 
         // Guarda de contingencia: forzar parada si 3 min de precision degradada (>25m)
         if (stationaryAnchorManager.shouldForceStop(location)) {
@@ -553,9 +578,9 @@ class LocationService : Service() {
         if (isAutoModeActive && !_isTracking.value) {
             val now = System.currentTimeMillis()
 
-            // Guardar punto en el buffer elástico de pre-grabación (Fase 3A)
-            if (location.accuracy < MAX_GPS_ACCURACY) {
-                handlePreRecording(location)
+            // Guardar punto estabilizado en el buffer elástico de pre-grabación (Fase 3A)
+            if (anchoredLocation.accuracy < MAX_GPS_ACCURACY) {
+                handlePreRecording(anchoredLocation)
             }
 
             // Evitar reinicios demasiado frecuentes (mínimo 30 segundos entre intentos)
@@ -579,13 +604,15 @@ class LocationService : Service() {
                     } else {
                         val sustained = now - movementSustainedStartTime
                         if (sustained >= AppConstants.Location.AUTO_START_SUSTAINED_MS) {
-                            val bufferedLocations = flushPreRecordingBuffer()
-                            Log.d(TAG, "Movimiento sostenido ${sustained}ms. Iniciando grabación automática con buffer de ${bufferedLocations.size} puntos.")
+                            Log.d(TAG, "Movimiento sostenido ${sustained}ms. Iniciando pipeline de arranque pasivo...")
                             lastStopLocation = null
                             movementSustainedStartTime = 0L
                             lastAutoStartTimeMillis = now
-                            val pointsToBackfill = bufferedLocations.map { it.toBufferPoint(0) }
-                            startAutoNewRoute(pointsToBackfill)
+                            
+                            triggerAutomaticTracking(preRecordingBuffer) { filteredLocations ->
+                                val pointsToBackfill = filteredLocations.map { it.toBufferPoint(0) }
+                                startAutoNewRoute(pointsToBackfill)
+                            }
                             return
                         }
                     }
@@ -844,6 +871,28 @@ class LocationService : Service() {
         }
     }
 
+
+    /**
+     * Watchdog de Seguridad GNSS. Monitorea la salud del satelite en segundo plano.
+     * Evalua cada 5s si pasaron 15s sin actualizacion del GPS_PROVIDER.
+     */
+    private fun startGpsWatchdog() {
+        watchdogJob?.cancel()
+        watchdogJob = serviceScope.launch {
+            while (isActive) {
+                delay(5000L)
+                if (lastGpsTickTime > 0 && _currentActivityMode.value != ActivityMode.STOPPED && _currentActivityMode.value != ActivityMode.SIN_SENAL) {
+                    val timeSinceLastFix = SystemClock.elapsedRealtime() - lastGpsTickTime
+                    if (timeSinceLastFix > 15000L && !isSignalLost) {
+                        isSignalLost = true
+                        preAlertActivityMode = _currentActivityMode.value
+                        _currentActivityMode.value = ActivityMode.SIN_SENAL
+                        Log.w(TAG, "Senhal GPS perdida por " + (timeSinceLastFix/1000) + "s. Modo conmutado a SIN_SENAL.")
+                    }
+                }
+            }
+        }
+    }
     private fun stopTrackingWithAutoRestart() {
         lastStopLocation = _latestLocation.value
         isWaitingForMovement = true
@@ -862,6 +911,39 @@ class LocationService : Service() {
         }
     }
 
+    private fun triggerAutomaticTracking(
+        preRecordingBuffer: ConcurrentLinkedDeque<Location>,
+        onHistoryProcessed: (List<Location>) -> Unit
+    ) {
+        serviceScope.launch(Dispatchers.IO) {
+            // 1. Extraer instantánea del buffer pasivo (concurrente)
+            val rawHistory = mutableListOf<Location>()
+            var loc = preRecordingBuffer.pollFirst()
+            while (loc != null) {
+                rawHistory.add(loc)
+                loc = preRecordingBuffer.pollFirst()
+            }
+
+            // 2. Aplicar filtro cinemático lineal con una ventana limpia para depurar la traza inicial
+            val cleanCinematicFilter = com.example.location.manager.CinematicFilterManager(
+                maxAllowedSpeedMps = AppConstants.Location.MAX_SPEED_METERS_PER_SECOND.toDouble(),
+                autoStopSpeedMps = AppConstants.Location.AUTO_STOP_SPEED_MPS.toDouble()
+            )
+            val filteredHistory = rawHistory.mapNotNull { location ->
+                if (location.accuracy <= MAX_GPS_ACCURACY) {
+                    cleanCinematicFilter.filterAndProcess(location)
+                } else {
+                    null
+                }
+            }
+
+            // 3. Regresar al hilo principal para conmutar el hardware e iniciar la ruta
+            withContext(Dispatchers.Main) {
+                onHistoryProcessed(filteredHistory)
+            }
+        }
+    }
+
     private fun startAutoNewRoute(backfillPoints: List<LocationPoint> = emptyList()) {
         serviceScope.launch {
             val dateStr = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault()).format(java.util.Date())
@@ -870,11 +952,17 @@ class LocationService : Service() {
             
             // Insertar los puntos del buffer (backfill) asociados a la nueva ruta
             if (backfillPoints.isNotEmpty()) {
-                val preparedPoints = mutableListOf<LocationPoint>()
-                for (p in backfillPoints) {
-                    preparedPoints.add(p.copy(routeId = newRouteId))
+                // 🛡️ Copia inmutable defensiva en un solo paso funcional para evitar fugas de memoria
+                val preparedPoints = backfillPoints.map { point ->
+                    point.copy(
+                        routeId = newRouteId,
+                        id = 0 // Forzamos a Room a autogenerar una clave primaria limpia por punto
+                    )
+                }.toList()
+
+                serviceScope.launch(Dispatchers.IO) {
+                    repository.addLocationPoints(preparedPoints)
                 }
-                repository.addLocationPoints(preparedPoints)
                 
                 // Recalcular distancia inicial si hay puntos en el buffer
                 var initialDistance = 0.0
@@ -906,17 +994,27 @@ class LocationService : Service() {
     private fun pauseTracking() {
         fusedLocationClient.removeLocationUpdates(locationCallback)
         timerJob?.cancel()
+        watchdogJob?.cancel()
+        isSignalLost = false
         _isTracking.value = false
         timeStartedStopping = 0L
         isShortStopDetected = false
         shortStopLat = 0.0
         shortStopLon = 0.0
         shortStopAddress = ""
+        
+        // 🛡️ DOBLE CANDADO ATÓMICO: Reinicio inmediato y síncrono de velocidad y estado
+        _currentActivityMode.value = ActivityMode.STOPPED
+        currentMode = ActivityMode.STOPPED
+        _latestLocation.value = _latestLocation.value?.let { loc ->
+            Location(loc).apply { speed = 0f }
+        }
     }
 
     private fun stopTracking() {
         fusedLocationClient.removeLocationUpdates(locationCallback)
         timerJob?.cancel()
+        watchdogJob?.cancel()
 
         // Liberar WakeLock
         if (wakeLock?.isHeld == true) {
@@ -933,15 +1031,26 @@ class LocationService : Service() {
                 _isTracking.value = false
                 activeRouteId = -1
                 _currentRouteId.value = null
-                _latestLocation.value = null
+                
+                // 🛡️ DOBLE CANDADO ATÓMICO: Mantener última ubicación en el mapa pero con velocidad cero
+                _latestLocation.value = _latestLocation.value?.let { loc ->
+                    Location(loc).apply { speed = 0f }
+                }
+                
                 timeStartedStopping = 0L
                 isShortStopDetected = false
                 shortStopLat = 0.0
                 shortStopLon = 0.0
                 shortStopAddress = ""
                 stationaryAnchorManager.reset()
+                cinematicFilter.reset()
                 _elapsedTimeSeconds.value = 0L
                 _currentDistanceMeters.value = 0.0
+
+                // Purgar alertas y restablecer el modo síncronamente
+                isSignalLost = false
+                _currentActivityMode.value = ActivityMode.STOPPED
+                currentMode = ActivityMode.STOPPED
 
                 // No llamamos a stopSelf(). El servicio se mantiene en modo pasivo.
                 startPassiveTracking()
@@ -1056,6 +1165,7 @@ class LocationService : Service() {
     override fun onDestroy() {
         fusedLocationClient.removeLocationUpdates(locationCallback)
         timerJob?.cancel()
+        watchdogJob?.cancel()
         serviceScope.cancel()
 
         // Liberar WakeLock si aún está activo

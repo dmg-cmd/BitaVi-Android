@@ -63,7 +63,7 @@ class ShareUseCase(
                 append("\n📍 *Puntos destacados:*")
                 waypoints.forEach { wp -> append("\n- ${wp.name}: ${wp.description}") }
             }
-            append("\n\n🗺️ _Generado por Agenviaje_")
+            append("\n\n🗺️ _Generado por BiTaRu_")
         }
 
         val imageUris = arrayListOf<Uri>()
