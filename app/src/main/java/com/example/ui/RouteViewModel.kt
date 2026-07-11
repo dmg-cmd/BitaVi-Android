@@ -101,8 +101,6 @@ class RouteViewModel(
     var isAutoMode by mutableStateOf(false)
         private set
 
-    var isBleEnabled by mutableStateOf(false)
-        private set
 
     private val _isNearMeEnabled = MutableStateFlow(false)
     val isNearMeEnabled: StateFlow<Boolean> = _isNearMeEnabled.asStateFlow()
@@ -116,7 +114,6 @@ class RouteViewModel(
     init {
         isAutoMode = prefsManager.isAutoMode()
         isAirplaneMode = prefsManager.isAirplaneMode()
-        isBleEnabled = prefsManager.isBleEnabled()
         _isNearMeEnabled.value = prefsManager.isNearMeEnabled()
         isBiometricEnabled = prefsManager.isBiometricEnabled()
         defaultLatitude = prefsManager.getDefaultLatitude()
@@ -158,11 +155,6 @@ class RouteViewModel(
         prefsManager.setAutoMode(isAutoMode)
     }
 
-    fun toggleBle() {
-        isBleEnabled = !isBleEnabled
-        prefsManager.setBleEnabled(isBleEnabled)
-        locationServiceManager.updateSettings()
-    }
 
     fun toggleNearMe() {
         val newState = !_isNearMeEnabled.value
@@ -223,13 +215,7 @@ class RouteViewModel(
         }
     }
 
-    fun removeWaypointPhoto(waypointId: Int, routeId: Int) {
-        viewModelScope.launch(Dispatchers.IO) { repository.removeWaypointPhoto(waypointId) }
-    }
 
-    fun removeFavoritePhoto(favoriteId: Int) {
-        viewModelScope.launch(Dispatchers.IO) { repository.removeFavoritePhoto(favoriteId) }
-    }
 
     // ─── Routes CRUD ──────────────────────────────────────────────
 
@@ -260,13 +246,10 @@ class RouteViewModel(
     val activeRouteIdLive: StateFlow<Int?> = LocationService.currentRouteId
     val latestLocationLive: StateFlow<Location?> = LocationService.latestLocation
     val currentActivityMode: StateFlow<ActivityMode> = LocationService.currentActivityMode
-    val elapsedSecondsLive: StateFlow<Long> = LocationService.elapsedTimeSeconds
-    val distanceMetersLive: StateFlow<Double> = LocationService.currentDistanceMeters
 
     // ─── Flows: Repository-based ──────────────────────────────────
 
     val allRoutes: StateFlow<List<Route>> = repository.allRoutes.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-    val activeRouteInDb: StateFlow<Route?> = repository.activeRouteFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     @OptIn(ExperimentalCoroutinesApi::class)
     val activeRoutePoints: StateFlow<List<LocationPoint>> = activeRouteIdLive.flatMapLatest { id ->
@@ -334,7 +317,7 @@ class RouteViewModel(
         }
     }
 
-    fun saveSpecificLocation(name: String, address: String, latitude: Double, longitude: Double, comment: String = "", author: String = "", photoPath: String? = null, phoneNumber: String = "", email: String = "", isContact: Boolean = false, color: String = "#FFD700", iconCategory: String = "DEFAULT") {
+    fun saveSpecificLocation(name: String, address: String, latitude: Double, longitude: Double, comment: String = "", author: String = "", photoPath: String? = null, phoneNumber: String = "", email: String = "", isContact: Boolean = false, color: String = "#FFD700") {
         viewModelScope.launch(Dispatchers.IO) {
             val finalComment = if (photoPath != null) {
                 val datePart = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(Date())
