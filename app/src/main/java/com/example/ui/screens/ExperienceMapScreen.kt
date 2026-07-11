@@ -49,6 +49,8 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.delay
+import kotlin.time.Duration.Companion.seconds
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -147,7 +149,7 @@ fun ExperienceMapScreen(
                 currentIndex = 0
             }
             while (isAutoRotationEnabled && currentIndex < sortedPoints.size - 1) {
-                kotlinx.coroutines.delay(2500L)
+                delay(2.5.seconds)
                 currentIndex++
             }
             if (currentIndex >= sortedPoints.size - 1) {

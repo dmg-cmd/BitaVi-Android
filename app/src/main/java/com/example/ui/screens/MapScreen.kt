@@ -40,6 +40,8 @@ import androidx.core.graphics.drawable.toDrawable
 import java.util.Locale
 import coil.compose.AsyncImage
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+import kotlin.time.Duration.Companion.seconds
 import com.example.location.ActivityMode
 import com.example.location.LocationService
 import com.example.ui.components.FullScreenPhotoDialog
@@ -240,7 +242,7 @@ fun MapScreen(
             mapView.controller.animateTo(target, 18.0, 1500L)
             
             // NO limpiamos el target inmediatamente. Dejamos que el mapa se asiente.
-            kotlinx.coroutines.delay(10000L) // 10 segundos
+            delay(10.seconds) // 10 segundos
             viewModel.clearMapTarget()
         }
     }
@@ -248,7 +250,7 @@ fun MapScreen(
     // Timer para resetear el modo manual después de 15 segundos de inactividad
     LaunchedEffect(lastInteractionTime) {
         if (lastInteractionTime > 0) {
-            kotlinx.coroutines.delay(15000L) // 15 segundos de espera
+            delay(15.seconds) // 15 segundos de espera
             lastInteractionTime = 0L // Volver a modo seguimiento automático
         }
     }

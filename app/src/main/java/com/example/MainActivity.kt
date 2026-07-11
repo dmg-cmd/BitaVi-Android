@@ -1,86 +1,60 @@
 package com.example
 
-import android.Manifest
-import android.content.SharedPreferences
-import android.content.ContextWrapper
+import android.app.Activity
 import android.content.Context
+import android.content.ContextWrapper
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.SharedPreferences
+import android.graphics.Bitmap
+import android.Manifest
 import android.os.Build
 import android.os.Bundle
-import android.util.Base64
+import android.os.Handler
 import android.widget.Toast
+import android.location.Location
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.biometric.BiometricPrompt
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.defaultMinSize
-import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.ui.zIndex
-import androidx.compose.material.icons.Icons
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.filled.AirplanemodeActive
+import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.CloudQueue
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Explore
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.FlashOn
-import androidx.compose.material.icons.filled.GpsFixed
-import androidx.compose.material.icons.filled.GpsOff
-import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.LocationSearching
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.NotificationsActive
-import androidx.compose.material.icons.filled.Place
-import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.SettingsBackupRestore
 import androidx.compose.material.icons.filled.Share
-import androidx.compose.material.icons.filled.TableChart
-import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.VpnKey
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Explore
-import androidx.compose.material.icons.filled.BookmarkBorder
-import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Send
-import androidx.compose.material.icons.filled.Archive
-import androidx.compose.material.icons.filled.Save
-import com.example.ui.screens.RouteOptionsMenu
-import com.example.ui.screens.RouteAnalyticsScreen
-import java.text.SimpleDateFormat
-import java.util.Date
-import android.graphics.Bitmap
-import android.content.Intent
-import androidx.core.view.drawToBitmap
-import java.util.Locale
-import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.History
-import androidx.compose.material.icons.outlined.Map
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -93,76 +67,76 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.NavigationDrawerItem
-import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.rememberDrawerState
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.rememberDrawerState
-import androidx.compose.runtime.Composable
-import androidx.compose.material3.Slider
-import androidx.compose.ui.res.stringResource
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.core.content.edit
+import androidx.core.content.FileProvider
+import androidx.core.view.drawToBitmap
 import androidx.fragment.app.FragmentActivity
-import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.withStateAtLeast
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
+import androidx.navigation.NavType
 import androidx.preference.PreferenceManager
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import com.example.data.db.AppDatabase
 import com.example.data.repository.RouteRepository
-import androidx.navigation.NavType
-import androidx.navigation.compose.NavHost
-import androidx.navigation.compose.composable
-import androidx.navigation.compose.currentBackStackEntryAsState
-import androidx.navigation.compose.rememberNavController
-import androidx.navigation.navArgument
-import com.example.ui.RouteViewModel
-import com.example.ui.RouteViewModelFactory
-import com.example.ui.navigation.NavRoutes
-import com.example.ui.screens.DetailScreen
-import com.example.ui.screens.ExperienceMapScreen
-import com.example.ui.screens.HistoryScreen
-import com.example.ui.screens.FocusFavoriteScreen
-import com.example.ui.screens.MapScreen
-import com.example.ui.screens.SavedLocationsScreen
+import com.example.ui.DetailAction
 import com.example.ui.dialogs.ApiKeyDialog
 import com.example.ui.dialogs.DeleteAllConfirmDialog
-import com.example.ui.DetailAction
 import com.example.ui.dialogs.HelpDialog
 import com.example.ui.dialogs.LocationDialog
+import com.example.ui.navigation.NavRoutes
+import com.example.ui.RouteViewModel
+import com.example.ui.RouteViewModelFactory
+import com.example.ui.screens.DetailScreen
+import com.example.ui.screens.ExperienceMapScreen
+import com.example.ui.screens.FocusFavoriteScreen
+import com.example.ui.screens.HistoryScreen
+import com.example.ui.screens.MapScreen
+import com.example.ui.screens.RouteAnalyticsScreen
+import com.example.ui.screens.RouteOptionsMenu
+import com.example.ui.screens.SavedLocationsScreen
 import com.example.ui.theme.MyApplicationTheme
 import com.example.util.AppConstants
-import com.example.util.BiometricCipherHelper
+import java.io.File
+import java.io.FileOutputStream
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.UUID
+import javax.crypto.Cipher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.osmdroid.config.Configuration
-import java.util.UUID
-import android.security.keystore.KeyPermanentlyInvalidatedException
-import javax.crypto.Cipher
 
 /**
  * Busca de forma recursiva y segura una instancia de MainActivity en la jerarquía de Context.
@@ -666,7 +640,7 @@ fun MainContainer(viewModel: RouteViewModel, encryptedPrefs: SharedPreferences) 
                     icon = { Icon(Icons.Default.CloudUpload, null) },
                     onClick = { 
                         scope.launch { drawerState.close() }
-                        val timestamp = java.text.SimpleDateFormat("yyyyMMdd_HHmm", java.util.Locale.US).format(java.util.Date())
+                        val timestamp = SimpleDateFormat("yyyyMMdd_HHmm", Locale.US).format(Date())
                         saveBackupLauncher.launch("backup_$timestamp.zip")
                     }
                 )
@@ -843,14 +817,14 @@ fun MainContainer(viewModel: RouteViewModel, encryptedPrefs: SharedPreferences) 
                                 }
                                 if (currentRoute == NavRoutes.EXPERIENCE_MAP) {
                                     IconButton(onClick = {
-                                        val a = context as? android.app.Activity ?: return@IconButton
-                                        android.os.Handler(a.mainLooper).post {
+                                        val a = context as? Activity ?: return@IconButton
+                                        Handler(a.mainLooper).post {
                                             try {
                                                 val bitmap = a.window.decorView.drawToBitmap()
-                                                val cacheFile = java.io.File(context.cacheDir, "screenshot_exp.png")
-                                                java.io.FileOutputStream(cacheFile).use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
-                                                val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", cacheFile)
-                                                val intent = android.content.Intent(Intent.ACTION_SEND).apply {
+                                                val cacheFile = File(context.cacheDir, "screenshot_exp.png")
+                                                FileOutputStream(cacheFile).use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                                                val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", cacheFile)
+                                                val intent = Intent(Intent.ACTION_SEND).apply {
                                                     type = "image/png"; putExtra(Intent.EXTRA_STREAM, uri)
                                                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                                 }
