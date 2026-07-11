@@ -483,9 +483,6 @@ class RouteViewModel(
 
     fun shareLocation(location: SavedLocation) = shareUseCase.shareLocation(location)
 
-    fun shareCompleteRoute(routeId: Int, mapBitmap: android.graphics.Bitmap? = null) {
-        viewModelScope.launch { shareUseCase.shareCompleteRoute(routeId, mapBitmap) }
-    }
 }
 
 

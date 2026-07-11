@@ -1,5 +1,9 @@
 package com.example.ui.screens
 
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.core.graphics.toColorInt
+import android.graphics.Color as AndroidColor
+
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -26,7 +30,6 @@ import com.github.mikephil.charting.data.Entry
 import com.github.mikephil.charting.data.LineData
 import com.github.mikephil.charting.data.LineDataSet
 import com.github.mikephil.charting.formatter.IndexAxisValueFormatter
-import android.graphics.Color as AndroidColor
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -43,10 +46,10 @@ fun RouteAnalyticsScreen(
     val points by viewModel.selectedDetailPoints.collectAsState()
 
     val lineColor = when (route?.activityMode) {
-        "WALKING" -> AndroidColor.parseColor("#4CAF50")
-        "BIKING" -> AndroidColor.parseColor("#2196F3")
-        "DRIVING" -> AndroidColor.parseColor("#F44336")
-        else -> AndroidColor.parseColor("#9E9E9E")
+        "WALKING" -> "#4CAF50".toColorInt()
+        "BIKING" -> "#2196F3".toColorInt()
+        "DRIVING" -> "#F44336".toColorInt()
+        else -> "#9E9E9E".toColorInt()
     }
 
     val maxIndex = (points.size - 1).coerceAtLeast(0).toFloat()
@@ -91,7 +94,7 @@ fun RouteAnalyticsScreen(
                 Spacer(Modifier.height(4.dp))
                 Text(
                     text = buildString {
-                        val sdf = SimpleDateFormat("HH:mm", Locale.getDefault())
+                        val sdf = SimpleDateFormat("HH:mm", LocalConfiguration.current.locales[0])
                         val inicio = if (route != null) sdf.format(Date(route!!.startTime)) else "--:--"
                         append(inicio)
                         append("  \u2022  ")
@@ -304,12 +307,12 @@ fun AnalyticsChart(
                 axisLeft.apply {
                     textColor = AndroidColor.GRAY
                     setDrawGridLines(true)
-                    gridColor = AndroidColor.parseColor("#33FFFFFF")
+                    gridColor = "#33FFFFFF".toColorInt()
                 }
 
                 axisRight.isEnabled = false
                 legend.isEnabled = false
-                setBackgroundColor(AndroidColor.parseColor("#08000000"))
+                setBackgroundColor("#08000000".toColorInt())
             }
         },
         update = { chart ->

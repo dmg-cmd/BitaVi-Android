@@ -1,3 +1,9 @@
+[11/07/2026 - Fase 6 Definitiva: Purgas Finales + RouteAnalytics Compose/KTX]
+- **Purgas (4 regresiones)**: authenticateWithCrypto (MainActivity.kt), shareCompleteRoute (RouteViewModel.kt + ShareUseCase.kt), insertFavorite (RouteRepository.kt). Eliminación directa sin función intermediaria para evitar bug de paso de arrays en PowerShell.
+- **RouteAnalyticsScreen.kt**: L94 Locale.getDefault() → LocalConfiguration.current.locales[0] (lectura reactiva Compose). L46-49,312 6× AndroidColor.parseColor() → String.toColorInt() (KTX). Nuevos imports: LocalConfiguration + toColorInt.
+- **Bug corregido**: Remove-Lines con @(@(range)) no funcionaba porque PowerShell desenvuelve arrays anidados. Se reemplazó con for-if directo.
+- **Compilación**: gradlew assembleDebug → BUILD SUCCESSFUL (0 errores). Deploy Pixel 9 Pro XL.
+- **Respaldos**: RESPALDO_ANTERIOR/20260711_HHMM_RouteAnalyticsScreen.kt y 4 archivos más.
 [11/07/2026 - Fase 6 Real: Purgas Regresivas + Locale.US + Optimize Imports]
 - **Bloque A (Purgas)**: authenticateWithCrypto (MainActivity.kt), shareCompleteRoute (RouteViewModel.kt + ShareUseCase.kt), insertFavorite (RouteRepository.kt), val activity + 3 imports muertos (ExperienceMapScreen.kt).
 - **Bloque B (Locale.US)**: 8 String.format blindados en GroqAiUseCase.kt (3), GeocoderUseCase.kt (1), RouteAnalyticsScreen.kt (4) — previene NumberFormatException en regiones con coma decimal.
@@ -468,5 +474,6 @@ eplace en la lambda de exportación ZIP.
 - **Archivos modificados**: app/src/main/java/com/example/MainActivity.kt (bottomBar líneas 774-969 reemplazadas).
 - **Respaldos**: RESPALDO_ANTERIOR/20260711_MainActivity.kt.
 - **Compilación**: BUILD SUCCESSFUL (0 errores).
+
 
 

@@ -214,34 +214,6 @@ class MainActivity : FragmentActivity() {
     }
 
     // Función para lanzar Biometría con Cifrado Real (CryptoObject)
-    fun authenticateWithCrypto(
-        cipher: Cipher,
-        title: String = "Autenticación Requerida",
-        onSuccess: (Cipher) -> Unit
-    ) {
-        val executor = ContextCompat.getMainExecutor(this)
-        val biometricPrompt = BiometricPrompt(this, executor,
-            object : BiometricPrompt.AuthenticationCallback() {
-                override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-                    super.onAuthenticationSucceeded(result)
-                    result.cryptoObject?.cipher?.let { authorizedCipher ->
-                        onSuccess(authorizedCipher)
-                    }
-                }
-                override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
-                    super.onAuthenticationError(errorCode, errString)
-                    Toast.makeText(this@MainActivity, "Error: $errString", Toast.LENGTH_SHORT).show()
-                }
-            })
-
-        val promptInfo = BiometricPrompt.PromptInfo.Builder()
-            .setTitle(title)
-            .setSubtitle("Desbloquee la API Key para activar la IA")
-            .setNegativeButtonText("Cancelar")
-            .build()
-
-        biometricPrompt.authenticate(promptInfo, BiometricPrompt.CryptoObject(cipher))
-    }
 
     fun authenticateSimple(
         title: String = "Autenticación Requerida",

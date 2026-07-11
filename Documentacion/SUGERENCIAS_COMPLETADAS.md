@@ -153,3 +153,11 @@
 - **Build**: gradlew assembleDebug → BUILD SUCCESSFUL. Deploy a Pixel 9 Pro XL.
 - **Lección**: PowerShell requiere espacio (no coma) como separador de argumentos. Coma crea array y corrompe regex.
 
+
+## 11/07/2026 — Fase 6 Definitiva: Cierre Completo
+- **Regresiones extirpadas**: authenticateWithCrypto (MainActivity), 2× shareCompleteRoute (RouteViewModel + ShareUseCase), insertFavorite (RouteRepository).
+- **Error de Compose eliminado**: L94 RouteAnalyticsScreen — Locale.getDefault() reemplazado por LocalConfiguration.current.locales[0].
+- **Migración KTX**: 6× parseColor → toColorInt() en RouteAnalyticsScreen.
+- **Bug de PowerShell corregido**: Remove-Lines con arrays anidados no funcionaba; reemplazado por filtro directo.
+- **Build**: BUILD SUCCESSFUL. Deploy Pixel 9 Pro XL.
+

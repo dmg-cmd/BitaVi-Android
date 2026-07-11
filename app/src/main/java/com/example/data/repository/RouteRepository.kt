@@ -191,9 +191,6 @@ class RouteRepository(private val routeDao: RouteDao) {
 
     suspend fun getAllSavedLocationsSync(): List<com.example.data.model.SavedLocation> = routeDao.getAllSavedLocations()
 
-    suspend fun insertFavorite(latitude: Double, longitude: Double, label: String) {
-        addSavedLocation(name = label, address = label, latitude = latitude, longitude = longitude)
-    }
 
     suspend fun addSavedLocation(
         name: String, 
