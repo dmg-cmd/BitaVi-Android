@@ -1,7 +1,6 @@
 package com.example.ui.screens
 
 import com.example.ui.toRouteSegments
-import android.app.Activity
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.drawable.Drawable
@@ -10,8 +9,6 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -168,7 +165,6 @@ fun ExperienceMapScreen(
         }
     }
 
-    val activity = context as? Activity
 
 
     val photoItems = remember(waypoints, linkedFavorites) {

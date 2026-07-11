@@ -48,7 +48,6 @@ import com.example.ui.components.FullScreenPhotoDialog
 import com.example.ui.components.TourOverlay
 import com.example.ui.components.BrandWatermark
 import com.example.ui.components.TopBarLocalizador
-import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
 import com.example.ui.model.IconCategory

@@ -1,3 +1,10 @@
+[11/07/2026 - Fase 6 Real: Purgas Regresivas + Locale.US + Optimize Imports]
+- **Bloque A (Purgas)**: authenticateWithCrypto (MainActivity.kt), shareCompleteRoute (RouteViewModel.kt + ShareUseCase.kt), insertFavorite (RouteRepository.kt), val activity + 3 imports muertos (ExperienceMapScreen.kt).
+- **Bloque B (Locale.US)**: 8 String.format blindados en GroqAiUseCase.kt (3), GeocoderUseCase.kt (1), RouteAnalyticsScreen.kt (4) — previene NumberFormatException en regiones con coma decimal.
+- **Bloque C (Imports)**: PhotoPanel + DashboardActividadFlotante eliminados de MapScreen.kt (componentes ya borrados en Fase 5).
+- **Método**: Corrección de bug de sintaxis PowerShell (comas en argumentos de función causaron truncamiento de GroqAiUseCase.kt). Backup/restore desde RESPALDO_ANTERIOR para recuperación.
+- **Compilación**: gradlew assembleDebug → BUILD SUCCESSFUL (0 errores). Deploy a Pixel 9 Pro XL.
+- **Respaldos**: RESPALDO_ANTERIOR/20260711_1827_*.kt (10 archivos).
 [11/07/2026 - Fase 6: Purgas Finales (authenticateWithCrypto, shareScreenshot, PhotoInfoWindow, shareCompleteRoute, isFavoriteLinked, saveFavoritePoint)]
 - **MainActivity.kt**: Eliminada función uthenticateWithCrypto() (L217-244). Preservada uthenticateSimple() (3 callers vivos).
 - **ShareUseCase.kt**: Eliminada shareCompleteRoute() (L48-108): lógica de compartición con mapa + fotos + FileProvider.
@@ -461,4 +468,5 @@ eplace en la lambda de exportación ZIP.
 - **Archivos modificados**: app/src/main/java/com/example/MainActivity.kt (bottomBar líneas 774-969 reemplazadas).
 - **Respaldos**: RESPALDO_ANTERIOR/20260711_MainActivity.kt.
 - **Compilación**: BUILD SUCCESSFUL (0 errores).
+
 

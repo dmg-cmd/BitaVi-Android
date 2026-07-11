@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -66,7 +67,7 @@ fun RouteAnalyticsScreen(
             val sec = (pt.timestamp - startTs) / 1000
             val m = sec / 60
             val s = sec % 60
-            String.format("%02d:%02d", m, s)
+            String.format(Locale.US, "%02d:%02d", m, s)
         }
     } else emptyList()
 
@@ -251,7 +252,7 @@ fun RouteAnalyticsScreen(
                                 val paceStr = if (tramoPace > 0) {
                                     val pMin = tramoPace.toInt()
                                     val pSec = ((tramoPace - pMin) * 60).toInt()
-                                    String.format("%d:%02d min/km", pMin, pSec)
+                                    String.format(Locale.US, "%d:%02d min/km", pMin, pSec)
                                 } else "\u2014"
                                 DetailStatItem(Icons.Default.Timer, "Ritmo", paceStr, MaterialTheme.colorScheme.error)
                                 DetailStatItem(Icons.AutoMirrored.Filled.DirectionsWalk, "Modo", tramoActivity, MaterialTheme.colorScheme.tertiary)

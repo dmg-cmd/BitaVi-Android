@@ -145,3 +145,11 @@
 - **saveFavoritePoint**: Eliminada de RouteViewModel.kt (10 líneas, insertaba favorito con geocoder).
 - **Método**: Eliminación por rango de línea exacto (sin brace-counting) para evitar corrupción sintáctica.
 
+
+## 11/07/2026 — Fase 6 Real: 10 Pasos de Cierre
+- **Purgas (Pasos 1-5)**: 6 funciones muertas extirpadas (authenticateWithCrypto, 2× shareCompleteRoute, insertFavorite, val activity, imports Activity/rememberLauncherForActivityResult/ActivityResultContracts).
+- **Locale.US (Pasos 6-8)**: 8 String.format blindados contra NumberFormatException en GroqAiUseCase (L21,29,31), GeocoderUseCase (L46), RouteAnalyticsScreen (L69,239,245,254).
+- **Optimize Imports (Paso 9)**: 2 imports muertos eliminados de MapScreen.kt (PhotoPanel, DashboardActividadFlotante — componentes ya borrados en Fase 5).
+- **Build**: gradlew assembleDebug → BUILD SUCCESSFUL. Deploy a Pixel 9 Pro XL.
+- **Lección**: PowerShell requiere espacio (no coma) como separador de argumentos. Coma crea array y corrompe regex.
+

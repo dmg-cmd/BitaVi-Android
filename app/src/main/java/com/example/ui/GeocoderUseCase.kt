@@ -43,7 +43,7 @@ class GeocoderUseCase(private val context: Context) {
         if (!isValidCoordinate(lat, lon)) {
             return Triple("GPS: Fuera de cobertura", "Desconocido", "Desconocida")
         }
-        val coordFallback = "GPS: ${String.format("%.5f, %.5f", lat, lon)}"
+        val coordFallback = "GPS: ${String.format(Locale.US, "%.5f, %.5f", lat, lon)}"
         return try {
             val geocoder = Geocoder(context, Locale.getDefault())
             @Suppress("DEPRECATION")

@@ -3,6 +3,7 @@ package com.example.ui
 import com.example.data.api.GroqMessage
 import com.example.data.api.GroqRequest
 import com.example.data.api.RetrofitClient
+import java.util.Locale
 import java.util.concurrent.TimeUnit
 
 class ApiKeyExpiredException : Exception("API Key ha expirado o no tiene fondos")
@@ -18,7 +19,7 @@ class GroqAiUseCase {
         durationMs: Long,
         waypointCount: Int
     ): String {
-        val durationFormatted = String.format("%02d:%02d:%02d",
+        val durationFormatted = String.format(Locale.US, "%02d:%02d:%02d",
             TimeUnit.MILLISECONDS.toHours(durationMs),
             TimeUnit.MILLISECONDS.toMinutes(durationMs) % 60,
             TimeUnit.MILLISECONDS.toSeconds(durationMs) % 60
@@ -26,9 +27,9 @@ class GroqAiUseCase {
         val promptText = """
             Actúa como un Ingeniero de Telemetría GPS. Analiza técnicamente estos datos y genera un informe técnico BREVE:
             - Ruta: $routeName
-            - Distancia Real: ${String.format("%.2f", distanceMeters / 1000.0)} km
+            - Distancia Real: ${String.format(Locale.US, "%.2f", distanceMeters / 1000.0)} km
             - Tiempo en Movimiento: $durationFormatted
-            - Dinámica de Velocidad: Máx ${String.format("%.1f", maxSpeed * 3.6f)} km/h, Media ${String.format("%.1f", avgSpeed * 3.6f)} km/h
+            - Dinámica de Velocidad: Máx ${String.format(Locale.US, "%.1f", maxSpeed * 3.6f)} km/h, Media ${String.format("%.1f", avgSpeed * 3.6f)} km/h
             - Puntos Técnicos: $waypointCount marcados (Analiza su distribución)
             
             REGLAS CRÍTICAS:
