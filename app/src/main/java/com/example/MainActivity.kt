@@ -788,8 +788,8 @@ fun MainContainer(viewModel: RouteViewModel, encryptedPrefs: SharedPreferences) 
                                                     type = "image/png"; putExtra(Intent.EXTRA_STREAM, uri)
                                                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                                 }
-                                                android.content.Intent.createChooser(intent, "Compartir pantalla").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).let(context::startActivity)
-                                            } catch (e: Exception) { android.widget.Toast.makeText(context, "Error: ${e.message}", android.widget.Toast.LENGTH_SHORT).show() }
+                                                Intent.createChooser(intent, "Compartir pantalla").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).let(context::startActivity)
+                                            } catch (e: Exception) { Toast.makeText(context, "Error: ${e.message}", android.widget.Toast.LENGTH_SHORT).show() }
                                         }
                                     }) { Icon(Icons.Default.Share, "Compartir pantalla") }
                                     IconButton(onClick = {

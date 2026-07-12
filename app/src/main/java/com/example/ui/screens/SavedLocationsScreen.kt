@@ -70,7 +70,7 @@ fun SavedLocationsScreen(
     var author by remember { mutableStateOf("") }
     var selectedColor by remember { mutableStateOf("#FFD700") }
     
-    var capturedPhotoUri by remember { mutableStateOf<android.net.Uri?>(null) }
+    var capturedPhotoUri by remember { mutableStateOf<Uri?>(null) }
     var photoGpsLocation by remember { mutableStateOf<Pair<Double, Double>?>(null) }
     var usePhotoGps by remember { mutableStateOf(false) }
     var photoToZoom by remember { mutableStateOf<String?>(null) }

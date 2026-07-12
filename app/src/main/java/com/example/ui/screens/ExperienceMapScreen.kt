@@ -78,6 +78,7 @@ import org.osmdroid.views.overlay.gestures.RotationGestureOverlay
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.ZoomOutMap
+import androidx.compose.ui.platform.LocalDensity
 import org.osmdroid.views.overlay.infowindow.InfoWindow
 import java.io.File
 import java.io.FileOutputStream
@@ -165,21 +166,6 @@ fun ExperienceMapScreen(
         }
     }
 
-
-
-    val photoItems = remember(waypoints, linkedFavorites) {
-        val items = mutableListOf<PhotoItem>()
-        waypoints.filter { !it.photoPath.isNullOrBlank() }.forEach { wp ->
-            items.add(PhotoItem(wp.id, "waypoint", wp.name, wp.latitude, wp.longitude, wp.photoPath!!))
-        }
-        linkedFavorites.filter { !it.photoPath.isNullOrBlank() }.forEach { fav ->
-            items.add(PhotoItem(fav.id, "favorite", fav.name, fav.latitude, fav.longitude, fav.photoPath!!))
-        }
-        android.util.Log.d("EXPERIENCE_MAP", "photoItems: ${items.size} (wp=${waypoints.filter { !it.photoPath.isNullOrBlank() }.size}, fav=${linkedFavorites.filter { !it.photoPath.isNullOrBlank() }.size}), routeId=$routeId")
-        items.take(3).forEach { android.util.Log.d("EXPERIENCE_MAP", "  photo[${it.type}]: path=${it.photoPath}") }
-        items
-    }
-
     val markerIconCache = remember { mutableMapOf<String, Drawable>() }
     val getCachedIcon: (Int, String) -> Drawable = { resId, colorHex ->
         val key = "$resId-$colorHex"
@@ -213,6 +199,7 @@ fun ExperienceMapScreen(
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
+                val density = LocalDensity.current.density
             if (points.isEmpty() && linkedFavorites.isEmpty() && waypoints.isEmpty()) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator()
@@ -281,7 +268,7 @@ fun ExperienceMapScreen(
                                 overlays.add(GuideLinesOverlay(
                                     scrollOffset = { overlayScrollOffset },
                                     photoItems = panelItems,
-                                    density = context.resources.displayMetrics.density
+                                        density = density,
                                 ))
                             }
 

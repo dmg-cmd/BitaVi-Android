@@ -99,7 +99,7 @@ class RouteExchanger(
             val crossRefs = favorites.map { RouteFavoriteCrossRef(routeId = routeId, favoriteId = it.id) }
 
             ZipOutputStream(outputStream).use { zipOut ->
-                val writer = java.io.BufferedWriter(java.io.OutputStreamWriter(zipOut, Charsets.UTF_8))
+                val writer = BufferedWriter(OutputStreamWriter(zipOut, Charsets.UTF_8))
 
                 // 1. ruta.json (Persistencia relacional)
                 zipOut.putNextEntry(ZipEntry("ruta.json"))

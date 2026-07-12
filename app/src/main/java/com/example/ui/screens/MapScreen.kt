@@ -453,7 +453,6 @@ fun MapScreen(
                         } else true
                     }
 
-                    val res = context.resources
 
                     savedLocations.forEach { loc ->
                         var isNew = false
@@ -475,7 +474,7 @@ fun MapScreen(
                             marker.position = newPos
                             marker.title = loc.name
                             marker.snippet = loc.address
-                            marker.icon = IconCategory.fromKey(loc.iconCategory).toBitmap(40, loc.color.toColorInt()).toDrawable(res)
+                            marker.icon = IconCategory.fromKey(loc.iconCategory).toBitmap(40, loc.color.toColorInt()).toDrawable(context.resources)
                             needsInvalidate = true
                         }
                     }
