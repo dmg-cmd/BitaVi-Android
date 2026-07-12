@@ -51,6 +51,7 @@ object AppConstants {
         const val ENCRYPTED_PREFS_FILE = "secure_api_credentials_v2"
         const val MASTER_KEY_ALIAS = "localizador_pro_master_key_alias"
         const val GROQ_API_KEY_KEY = "groq_api_key_v2"
+        const val GEMINI_API_KEY_KEY = "gemini_api_key_v2"
         const val GROQ_API_KEY_IV_KEY = "groq_api_key_iv"
         const val DB_PASSPHRASE_KEY = "room_sqlcipher_key"
     }

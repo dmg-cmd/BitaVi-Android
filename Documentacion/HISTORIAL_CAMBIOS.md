@@ -1,3 +1,21 @@
+[2026/07/12 10:45 - Navegación Jerárquica MD3: TopAppBar + onBack en pantallas auxiliares]
+- **ExperienceMapScreen.kt**: Añadido parámetro onBack: () -> Unit + modifier: Modifier = Modifier. Envuelto contenido en Scaffold/TopAppBar con Icons.AutoMirrored.Filled.ArrowBack y título "Experiencias".
+- **DetailScreen.kt**: Envuelta Column existente en Scaffold/TopAppBar con Icons.AutoMirrored.Filled.ArrowBack y título "Detalle del Recorrido". Preservado el callback onBack ya existente.
+- **SavedLocationsScreen.kt**: Sin cambios (pantalla base de bottom bar, no requiere Up Navigation por MD3).
+- **MainActivity.kt**: Cableado onBack = { navController.popBackStack() } en la ruta EXPERIENCE_MAP.
+- **Patrón MD3**: onBack expuesto explícitamente en firma de cada Composable para desacoplamiento del NavController, facilitando testing y @Preview.
+- **Compilación**: BUILD SUCCESSFUL.
+
+
+[12/07/2026 - Fases 7-10: Consolidación Perimetral, Purga de Código Muerto y Build 41s]
+- **Fase 7 — 4 bloques**: LocationService.kt null guard + intent?. → intent. (6x) + FQNs PreferenceManager/SavedLocation. RouteRepository.kt 7x FQNs → nombre corto. RouteViewModel.kt .debounce(100) → 100.milliseconds. RouteExportUseCase.kt val route eliminado. ExperienceMapScreen.kt condición redundante !isAutoRotationEnabled eliminada.
+- **Fase 8 — 10 pasos**: LocationService.kt 4x Elvis muertos (?: ) eliminados + rssi eliminado de onBleContactDetected. RouteAnalyticsScreen.kt routeId/onBack eliminados + caller MainActivity. MapScreen.kt event → _, else if → else. RouteViewModel.kt catch (e: ) → catch (_: ), when (val decision = ) → when (). GeocoderUseCase.kt suspend removido de fetchAddress.
+- **Fase 9 — 3 bloques**: ExperienceMapScreen.kt photoItems eliminado + LocalDensity.current.density migrado. MapScreen.kt val res inlinado. SavedLocationsScreen.kt FQN android.net.Uri → import + nombre corto. RouteExchanger.kt FQNs BufferedWriter/OutputStreamWriter contraídos. MainActivity.kt FQNs Intent/Toast eliminados.
+- **Fase 10 — Blueprint ajustado**: ShareUseCase.kt .let { it.toUri() } → .toUri(). ExperienceMapScreen.kt ImageRequest.Builder(LocalContext.current) → context. MainActivity.kt android.widget.Toast.LENGTH_SHORT → Toast.LENGTH_SHORT.
+- **Optimización de compilación**: Tiempo reducido de >2min a 41s estables (-65%).
+- **Declaración Production-Ready**: Dictamen arquitectónico de cierre. Fase 11 declinada (falsos positivos de lint no justifican riesgo de regresión en delegados Compose).
+- **Respaldos**: RESPALDO_ANTERIOR/20260711_*.kt (26 archivos).
+- **Compilación**: BUILD SUCCESSFUL (41s). Deploy Pixel 9 Pro XL.
 [11/07/2026 - Fase 6 Definitiva: Purgas Finales + RouteAnalytics Compose/KTX]
 - **Purgas (4 regresiones)**: authenticateWithCrypto (MainActivity.kt), shareCompleteRoute (RouteViewModel.kt + ShareUseCase.kt), insertFavorite (RouteRepository.kt). Eliminación directa sin función intermediaria para evitar bug de paso de arrays en PowerShell.
 - **RouteAnalyticsScreen.kt**: L94 Locale.getDefault() → LocalConfiguration.current.locales[0] (lectura reactiva Compose). L46-49,312 6× AndroidColor.parseColor() → String.toColorInt() (KTX). Nuevos imports: LocalConfiguration + toColorInt.
@@ -474,6 +492,7 @@ eplace en la lambda de exportación ZIP.
 - **Archivos modificados**: app/src/main/java/com/example/MainActivity.kt (bottomBar líneas 774-969 reemplazadas).
 - **Respaldos**: RESPALDO_ANTERIOR/20260711_MainActivity.kt.
 - **Compilación**: BUILD SUCCESSFUL (0 errores).
+
 
 
 

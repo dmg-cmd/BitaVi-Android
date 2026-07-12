@@ -17,6 +17,7 @@ class RouteViewModelFactory(
         val geocoderUseCase = GeocoderUseCase(context)
         val photoManager = PhotoManager(context)
         val groqAiUseCase = GroqAiUseCase()
+        val geminiAiUseCase = GeminiAiUseCase()
         val exchanger = RouteExchanger(context, repository)
         val routeExportUseCase = RouteExportUseCase(context, repository, exchanger)
         val backupUseCase = BackupUseCase(context, repository, geocoderUseCase)
@@ -31,6 +32,7 @@ class RouteViewModelFactory(
             geocoderUseCase = geocoderUseCase,
             photoManager = photoManager,
             groqAiUseCase = groqAiUseCase,
+            geminiAiUseCase = geminiAiUseCase,
             routeExportUseCase = routeExportUseCase,
             backupUseCase = backupUseCase,
             contactUseCase = contactUseCase,

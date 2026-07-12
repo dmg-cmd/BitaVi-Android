@@ -1,3 +1,9 @@
+## 12/07/2026 — Navegación Jerárquica MD3 (TopAppBar + onBack)
+- **ExperienceMapScreen.kt**: Añadido callback onBack: () -> Unit y Scaffold con TopAppBar (ArrowBack + título "Experiencias").
+- **DetailScreen.kt**: Migración a Scaffold con TopAppBar (ArrowBack + título "Detalle del Recorrido").
+- **SavedLocationsScreen.kt**: Sin cambios por ser pantalla base (bottom bar).
+- **Patrón de desacoplamiento**: onBack expuesto como lambda en la firma del Composable, evitando dependencia directa del NavController.
+
 ## 09/07/2026 — Watchdog de Señal y Dashboard Flotante (Watchdog de señal GPS y Refactor BC)
 - **LocationService.kt**: Integración y activación del Watchdog de señal de satélite (`startGpsWatchdog()`). Ahora el watchdog se inicia con el tracking y se detiene automáticamente en pausa o finalización de ruta, evitando fugas de memoria o cambios erráticos de estado.
 - **DashboardActividadFlotante.kt**: Consumo seguro del contenedor translúcido y transición animada de color (rojo 0xFFDC3545 al 75% alpha en alerta y normal 0xFF1C1B1F al 65% alpha).
@@ -161,3 +167,12 @@
 - **Bug de PowerShell corregido**: Remove-Lines con arrays anidados no funcionaba; reemplazado por filtro directo.
 - **Build**: BUILD SUCCESSFUL. Deploy Pixel 9 Pro XL.
 
+
+## 12/07/2026 — Fases 7-10: Consolidación Production-Ready
+- **Fase 7 (4 bloques)**: LocationService null guard + intent?. a intent. (6x) + FQNs cortos. RouteRepository FQNs contraídos. RouteViewModel debounce KTX. RouteExportUseCase val route muerto eliminado. ExperienceMapScreen redundancia !isAutoRotationEnabled eliminada.
+- **Fase 8 (10 pasos)**: LocationService 4 Elvis muertos extirpados + rssi eliminado de lambda BLE. RouteAnalyticsScreen routeId/onBack extirpados + caller. MapScreen event a _ + else if simplificado. RouteViewModel catch/when saneados. GeocoderUseCase suspend removido.
+- **Fase 9 (3 bloques)**: ExperienceMapScreen photoItems eliminado + LocalDensity migrado. MapScreen val res inlinado. SavedLocationsScreen FQN android.net.Uri contraído. RouteExchanger FQNs contraídos. MainActivity FQNs Intent/Toast eliminados.
+- **Fase 10 (Blueprint)**: ShareUseCase .let { it.toUri() } a .toUri(). ImageRequest.Builder corregido a context. Toast.LENGTH_SHORT sin FQN.
+- **Build 41s**: Tiempo de compilación reducido de >2min a 41s estables (-65%).
+- **Declaración Production-Ready**: Dictamen arquitectónico de cierre. Fase 11 declinada.
+- **Commit sellado**: chore(arch): consolidacion perimetral fases 6-10, purga de codigo muerto y optimizacion de tiempos de build (41s)

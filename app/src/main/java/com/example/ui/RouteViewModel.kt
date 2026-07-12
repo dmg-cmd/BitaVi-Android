@@ -64,6 +64,7 @@ class RouteViewModel(
     private val geocoderUseCase: GeocoderUseCase,
     private val photoManager: PhotoManager,
     private val groqAiUseCase: GroqAiUseCase,
+    private val geminiAiUseCase: GeminiAiUseCase,
     private val routeExportUseCase: RouteExportUseCase,
     private val backupUseCase: BackupUseCase,
     private val contactUseCase: ContactUseCase,
@@ -83,7 +84,11 @@ class RouteViewModel(
         private set
     var groqApiKey by mutableStateOf<String?>(null)
         private set
+    var geminiApiKey by mutableStateOf<String?>(null)
+        private set
     var aiAnalysisState by mutableStateOf<AiAnalysisState>(AiAnalysisState.Idle)
+        private set
+    var favAnalysisState by mutableStateOf<AiAnalysisState>(AiAnalysisState.Idle)
         private set
     var isImporting by mutableStateOf(false)
         private set
@@ -174,6 +179,7 @@ class RouteViewModel(
     }
 
     fun updateGroqApiKey(key: String) { groqApiKey = key }
+    fun updateGeminiApiKey(key: String) { geminiApiKey = key }
 
 
     fun updateStrokeWidth(w: Float) {
@@ -421,6 +427,31 @@ class RouteViewModel(
 
     fun resetAiState() {
         aiAnalysisState = AiAnalysisState.Idle
+    }
+
+    fun analyzeFavoriteWithGemini(favoriteId: Int) {
+        val key = geminiApiKey
+        if (key.isNullOrBlank()) { favAnalysisState = AiAnalysisState.MissingKey; return }
+        viewModelScope.launch(Dispatchers.IO) {
+            favAnalysisState = AiAnalysisState.Loading
+            try {
+                val favorite = repository.getAllSavedLocationsSync().find { it.id == favoriteId }
+                if (favorite == null) { favAnalysisState = AiAnalysisState.Error("Sin datos."); return@launch }
+                val result = geminiAiUseCase.analyzeLocation(
+                    apiKey = key, name = favorite.name,
+                    lat = favorite.latitude, lon = favorite.longitude,
+                    comment = favorite.comment
+                )
+                favAnalysisState = AiAnalysisState.Success(result)
+            } catch (t: Throwable) {
+                t.printStackTrace()
+                favAnalysisState = AiAnalysisState.Error(t.message ?: "Error de conexión.")
+            }
+        }
+    }
+
+    fun resetFavAiState() {
+        favAnalysisState = AiAnalysisState.Idle
     }
 
     // ─── Export / Import ──────────────────────────────────────────

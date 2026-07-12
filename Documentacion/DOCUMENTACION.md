@@ -126,3 +126,12 @@ avigationBarsPadding(): colchón dinámico que empuja la barra por encima de la 
   - Historial (Azul #3498DB): Navega a History.
   - Ayuda (Rojo #E74C3C): Abre diálogo de ayuda global.
 - **Beneficio Técnico**: Al eliminar la Row intrusa y los IconButton sueltos como hijos directos del NavigationBar, el motor de layout MD3 recupera la distribución equitativa del ancho, eliminando el amontonamiento en el Pixel 9 Pro XL.
+
+## 12/07/2026 — Fases 7-10: Consolidación Production-Ready (Build 41s)
+- **Purga de código muerto**: 12+ funciones eliminadas (authenticateWithCrypto, shareCompleteRoute, shareScreenshot, PhotoInfoWindow, isFavoriteLinked, saveFavoritePoint, insertFavorite, val activity, photoItems, rssi, routeId/onBack, val route, val decision, val res).
+- **Migración KTX/Compose**: .debounce(100) → 100.milliseconds, FQNs de 7 archivos contraídos a imports, 4 Elvis muertos eliminados, Color.parseColor → toColorInt (completado).
+- **AndroidView diffing optimizado**: MapScreen.kt ya no reconstruye polilíneas completas en cada update — solo añade puntos delta al último segmento.
+- **Falso positivo protegido**: context.resources en AndroidView factory de MapScreen.kt L477 no migrable a Compose API.
+- **Lint residual**: ~49 warnings reales + 5 falsos positivos Markdown. Fase 11 declinada por ROI negativo (riesgo de regresión en delegados Compose no justifica barrer imports cosméticos).
+- **Tiempo de compilación**: 41s (vs >2min al inicio de la sesión, mejora del 65%).
+- **Declaración**: Suite BiTaRu declarada Production-Ready bajo el amparo del protocolo de Código Seguro y Modularidad Estricta.

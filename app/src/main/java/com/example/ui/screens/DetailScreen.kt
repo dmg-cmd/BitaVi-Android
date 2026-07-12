@@ -75,7 +75,26 @@ fun DetailScreen(
     var photoToZoom by remember { mutableStateOf<String?>(null) }
     var showTourFotos by remember { mutableStateOf(!viewModel.esTourVisto("fotos")) }
 
-    Column(modifier = Modifier.verticalScroll(rememberScrollState()).fillMaxSize()) {
+    Scaffold(
+        modifier = modifier,
+        topBar = {
+            TopAppBar(
+                title = { Text("Detalle del Recorrido", style = MaterialTheme.typography.titleLarge) },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Volver al historial"
+                        )
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                )
+            )
+        }
+    ) { paddingValues ->
+        Column(modifier = Modifier.fillMaxSize().padding(paddingValues).verticalScroll(rememberScrollState())) {
             // ESTADISTICAS CONSOLIDADAS
             Card(
                 modifier = Modifier.padding(16.dp).fillMaxWidth(),
@@ -285,6 +304,7 @@ fun DetailScreen(
 
             Spacer(Modifier.height(80.dp))
         }
+    }
 
     // ─── Puente: escucha acciones desde la bottom bar ────────────────
     LaunchedEffect(viewModel.detailAction) {

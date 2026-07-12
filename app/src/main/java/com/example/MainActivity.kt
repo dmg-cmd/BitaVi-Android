@@ -973,6 +973,7 @@ fun MainContainer(viewModel: RouteViewModel, encryptedPrefs: SharedPreferences) 
                 val routeId = backStackEntry.arguments?.getInt("routeId") ?: return@composable
                 currentExperienceRouteId = routeId
                 ExperienceMapScreen(
+                    onBack = { navController.popBackStack() },
                     viewModel = viewModel,
                     routeId = routeId,
                 )
