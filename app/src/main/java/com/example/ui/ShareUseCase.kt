@@ -20,7 +20,7 @@ class ShareUseCase(
         }
 
         Intent(Intent.ACTION_SEND).apply {
-            val photoUri = location.photoPath?.takeIf { it.isNotBlank() }?.let { it.toUri() }
+            val photoUri = location.photoPath?.takeIf { it.isNotBlank() }?.toUri()
             if (photoUri != null) {
                 type = "image/*"
                 putExtra(Intent.EXTRA_STREAM, photoUri)

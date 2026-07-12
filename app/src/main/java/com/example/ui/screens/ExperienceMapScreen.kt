@@ -309,7 +309,7 @@ fun ExperienceMapScreen(
                                 Box(modifier = Modifier.fillMaxWidth().height(90.dp)) {
                                     if (!item.photoPath.isNullOrBlank()) {
                                         AsyncImage(
-                                            model = ImageRequest.Builder(LocalContext.current)
+                                            model = ImageRequest.Builder(context)
                                                 .data(item.photoPath)
                                                 .allowHardware(false)
                                                 .build(),
