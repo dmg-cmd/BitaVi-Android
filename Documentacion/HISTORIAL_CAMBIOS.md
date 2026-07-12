@@ -1,3 +1,16 @@
+[2026/07/12 13:40 - Saneamiento de Lint: Zero Errors alcanzado (4→0 errores, 60→47 warnings)]
+- **ActivityRecognitionManager.kt**: Añadido @SuppressLint("MissingPermission") en stopTrackingTransitions().
+- **ProximityManager.kt**: Añadido @SuppressLint("MissingPermission") en stopScanning() y stopAdvertising(). Añadido import.
+- **AndroidManifest.xml**: Agregado permiso FOREGROUND_SERVICE_CONNECTED_DEVICE para servicio de ubicación.
+- **ExperienceMapScreen.kt:123**: Migrado scrollState.value de LaunchedEffect directo a snapshotFlow para eliminar lectura de @FrequentlyChangingValue en composición.
+- **MapScreen.kt:477**: Migrado LocalContext.current.resources → LocalResources.current eliminando LocalContextResourcesRead.
+- **HistoryScreen.kt:40,304**: Reordenado parámetro modifier como primer parámetro opcional en HistoryScreen y RouteCard (convención Compose MD3).
+- **colors.xml**: Eliminados 7 colores no utilizados (purple_200/500/700, teal_200/700, black, white).
+- **strings.xml**: Eliminados biometric_subtitle y share_footer no referenciados.
+- **info_window_layout.xml**: Eliminado layout huérfano (legacy de PhotoInfoWindow eliminado en Fase 6).
+- **Lint**: 4 errores → 0 errores. 60 warnings → 47 warnings (solo versión/actualizaciones).
+- **Compilación**: BUILD SUCCESSFUL (25s).
+
 [2026/07/12 12:13 - Refinamiento visual: titleLarge.copy(SemiBold 20.sp) + corrección cromática SavedLocationsScreen]
 - **DetailScreen.kt**: titleMedium (16sp) → titleLarge.copy(fontWeight = SemiBold, fontSize = 20.sp). Punto medio óptimo para alta densidad.
 - **ExperienceMapScreen.kt**: titleMedium (16sp) → titleLarge.copy(fontWeight = SemiBold, fontSize = 20.sp). Añadido import FontWeight.

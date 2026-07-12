@@ -51,6 +51,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.delay
 import kotlin.time.Duration.Companion.seconds
 import androidx.compose.ui.Alignment
@@ -120,7 +121,9 @@ fun ExperienceMapScreen(
     var photoToZoom by remember { mutableStateOf<String?>(null) }
     val scrollState = rememberScrollState()
     var overlayScrollOffset by remember { mutableIntStateOf(0) }
-    LaunchedEffect(scrollState.value) { overlayScrollOffset = scrollState.value }
+    LaunchedEffect(Unit) {
+        snapshotFlow { scrollState.value }.collect { overlayScrollOffset = it }
+    }
     val panelItems = remember { mutableStateListOf<PhotoItem>() }
     val sortedPoints by remember(points) { derivedStateOf { points.sortedBy { it.timestamp } } }
     

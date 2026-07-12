@@ -66,6 +66,7 @@ class ActivityRecognitionManager(private val context: Context) {
             }
     }
 
+    @SuppressLint("MissingPermission")
     fun stopTrackingTransitions() {
         ActivityRecognition.getClient(context)
             .removeActivityTransitionUpdates(pendingIntent)

@@ -4,7 +4,4 @@
     <string name="drawer_subtitle_header">Bitácora Táctica de Rutas</string>
     <string name="notification_service_title">BiTaRu activo</string>
     <string name="notification_service_description">Monitoreando tu bitácora de viaje en segundo plano&#8230;</string>
-    <string name="biometric_subtitle">Coloque su huella para abrir BiTaRu</string>
-    <string name="share_footer">Generado por BiTaRu</string>
 </resources>
-

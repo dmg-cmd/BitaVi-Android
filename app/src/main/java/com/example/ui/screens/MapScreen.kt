@@ -27,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -73,6 +74,7 @@ fun MapScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val resources = LocalResources.current
     val isTracking by viewModel.isTrackingLive.collectAsState()
     val latestLocation by viewModel.latestLocationLive.collectAsState()
     val activityMode by viewModel.currentActivityMode.collectAsState()
@@ -474,7 +476,7 @@ fun MapScreen(
                             marker.position = newPos
                             marker.title = loc.name
                             marker.snippet = loc.address
-                            marker.icon = IconCategory.fromKey(loc.iconCategory).toBitmap(40, loc.color.toColorInt()).toDrawable(context.resources)
+                            marker.icon = IconCategory.fromKey(loc.iconCategory).toBitmap(40, loc.color.toColorInt()).toDrawable(resources)
                             needsInvalidate = true
                         }
                     }

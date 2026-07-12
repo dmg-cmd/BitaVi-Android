@@ -1,5 +1,6 @@
 package com.example.location
 
+import android.annotation.SuppressLint
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothManager
 import android.bluetooth.le.AdvertiseCallback
@@ -125,6 +126,7 @@ class ProximityManager(
         }
     }
 
+    @SuppressLint("MissingPermission")
     fun stopScanning() {
         if (!isScanning) return
         try {
@@ -133,6 +135,7 @@ class ProximityManager(
         isScanning = false
     }
 
+    @SuppressLint("MissingPermission")
     fun stopAdvertising() {
         ownPhoneHash?.let {
             try {
