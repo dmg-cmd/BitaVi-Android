@@ -269,7 +269,7 @@ fun MapScreen(
                 mapView.apply {
                     setTileSource(TileSourceFactory.MAPNIK)
                     setMultiTouchControls(true)
-                    setOnTouchListener { v, event ->
+                    setOnTouchListener { v, _ ->
                         v.performClick()
                         v.parent.requestDisallowInterceptTouchEvent(true)
                         false
@@ -391,7 +391,7 @@ fun MapScreen(
                                 needsInvalidate = true
                             }
                         }
-                    } else if (currentTotalPoints > prevTotalPoints) {
+                    } else {
                         // Solo añadir puntos nuevos al último segmento
                         val lastPolyline = routePolylines.lastOrNull()
                         val lastSegment = newSegments.lastOrNull()

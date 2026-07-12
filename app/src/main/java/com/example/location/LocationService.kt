@@ -274,8 +274,8 @@ class LocationService : Service() {
         // Inicializar BLE Proximity (Módulo 3B)
         alertNotifier = AlertNotifier(this)
         contactUseCase = ContactUseCase(this)
-        ProximityManager(this) { contactName, rssi, distance ->
-            onBleContactDetected(contactName, rssi, distance)
+        ProximityManager(this) { contactName, _, distance ->
+            onBleContactDetected(contactName, distance)
         }.let { pm ->
             if (pm.init()) proximityManager = pm
         }
@@ -319,9 +319,9 @@ class LocationService : Service() {
                 }
                 ACTION_START -> {
                     val routeName = intent.getStringExtra(EXTRA_ROUTE_NAME) ?: "Ruta sin nombre"
-                    val routeId = intent.getIntExtra(EXTRA_ROUTE_ID, -1) ?: -1
-                    val interval = intent.getLongExtra(EXTRA_UPDATE_INTERVAL, 5000L) ?: 5000L
-                    val distance = intent.getFloatExtra(EXTRA_UPDATE_DISTANCE, 2f) ?: 2f
+                    val routeId = intent.getIntExtra(EXTRA_ROUTE_ID, -1)
+                    val interval = intent.getLongExtra(EXTRA_UPDATE_INTERVAL, 5000L)
+                    val distance = intent.getFloatExtra(EXTRA_UPDATE_DISTANCE, 2f)
                     startTracking(routeName, routeId, interval, distance)
                 }
                 ACTION_PAUSE -> {
@@ -334,7 +334,7 @@ class LocationService : Service() {
                     // No hace falta lógica especial, solo procesar la siguiente ubicación con los nuevos flags de SharedPreferences
                 }
                 ACTION_AUTO_START_FROM_TRANSITION -> {
-                    val detectedActivity = intent.getIntExtra(EXTRA_DETECTED_ACTIVITY, -1) ?: -1
+                    val detectedActivity = intent.getIntExtra(EXTRA_DETECTED_ACTIVITY, -1)
                     handleAutoStartFromTransition(detectedActivity)
                 }
             }
@@ -760,7 +760,7 @@ class LocationService : Service() {
         }
     }
 
-    private fun onBleContactDetected(contactName: String, rssi: Int, distance: Double) {
+    private fun onBleContactDetected(contactName: String, distance: Double) {
         val now = System.currentTimeMillis()
         if (now - lastBleNotificationTime < AppConstants.Ble.NOTIFICATION_COOLDOWN_MILLIS) return
         lastBleNotificationTime = now

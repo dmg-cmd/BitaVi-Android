@@ -985,8 +985,6 @@ fun MainContainer(viewModel: RouteViewModel, encryptedPrefs: SharedPreferences) 
                 currentRouteAnalyticsId = routeId
                 RouteAnalyticsScreen(
                     viewModel = viewModel,
-                    routeId = routeId,
-                    onBack = { navController.popBackStack() }
                 )
             }
             composable(

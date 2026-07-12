@@ -399,7 +399,7 @@ class RouteViewModel(
                     avgSpeed = route.avgSpeed, durationMs = durationMs, waypointCount = waypoints.size
                 )
                 aiAnalysisState = AiAnalysisState.Success(result)
-            } catch (e: ApiKeyExpiredException) {
+            } catch (_: ApiKeyExpiredException) {
                 aiAnalysisState = AiAnalysisState.ExpiredKey
             } catch (e: retrofit2.HttpException) {
                 if (e.code() == 401) {
@@ -458,7 +458,7 @@ class RouteViewModel(
         viewModelScope.launch(Dispatchers.IO) {
             isImporting = true
             try {
-                when (val decision = backupUseCase.detectRestoreType(uri)) {
+                when (backupUseCase.detectRestoreType(uri)) {
                     is BackupUseCase.RestoreDecision.ProcessZip -> {
                         backupUseCase.restoreFromZip(uri)
                     }

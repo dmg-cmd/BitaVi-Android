@@ -38,8 +38,6 @@ import java.util.Locale
 @Composable
 fun RouteAnalyticsScreen(
     viewModel: RouteViewModel,
-    routeId: Int,
-    onBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val route by viewModel.selectedDetailRoute.collectAsState()

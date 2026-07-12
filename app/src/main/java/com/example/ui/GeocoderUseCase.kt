@@ -51,7 +51,7 @@ class GeocoderUseCase(private val context: Context) {
         } catch (_: Exception) { Triple(coordFallback, "Desconocido", "Desconocida") }
     }
 
-    suspend fun fetchAddress(lat: Double, lon: Double): String? {
+    fun fetchAddress(lat: Double, lon: Double): String? {
         if (!isValidCoordinate(lat, lon)) return null
         return try {
             val geocoder = Geocoder(context, Locale.getDefault())
