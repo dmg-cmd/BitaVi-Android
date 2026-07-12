@@ -1,3 +1,17 @@
+[2026/07/12 12:13 - Refinamiento visual: titleLarge.copy(SemiBold 20.sp) + corrección cromática SavedLocationsScreen]
+- **DetailScreen.kt**: titleMedium (16sp) → titleLarge.copy(fontWeight = SemiBold, fontSize = 20.sp). Punto medio óptimo para alta densidad.
+- **ExperienceMapScreen.kt**: titleMedium (16sp) → titleLarge.copy(fontWeight = SemiBold, fontSize = 20.sp). Añadido import FontWeight.
+- **SavedLocationsScreen.kt**: Eliminado fondo negro estático Color(0xFF1C1B1F).copy(alpha=0.90f) por token dinámico MaterialTheme.colorScheme.surface + onSurface. Título unificado con titleLarge.copy(fontWeight = Bold).
+- **Compilación**: BUILD SUCCESSFUL (23s).
+
+[2026/07/12 11:40 - Refinamiento visual: Unificación tipográfica titleMedium en TopAppBar]
+- **DetailScreen.kt**: 	itleLarge → 	itleMedium en TopAppBar. Añadidos 	itleContentColor y 
+avigationIconContentColor.
+- **ExperienceMapScreen.kt**: 	itleLarge → 	itleMedium en TopAppBar. Añadidos 	itleContentColor y 
+avigationIconContentColor.
+- **Justificación**: titleMedium (16sp) alinea el peso visual con TopBarLocalizador de MapScreen, eliminando percepción de barra expandida.
+- **Compilación**: BUILD SUCCESSFUL (46s).
+
 [2026/07/12 10:45 - Navegación Jerárquica MD3: TopAppBar + onBack en pantallas auxiliares]
 - **ExperienceMapScreen.kt**: Añadido parámetro onBack: () -> Unit + modifier: Modifier = Modifier. Envuelto contenido en Scaffold/TopAppBar con Icons.AutoMirrored.Filled.ArrowBack y título "Experiencias".
 - **DetailScreen.kt**: Envuelta Column existente en Scaffold/TopAppBar con Icons.AutoMirrored.Filled.ArrowBack y título "Detalle del Recorrido". Preservado el callback onBack ya existente.

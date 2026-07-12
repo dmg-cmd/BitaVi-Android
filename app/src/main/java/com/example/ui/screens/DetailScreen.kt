@@ -79,7 +79,15 @@ fun DetailScreen(
         modifier = modifier,
         topBar = {
             TopAppBar(
-                title = { Text("Detalle del Recorrido", style = MaterialTheme.typography.titleLarge) },
+                title = { 
+                    Text(
+                        text = "Detalle del Recorrido", 
+                        style = MaterialTheme.typography.titleLarge.copy(
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 20.sp
+                        )
+                    ) 
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(
@@ -88,8 +96,11 @@ fun DetailScreen(
                         )
                     }
                 },
+                windowInsets = WindowInsets(0, 0, 0, 0),
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface,
+                    navigationIconContentColor = MaterialTheme.colorScheme.onSurface
                 )
             )
         }

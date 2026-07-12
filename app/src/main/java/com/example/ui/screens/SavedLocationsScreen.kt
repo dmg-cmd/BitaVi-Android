@@ -143,10 +143,17 @@ fun SavedLocationsScreen(
         modifier = modifier,
         topBar = {
             TopAppBar(
-                title = { Text("Favoritos y Destacados", fontWeight = FontWeight.Bold) },
+                title = { 
+                    Text(
+                        text = "Favoritos y Destacados", 
+                        style = MaterialTheme.typography.titleLarge.copy(
+                            fontWeight = FontWeight.Bold
+                        )
+                    ) 
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color(0xFF1C1B1F).copy(alpha = 0.90f),
-                    titleContentColor = Color.White
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface
                 )
             )
         },
