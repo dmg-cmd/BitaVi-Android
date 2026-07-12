@@ -1,22 +1,13 @@
 package com.example.ui
+import com.example.data.model.SavedLocation
 
 import android.content.Context
 import android.content.Intent
-import android.graphics.Bitmap
 import android.net.Uri
 import androidx.core.net.toUri
-import androidx.core.content.FileProvider
-import com.example.data.model.SavedLocation
-import com.example.data.repository.RouteRepository
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import java.io.File
-import java.io.FileOutputStream
-import java.util.concurrent.TimeUnit
 
 class ShareUseCase(
-    private val context: Context,
-    private val repository: RouteRepository
+    private val context: Context
 ) {
 
     fun shareLocation(location: SavedLocation) {

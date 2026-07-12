@@ -240,13 +240,13 @@ fun RouteAnalyticsScreen(
                                 DetailStatItem(
                                     Icons.Default.Speed,
                                     "Vel. Prom",
-                                    String.format("%.1f km/h", tramoAvgSpeedKmh),
+                                    String.format(Locale.US, "%.1f km/h", tramoAvgSpeedKmh),
                                     MaterialTheme.colorScheme.primary
                                 )
                                 DetailStatItem(
                                     Icons.Default.Terrain,
                                     "Desnivel",
-                                    String.format("%+.0f m", tramoAltDelta),
+                                    String.format(Locale.US, "%+.0f m", tramoAltDelta),
                                     if (tramoAltDelta >= 0) Color(0xFF4CAF50) else Color(0xFFF44336)
                                 )
                             }
@@ -272,12 +272,12 @@ fun RouteAnalyticsScreen(
 
 @Composable
 fun AnalyticsChart(
+    modifier: Modifier = Modifier,
     data: List<Float>,
     labels: List<String>,
     color: Int,
     rangeStart: Float = 0f,
     rangeEnd: Float = 0f,
-    modifier: Modifier = Modifier
 ) {
     val xLabels = labels
 

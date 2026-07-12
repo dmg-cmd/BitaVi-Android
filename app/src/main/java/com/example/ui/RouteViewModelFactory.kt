@@ -21,7 +21,7 @@ class RouteViewModelFactory(
         val routeExportUseCase = RouteExportUseCase(context, repository, exchanger)
         val backupUseCase = BackupUseCase(context, repository, geocoderUseCase)
         val contactUseCase = ContactUseCase(context)
-        val shareUseCase = ShareUseCase(context, repository)
+        val shareUseCase = ShareUseCase(context)
         val locationServiceManager = LocationServiceManager(context)
 
         @Suppress("UNCHECKED_CAST")

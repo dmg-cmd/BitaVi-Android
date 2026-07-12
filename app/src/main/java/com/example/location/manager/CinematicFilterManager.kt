@@ -11,8 +11,7 @@ import java.util.LinkedList
  */
 class CinematicFilterManager(
     private val maxAllowedSpeedMps: Double = 15.0,
-    private val autoStopSpeedMps: Double = 0.3,
-    private val windowSize: Int = 5
+    private val autoStopSpeedMps: Double = 0.3
 ) {
 
     companion object {

@@ -29,7 +29,7 @@ class GroqAiUseCase {
             - Ruta: $routeName
             - Distancia Real: ${String.format(Locale.US, "%.2f", distanceMeters / 1000.0)} km
             - Tiempo en Movimiento: $durationFormatted
-            - Dinámica de Velocidad: Máx ${String.format(Locale.US, "%.1f", maxSpeed * 3.6f)} km/h, Media ${String.format("%.1f", avgSpeed * 3.6f)} km/h
+            - Dinámica de Velocidad: Máx ${String.format(Locale.US, "%.1f", maxSpeed * 3.6f)} km/h, Media ${String.format(Locale.US, "%.1f", avgSpeed * 3.6f)} km/h
             - Puntos Técnicos: $waypointCount marcados (Analiza su distribución)
             
             REGLAS CRÍTICAS:
