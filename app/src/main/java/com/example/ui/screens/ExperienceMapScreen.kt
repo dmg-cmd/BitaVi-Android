@@ -297,7 +297,7 @@ fun ExperienceMapScreen(
                                     // Filtro Lerp de baja frecuencia (alpha = 0.15f)
                                     view.mapOrientation = currentOrientation + (normalizedDiff * 0.15f)
                                 }
-                            } else if (!isAutoRotationEnabled && view.mapOrientation != 0f) {
+                            } else if (view.mapOrientation != 0f) {
                                 // Si se desactiva y el mapa está girado, volvemos a 0f
                                 view.mapOrientation = 0f
                             }

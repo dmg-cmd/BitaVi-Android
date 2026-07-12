@@ -40,6 +40,7 @@ import java.util.Locale
 
 import android.location.Geocoder
 import kotlinx.coroutines.flow.combine
+import kotlin.time.Duration.Companion.milliseconds
 
 sealed class AiAnalysisState {
     object Idle : AiAnalysisState()
@@ -123,7 +124,7 @@ class RouteViewModel(
         @OptIn(FlowPreview::class)
         viewModelScope.launch(Dispatchers.IO) {
             _savedLocationColorUpdateFlow
-                .debounce(100)
+                .debounce(100.milliseconds)
                 .collectLatest { (id, color) -> repository.updateSavedLocationColor(id, color) }
         }
 

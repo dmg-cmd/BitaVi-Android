@@ -187,9 +187,9 @@ class RouteRepository(private val routeDao: RouteDao) {
 
     // --- Operaciones de Lugares Guardados (Favoritos) ---
 
-    val allSavedLocations: Flow<List<com.example.data.model.SavedLocation>> = routeDao.getAllSavedLocationsFlow()
+    val allSavedLocations: Flow<List<SavedLocation>> = routeDao.getAllSavedLocationsFlow()
 
-    suspend fun getAllSavedLocationsSync(): List<com.example.data.model.SavedLocation> = routeDao.getAllSavedLocations()
+    suspend fun getAllSavedLocationsSync(): List<SavedLocation> = routeDao.getAllSavedLocations()
 
 
     suspend fun addSavedLocation(
@@ -208,7 +208,7 @@ class RouteRepository(private val routeDao: RouteDao) {
         color: String = "#FFD700",
         timestamp: Long = System.currentTimeMillis(),
     ) {
-        val location = com.example.data.model.SavedLocation(
+        val location = SavedLocation(
             name = name,
             address = address,
             latitude = latitude,
@@ -227,7 +227,7 @@ class RouteRepository(private val routeDao: RouteDao) {
         routeDao.insertSavedLocation(location)
     }
 
-    suspend fun updateSavedLocation(location: com.example.data.model.SavedLocation) {
+    suspend fun updateSavedLocation(location: SavedLocation) {
         routeDao.updateSavedLocation(location)
     }
 
@@ -235,11 +235,11 @@ class RouteRepository(private val routeDao: RouteDao) {
         routeDao.updateSavedLocationColor(id, color)
     }
 
-    suspend fun deleteSavedLocation(location: com.example.data.model.SavedLocation) {
+    suspend fun deleteSavedLocation(location: SavedLocation) {
         routeDao.deleteSavedLocation(location)
     }
 
-    suspend fun insertIfNew(location: com.example.data.model.SavedLocation): Long {
+    suspend fun insertIfNew(location: SavedLocation): Long {
         return routeDao.insertIfNew(location)
     }
 

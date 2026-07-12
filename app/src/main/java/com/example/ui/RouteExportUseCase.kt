@@ -37,7 +37,7 @@ class RouteExportUseCase(
      */
     suspend fun exportCsv(routeId: Int) = withContext(Dispatchers.IO) {
         try {
-            val route = repository.getRouteById(routeId) ?: return@withContext
+            repository.getRouteById(routeId) ?: return@withContext
             val points = repository.getLocationPointsSync(routeId)
             val fileName = "export_${System.currentTimeMillis()}.csv"
             val file = context.getFileStreamPath(fileName)

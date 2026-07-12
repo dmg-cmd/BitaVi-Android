@@ -30,6 +30,8 @@ import com.example.util.ContactHashHelper
 import com.example.data.model.LocationPoint
 import com.example.data.model.Route
 import com.example.data.repository.RouteRepository
+import androidx.preference.PreferenceManager
+import com.example.data.model.SavedLocation
 import com.example.location.manager.StationaryAnchorManager
 import com.example.location.manager.ActivityRecognitionManager
 import com.example.ui.GeocoderUseCase
@@ -250,7 +252,7 @@ class LocationService : Service() {
         wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Localizador:TrackingWakeLock")
 
         // Cache de SharedPreferences para evitar I/O repetitivo en el Main Thread
-        sharedPrefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(this)
+        sharedPrefs = PreferenceManager.getDefaultSharedPreferences(this)
 
         // HandlerThread dedicado para procesar ubicación fuera del Main Thread
         locationHandlerThread = HandlerThread("LocationHandlerThread").apply {
@@ -298,7 +300,8 @@ class LocationService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val action = intent?.action
+        if (intent == null) return START_NOT_STICKY
+        val action = intent.action
         Log.d(TAG, "onStartCommand acción recibida: $action")
 
         // Asegurar que el servicio inicie en primer plano de inmediato (Requisito Android 12+)
@@ -315,10 +318,10 @@ class LocationService : Service() {
                     startPassiveTracking()
                 }
                 ACTION_START -> {
-                    val routeName = intent?.getStringExtra(EXTRA_ROUTE_NAME) ?: "Ruta sin nombre"
-                    val routeId = intent?.getIntExtra(EXTRA_ROUTE_ID, -1) ?: -1
-                    val interval = intent?.getLongExtra(EXTRA_UPDATE_INTERVAL, 5000L) ?: 5000L
-                    val distance = intent?.getFloatExtra(EXTRA_UPDATE_DISTANCE, 2f) ?: 2f
+                    val routeName = intent.getStringExtra(EXTRA_ROUTE_NAME) ?: "Ruta sin nombre"
+                    val routeId = intent.getIntExtra(EXTRA_ROUTE_ID, -1) ?: -1
+                    val interval = intent.getLongExtra(EXTRA_UPDATE_INTERVAL, 5000L) ?: 5000L
+                    val distance = intent.getFloatExtra(EXTRA_UPDATE_DISTANCE, 2f) ?: 2f
                     startTracking(routeName, routeId, interval, distance)
                 }
                 ACTION_PAUSE -> {
@@ -331,7 +334,7 @@ class LocationService : Service() {
                     // No hace falta lógica especial, solo procesar la siguiente ubicación con los nuevos flags de SharedPreferences
                 }
                 ACTION_AUTO_START_FROM_TRANSITION -> {
-                    val detectedActivity = intent?.getIntExtra(EXTRA_DETECTED_ACTIVITY, -1) ?: -1
+                    val detectedActivity = intent.getIntExtra(EXTRA_DETECTED_ACTIVITY, -1) ?: -1
                     handleAutoStartFromTransition(detectedActivity)
                 }
             }
@@ -706,7 +709,7 @@ class LocationService : Service() {
         }
     }
 
-    private fun sendProximityNotification(favorite: com.example.data.model.SavedLocation) {
+    private fun sendProximityNotification(favorite: SavedLocation) {
         val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         
         // Canal especial para alertas si no existe
