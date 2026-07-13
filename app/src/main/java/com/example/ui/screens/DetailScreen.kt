@@ -167,7 +167,7 @@ fun DetailScreen(
                                         AsyncImage(
                                             model = wp.photoPath,
                                             contentDescription = wp.name,
-                                            modifier = Modifier.fillMaxSize().background(Color.LightGray)
+                                            modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceContainerHigh)
                                         )
                                     }
                                 }
@@ -370,7 +370,7 @@ fun DetailScreen(
                                     }) {
                                         Icon(
                                             imageVector = if (isLinked) Icons.Default.Check else Icons.Default.Add,
-                                            tint = if (isLinked) Color.Green else Color.Gray,
+                                            tint = if (isLinked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                                             contentDescription = if (isLinked) "Desvincular" else "Vincular"
                                         )
                                     }

@@ -1,3 +1,30 @@
+[2026/07/12 15:10 - Mapa Inmersivo: Scaffold → Box + barra inferior adaptativa en ExperienceMapScreen]
+- **ExperienceMapScreen.kt**: Eliminado Scaffold + TopAppBar. Reemplazado por Box(fillMaxSize) con 4 capas Z.
+- **@OptIn(ExperimentalMaterial3Api::class)**: Eliminado (ya no necesario sin Scaffold/TopAppBar).
+- **Imports**: Eliminados ExperimentalMaterial3Api, Scaffold, TopAppBar, TopAppBarDefaults. Añadidos Row, Surface, Spacer, statusBarsPadding, navigationBarsPadding.
+- **CAPA 0 - Mapa**: .fillMaxSize() completo, sin padding de barra superior.
+- **CAPA 1 - Panel fotos**: .align(TopStart) + .statusBarsPadding() (nace desde el borde real del dispositivo).
+- **CAPA 2 - FABs**: Reubicados de BottomStart a CenterEnd (lado derecho). Color unificado: primaryContainer/primary (eliminado Color.White).
+- **CAPA 3 - Barra inferior**: Nueva Surface adaptativa ArrowBack + "Experiencias" + Spacer(weight) + Share + Save. .navigationBarsPadding() para ergonomia Pixel 9.
+- **Share**: Conectado a viewModel.exportRoute(routeId).
+- **Save**: Conectado a viewModel.exportarRutaZip(routeId).
+- **CAPA 4 - FullScreenPhotoDialog**: Preservado sin cambios.
+- **Logica cinematica (auto-rotacion, bearing, GuideLinesOverlay)**: Preservada intacta.
+- **Lint**: 0 errores, 47 warnings (sin regresion).
+- **Compilacion**: BUILD SUCCESSFUL (38s).
+
+[2026/07/12 14:50 - Corrección de contraste: surfaceVariant → surfaceContainerHigh en DetailScreen.kt:170]
+- **DetailScreen.kt:170**: MaterialTheme.colorScheme.surfaceVariant → MaterialTheme.colorScheme.surfaceContainerHigh. El placeholder del AsyncImage ahora es visible en modo diurno, no solo en nocturno.
+- **Lint**: 0 errores, 47 warnings (sin regresion).
+- **Compilacion**: BUILD SUCCESSFUL (1m 22s).
+
+[2026/07/12 14:30 - Tokens semánticos MD3: purga de colores hardcodeados en DetailScreen.kt]
+- **DetailScreen.kt:170**: Color.LightGray → MaterialTheme.colorScheme.surfaceVariant (placeholder AsyncImage adaptativo al tema).
+- **DetailScreen.kt:373**: Color.Green/Color.Gray → MaterialTheme.colorScheme.primary / MaterialTheme.colorScheme.onSurfaceVariant (toggle vincular favoritos en ModalBottomSheet).
+- **DetailScreen.kt:475,479**: AndroidColor.GRAY preservado (MPAndroidChart externo, fuera del ecosistema Compose).
+- **Lint**: 0 errores, 47 warnings (sin regresión).
+- **Compilación**: BUILD SUCCESSFUL (25s).
+
 [2026/07/12 13:40 - Saneamiento de Lint: Zero Errors alcanzado (4→0 errores, 60→47 warnings)]
 - **ActivityRecognitionManager.kt**: Añadido @SuppressLint("MissingPermission") en stopTrackingTransitions().
 - **ProximityManager.kt**: Añadido @SuppressLint("MissingPermission") en stopScanning() y stopAdvertising(). Añadido import.
@@ -523,3 +550,23 @@ eplace en la lambda de exportación ZIP.
 
 
 
+
+[2026/07/12 23:30 - Dock Flotante Traslucido + GPS Telemetria en ExperienceMapScreen]
+- **RouteViewModel.kt**: Nuevo StateFlow<String> gpsAccuracy derivado de LocationService.latestLocation via .map + .stateIn. Categorias: Excelente (<5m), Buena (<15m), Regular (<50m), Baja (>50m).
+- **ExperienceMapScreen.kt**: CAPA 3 redisenada como dock flotante. Surface con surfaceContainerHigh.copy(alpha = 0.50f), shapes.large, padding(24.dp, 16.dp) para efecto flotante.
+- **Nuevo import**: Icons.Default.GpsFixed + collectAsStateWithLifecycle.
+- **Estado GPS**: Consumido via viewModel.gpsAccuracy.collectAsStateWithLifecycle(). Icono GpsFixed + texto categorizado en Row secundario bajo titulo.
+- **Estructura dock**: ArrowBack | Column("Experiencias" + GPS) | [Share + Save].
+- **Barra anterior eliminada**: Surface con alpha=0.96f, shapes.medium, shadow=6.dp removida.
+- **Lint**: 0 errores, 47 warnings (sin regression).
+- **Compilacion**: BUILD SUCCESSFUL (2m 6s).
+
+[2026/07/12 23:50 - GPS extraido del dock + Chip TopEnd + Ocultar atribucion osmdroid]
+- **ExperienceMapScreen.kt**: GPS Row removido del dock CAPA 3. Ahora el dock solo contiene: ArrowBack + "Experiencias" + Share + Save.
+- **Nuevo CAPA 1.5**: Chip GPS en Alignment.TopEnd + statusBarsPadding. Surface con surfaceContainerHigh.copy(alpha=0.70f), shapes.small. Contenido: Row(GpsFixed 12dp + gpsPrecisionState labelSmall).
+- **Nuevo import**: Icons.Default.GpsFixed, collectAsStateWithLifecycle.
+- **Barra inferior**: Preservada como dock flotante (alpha=0.50f, shapes.large, padding 24.dp horizontal).
+- **osmdroid attribution**: Oculto el TextView de atribucion del MapView via addOnLayoutChangeListener para evitar que se transparente a traves del dock.
+- **Lint**: 0 errores, 47 warnings (sin regression).
+- **Compilacion**: BUILD SUCCESSFUL (56s).
+- **Deploy**: Instalado en 2 dispositivos Pixel 9 Pro XL.

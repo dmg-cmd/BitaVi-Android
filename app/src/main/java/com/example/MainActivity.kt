@@ -1,4 +1,4 @@
-package com.example
+﻿package com.example
 
 import android.app.Activity
 import android.content.Context
@@ -748,7 +748,7 @@ fun MainContainer(viewModel: RouteViewModel, encryptedPrefs: SharedPreferences) 
                 ) {
                     // Zona Izquierda: Botones contextuales de DETAIL / EXPERIENCE_MAP
                     Box(modifier = Modifier.weight(1f)) {
-                        if (currentRoute == NavRoutes.DETAIL || currentRoute == NavRoutes.EXPERIENCE_MAP) {
+                        if (currentRoute == NavRoutes.DETAIL) {
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 if (currentRoute == NavRoutes.DETAIL) {
                                     IconButton(onClick = {
@@ -1036,7 +1036,6 @@ fun AgenviajeDrawerHeader() {
         )
     }
 }
-
 
 
 

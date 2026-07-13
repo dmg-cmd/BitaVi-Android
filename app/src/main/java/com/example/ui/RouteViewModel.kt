@@ -1,4 +1,4 @@
-package com.example.ui
+﻿package com.example.ui
 
 import android.location.Location
 import android.net.Uri
@@ -253,6 +253,23 @@ class RouteViewModel(
     val activeRouteIdLive: StateFlow<Int?> = LocationService.currentRouteId
     val latestLocationLive: StateFlow<Location?> = LocationService.latestLocation
     val currentActivityMode: StateFlow<ActivityMode> = LocationService.currentActivityMode
+
+    // GPS accuracy derived from latest location
+    val gpsAccuracy: StateFlow<String> = LocationService.latestLocation
+        .map { location ->
+            if (location != null && location.hasAccuracy()) {
+                val acc = location.accuracy.toInt()
+                when {
+                    acc <= 5 -> "GPS: Excelente (±${acc}m)"
+                    acc <= 15 -> "GPS: Buena (±${acc}m)"
+                    acc <= 50 -> "GPS: Regular (±${acc}m)"
+                    else -> "GPS: Baja (±${acc}m)"
+                }
+            } else {
+                "GPS: Buscando señal..."
+            }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "GPS: Buscando señal...")
 
     // ─── Flows: Repository-based ──────────────────────────────────
 
@@ -516,6 +533,5 @@ class RouteViewModel(
     fun shareLocation(location: SavedLocation) = shareUseCase.shareLocation(location)
 
 }
-
 
 

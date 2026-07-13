@@ -1,4 +1,4 @@
-package com.example.ui.screens
+﻿package com.example.ui.screens
 
 import com.example.ui.toRouteSegments
 import android.content.Intent
@@ -11,14 +11,19 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.animation.AnimatedVisibility
@@ -30,16 +35,19 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Explore
+import androidx.compose.material.icons.filled.GpsFixed
+import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.ZoomOutMap
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -59,6 +67,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.font.FontWeight
@@ -82,13 +91,10 @@ import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.Overlay
 import org.osmdroid.views.overlay.Polyline
 import org.osmdroid.views.overlay.gestures.RotationGestureOverlay
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.material.icons.filled.Explore
-import androidx.compose.material.icons.filled.ZoomOutMap
-import androidx.compose.ui.platform.LocalDensity
 import org.osmdroid.views.overlay.infowindow.InfoWindow
 import java.io.File
 import java.io.FileOutputStream
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 data class PhotoItem(
     val id: Int,
@@ -99,7 +105,6 @@ data class PhotoItem(
     val photoPath: String
 )
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ExperienceMapScreen(
     onBack: () -> Unit,
@@ -113,6 +118,7 @@ fun ExperienceMapScreen(
     val points by viewModel.selectedDetailPoints.collectAsState()
     val waypoints by viewModel.selectedDetailWaypoints.collectAsState()
     val linkedFavorites by viewModel.getFavoritesForRouteFlow(routeId).collectAsState(initial = emptyList())
+    val gpsPrecisionState by viewModel.gpsAccuracy.collectAsStateWithLifecycle()
 
     val mapView = remember { MapView(context) }
     val rotationGestureOverlay = remember { RotationGestureOverlay(mapView) }.apply {
@@ -187,6 +193,8 @@ fun ExperienceMapScreen(
         }
     }
 
+    val density = LocalDensity.current.density
+
     DisposableEffect(mapView) {
         mapView.onResume()
         onDispose {
@@ -209,234 +217,305 @@ fun ExperienceMapScreen(
         }
     }
 
-    Scaffold(
-        modifier = modifier,
-        topBar = {
-            TopAppBar(
-                title = { 
-                    Text(
-                        text = "Experiencias", 
-                        style = MaterialTheme.typography.titleLarge.copy(
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 20.sp
-                        )
-                    ) 
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Volver a la pantalla anterior"
-                        )
+    Box(modifier = modifier.fillMaxSize()) {
+
+        // ====================================================================
+        // CAPA 0: MAPA EN FULLSCREEN
+        // ====================================================================
+        AndroidView(
+            modifier = Modifier.fillMaxSize(),
+            factory = {
+                mapView.apply {
+                    setTileSource(TileSourceFactory.MAPNIK)
+                    setMultiTouchControls(true)
+                    zoomController.setVisibility(CustomZoomButtonsController.Visibility.NEVER)
+                    setBuiltInZoomControls(false)
+                    post {
+                        // Explicitly remove any non-tile overlay that could render UI buttons
+                        overlays.removeAll { it !is org.osmdroid.views.overlay.gestures.RotationGestureOverlay && it !is org.osmdroid.views.overlay.TilesOverlay }
                     }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    titleContentColor = MaterialTheme.colorScheme.onSurface,
-                    navigationIconContentColor = MaterialTheme.colorScheme.onSurface
-                )
-            )
-        }
-    ) { paddingValues ->
-        Box(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
-                val density = LocalDensity.current.density
-            if (points.isEmpty() && linkedFavorites.isEmpty() && waypoints.isEmpty()) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator()
-                }
-            } else {
-                android.util.Log.d("EXPERIENCE_MAP", "RENDERING ROW, panelItems=${panelItems.size}")
-        Box(modifier = Modifier.fillMaxSize()) {
-                    AndroidView(
-                        modifier = Modifier.fillMaxSize(),
-                        factory = {
-                            mapView.apply {
-                                setTileSource(TileSourceFactory.MAPNIK)
-                                setMultiTouchControls(true)
-                                zoomController.setVisibility(CustomZoomButtonsController.Visibility.NEVER)
-                                overlays.add(rotationGestureOverlay)
-                            }
-                        },
-                         update = { view ->
-                            val overlays = view.overlays
-                            overlays.removeIf { it is Marker || it is GuideLinesOverlay || it is Polyline }
-
-                            if (sortedPoints.isNotEmpty()) {
-                                sortedPoints.toRouteSegments().forEach { seg ->
-                                    overlays.add(Polyline().apply {
-                                        setPoints(seg.points)
-                                        outlinePaint.color = seg.color
-                                        outlinePaint.strokeWidth = viewModel.mapStrokeWidth
-                                    })
-                                }
-                            }
-
-                            waypoints.forEach { wp ->
-                                overlays.add(Marker(view).apply {
-                                    position = GeoPoint(wp.latitude, wp.longitude)
-                                    title = wp.name
-                                    snippet = wp.description
-                                    setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
-                                    icon = getCachedIcon(android.R.drawable.star_on, wp.color)
-                                    setOnMarkerClickListener { _, _ ->
-                                        val item = PhotoItem(wp.id, "waypoint", wp.name, wp.latitude, wp.longitude, wp.photoPath ?: "")
-                                        if (panelItems.none { it.id == wp.id && it.type == "waypoint" }) {
-                                            panelItems.add(item)
-                                        }
-                                        true
-                                    }
-                                })
-                            }
-
-                            linkedFavorites.forEach { fav ->
-                                overlays.add(Marker(view).apply {
-                                    position = GeoPoint(fav.latitude, fav.longitude)
-                                    title = fav.name
-                                    icon = getCachedIcon(android.R.drawable.btn_star_big_on, fav.color)
-                                    setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
-                                    setOnMarkerClickListener { _, _ ->
-                                        val item = PhotoItem(fav.id, "favorite", fav.name, fav.latitude, fav.longitude, fav.photoPath ?: "")
-                                        if (panelItems.none { it.id == fav.id && it.type == "favorite" }) {
-                                            panelItems.add(item)
-                                        }
-                                        true
-                                    }
-                                })
-                            }
-
-                            if (panelItems.isNotEmpty()) {
-                                overlays.add(GuideLinesOverlay(
-                                    scrollOffset = { overlayScrollOffset },
-                                    photoItems = panelItems,
-                                        density = density,
-                                ))
-                            }
-
-                            // 🧭 Modo Navegación de Experiencia (Rotación Automática y Suavizado)
-                            if (isAutoRotationEnabled) {
-                                val currentOrientation = view.mapOrientation
-                                val deltaAngle = experienceBearing - currentOrientation
-                                
-                                // Normalización estricta del delta de ángulo
-                                val normalizedDiff = ((deltaAngle + 180f) % 360f - 360f) % 360f + 180f
-                                
-                                if (Math.abs(normalizedDiff) > 1.0f) {
-                                    // Filtro Lerp de baja frecuencia (alpha = 0.15f)
-                                    view.mapOrientation = currentOrientation + (normalizedDiff * 0.15f)
-                                }
-                            } else if (view.mapOrientation != 0f) {
-                                // Si se desactiva y el mapa está girado, volvemos a 0f
-                                view.mapOrientation = 0f
-                            }
-
-                            view.invalidate()
+                    overlays.add(rotationGestureOverlay)
+                    // Hide OSM attribution bar (visible through transparent dock)
+                    addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+                        for (i in 0 until childCount) {
+                            (getChildAt(i) as? android.widget.TextView)?.visibility = android.view.View.GONE
+                        // Also hide potential OSM logo ImageView
+                        (getChildAt(i) as? android.widget.ImageView)?.visibility = android.view.View.GONE
                         }
-                        )
+                    }
+                }
+            },
+            update = { view ->
+                val overlays = view.overlays
+                overlays.removeIf { it is Marker || it is GuideLinesOverlay || it is Polyline }
 
-                    AnimatedVisibility(
-                        visible = panelItems.isNotEmpty(),
-                        enter = fadeIn() + slideInHorizontally(),
-                        exit = fadeOut() + slideOutHorizontally()
-                    ) {
-                        Column(
+                if (sortedPoints.isNotEmpty()) {
+                    sortedPoints.toRouteSegments().forEach { seg ->
+                        overlays.add(Polyline().apply {
+                            setPoints(seg.points)
+                            outlinePaint.color = seg.color
+                            outlinePaint.strokeWidth = viewModel.mapStrokeWidth
+                        })
+                    }
+                }
+
+                waypoints.forEach { wp ->
+                    overlays.add(Marker(view).apply {
+                        position = GeoPoint(wp.latitude, wp.longitude)
+                        title = wp.name
+                        snippet = wp.description
+                        setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+                        icon = getCachedIcon(android.R.drawable.star_on, wp.color)
+                        setOnMarkerClickListener { _, _ ->
+                            val item = PhotoItem(wp.id, "waypoint", wp.name, wp.latitude, wp.longitude, wp.photoPath ?: "")
+                            if (panelItems.none { it.id == wp.id && it.type == "waypoint" }) {
+                                panelItems.add(item)
+                            }
+                            true
+                        }
+                    })
+                }
+
+                linkedFavorites.forEach { fav ->
+                    overlays.add(Marker(view).apply {
+                        position = GeoPoint(fav.latitude, fav.longitude)
+                        title = fav.name
+                        icon = getCachedIcon(android.R.drawable.btn_star_big_on, fav.color)
+                        setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+                        setOnMarkerClickListener { _, _ ->
+                            val item = PhotoItem(fav.id, "favorite", fav.name, fav.latitude, fav.longitude, fav.photoPath ?: "")
+                            if (panelItems.none { it.id == fav.id && it.type == "favorite" }) {
+                                panelItems.add(item)
+                            }
+                            true
+                        }
+                    })
+                }
+
+                if (panelItems.isNotEmpty()) {
+                    overlays.add(GuideLinesOverlay(
+                        scrollOffset = { overlayScrollOffset },
+                        photoItems = panelItems,
+                        density = density,
+                    ))
+                }
+
+                // 🧭 Modo Navegación de Experiencia (Rotación Automática y Suavizado)
+                if (isAutoRotationEnabled) {
+                    val currentOrientation = view.mapOrientation
+                    val deltaAngle = experienceBearing - currentOrientation
+                    
+                    // Normalización estricta del delta de ángulo
+                    val normalizedDiff = ((deltaAngle + 180f) % 360f - 360f) % 360f + 180f
+                    
+                    if (Math.abs(normalizedDiff) > 1.0f) {
+                        // Filtro Lerp de baja frecuencia (alpha = 0.15f)
+                        view.mapOrientation = currentOrientation + (normalizedDiff * 0.15f)
+                    }
+                } else if (view.mapOrientation != 0f) {
+                    // Si se desactiva y el mapa está girado, volvemos a 0f
+                    view.mapOrientation = 0f
+                }
+
+                view.invalidate()
+            }
+        )
+
+        // ====================================================================
+        // CAPA 1: PANEL DE FOTOS TRANSLÚCIDO (LATERAL IZQUIERDO)
+        // ====================================================================
+        AnimatedVisibility(
+            visible = panelItems.isNotEmpty(),
+            enter = fadeIn() + slideInHorizontally(),
+            exit = fadeOut() + slideOutHorizontally(),
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .statusBarsPadding()
+        ) {
+            Column(
+                modifier = Modifier
+                    .width(160.dp)
+                    .fillMaxHeight()
+                    .background(Color(0x80000000))
+                    .verticalScroll(scrollState)
+            ) {
+                panelItems.forEach { item ->
+                    Box(modifier = Modifier.fillMaxWidth().height(90.dp)) {
+                        if (!item.photoPath.isNullOrBlank()) {
+                            AsyncImage(
+                                model = ImageRequest.Builder(context)
+                                    .data(item.photoPath)
+                                    .allowHardware(false)
+                                    .build(),
+                                contentDescription = item.name,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .clickable { photoToZoom = item.photoPath },
+                                contentScale = ContentScale.Crop
+                            )
+                        } else {
+                            Box(modifier = Modifier.fillMaxSize().clickable { photoToZoom = item.photoPath }, contentAlignment = Alignment.Center) {
+                                Text(item.name, color = Color.White, fontSize = 12.sp)
+                            }
+                        }
+                        Box(
                             modifier = Modifier
-                                .width(160.dp)
-                                .fillMaxHeight()
-                                .background(Color(0x80000000))
-                                .verticalScroll(scrollState)
-                        ) {
-                            panelItems.forEach { item ->
-                                Box(modifier = Modifier.fillMaxWidth().height(90.dp)) {
-                                    if (!item.photoPath.isNullOrBlank()) {
-                                        AsyncImage(
-                                            model = ImageRequest.Builder(context)
-                                                .data(item.photoPath)
-                                                .allowHardware(false)
-                                                .build(),
-                                            contentDescription = item.name,
-                                            modifier = Modifier
-                                                .fillMaxSize()
-                                                .clickable { photoToZoom = item.photoPath },
-                                            contentScale = ContentScale.Crop
-                                        )
-                                    } else {
-                                        Box(modifier = Modifier.fillMaxSize().clickable { photoToZoom = item.photoPath }, contentAlignment = Alignment.Center) {
-                                            Text(item.name, color = Color.White, fontSize = 12.sp)
-                                        }
-                                    }
-                                    Box(
-                                        modifier = Modifier
-                                            .align(Alignment.TopEnd)
-                                            .size(28.dp)
-                                            .padding(4.dp)
-                                            .background(Color.Black.copy(alpha = 0.6f), CircleShape)
-                                            .clickable {
-                                                panelItems.remove(item)
-                                            },
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(
-                                            Icons.Default.Close,
-                                            contentDescription = "Quitar del panel",
-                                            tint = Color.White,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // Botones flotantes abajo a la izquierda (Alineados verticalmente en columna)
-                if (points.isNotEmpty()) {
-                    Column(
-                        modifier = Modifier
-                            .align(Alignment.BottomStart)
-                            .padding(bottom = 32.dp, start = 16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        // Botón de Auto-Rotación/Simulación de Experiencia
-                        androidx.compose.material3.FloatingActionButton(
-                            onClick = {
-                                isAutoRotationEnabled = !isAutoRotationEnabled
-                                if (!isAutoRotationEnabled) {
-                                    mapView.mapOrientation = 0f
-                                }
-                            },
-                            containerColor = if (isAutoRotationEnabled) MaterialTheme.colorScheme.primaryContainer else Color.White
+                                .align(Alignment.TopEnd)
+                                .size(28.dp)
+                                .padding(4.dp)
+                                .background(Color.Black.copy(alpha = 0.6f), CircleShape)
+                                .clickable {
+                                    panelItems.remove(item)
+                                },
+                            contentAlignment = Alignment.Center
                         ) {
                             Icon(
-                                imageVector = Icons.Default.Explore,
-                                contentDescription = "Simular Ruta",
-                                tint = if (isAutoRotationEnabled) MaterialTheme.colorScheme.onPrimaryContainer else Color.Black
-                            )
-                        }
-
-                        // Botón de Centrar vista en toda la ruta
-                        androidx.compose.material3.FloatingActionButton(
-                            onClick = {
-                                isAutoRotationEnabled = false
-                                mapView.mapOrientation = 0f
-                                val geoPoints = sortedPoints.map { GeoPoint(it.latitude, it.longitude) }
-                                if (geoPoints.isNotEmpty()) {
-                                    try {
-                                        val boundingBox = BoundingBox.fromGeoPoints(geoPoints)
-                                        mapView.zoomToBoundingBox(boundingBox, true, 100)
-                                    } catch (_: Exception) {}
-                                }
-                            },
-                            containerColor = Color.White
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.ZoomOutMap,
-                                contentDescription = "Ver Todo",
-                                tint = Color.Black
+                                Icons.Default.Close,
+                                contentDescription = "Quitar del panel",
+                                tint = Color.White,
+                                modifier = Modifier.size(16.dp)
                             )
                         }
                     }
                 }
+            }
+        }
 
+        // ====================================================================
+        // CAPA 1.5: INDICADOR GPS (TOP END)
+        // ====================================================================
+        Surface(
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .statusBarsPadding()
+                .padding(end = 16.dp, top = 8.dp),
+            shape = MaterialTheme.shapes.small,
+            color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.70f),
+            shadowElevation = 2.dp
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.GpsFixed,
+                    contentDescription = "Precisión de señal GPS",
+                    tint = MaterialTheme.colorScheme.secondary,
+                    modifier = Modifier.size(12.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = gpsPrecisionState,
+                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        // CAPA 2: CONTROLES FLOTANTES DE NAVEGACIÓN (LATERAL DERECHO)
+        // ====================================================================
+        if (points.isNotEmpty()) {
+            Column(
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .padding(end = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // Botón de Auto-Rotación/Simulación de Experiencia
+                FloatingActionButton(
+                    onClick = {
+                        isAutoRotationEnabled = !isAutoRotationEnabled
+                        if (!isAutoRotationEnabled) {
+                            mapView.mapOrientation = 0f
+                        }
+                    },
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.primary,
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Explore,
+                        contentDescription = "Simular Ruta",
+                    )
+                }
+
+                // Botón de Centrar vista en toda la ruta
+                FloatingActionButton(
+                    onClick = {
+                        isAutoRotationEnabled = false
+                        mapView.mapOrientation = 0f
+                        val geoPoints = sortedPoints.map { GeoPoint(it.latitude, it.longitude) }
+                        if (geoPoints.isNotEmpty()) {
+                            try {
+                                val boundingBox = BoundingBox.fromGeoPoints(geoPoints)
+                                mapView.zoomToBoundingBox(boundingBox, true, 100)
+                            } catch (_: Exception) {}
+                        }
+                    },
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.primary,
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.ZoomOutMap,
+                        contentDescription = "Ver Todo",
+                    )
+                }
+            }
+        }
+
+        // ====================================================================
+        // CAPA 3: DOCK FLOTANTE INFERIOR (50% TRANSPARENCIA)
+        // ====================================================================
+        Surface(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 16.dp),
+            shape = MaterialTheme.shapes.large,
+            color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.50f),
+            shadowElevation = 4.dp
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = onBack) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Volver atrás",
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(12.dp))
+
+                Text(
+                    text = "Experiencias",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+
+                Spacer(modifier = Modifier.weight(1f))
+
+                IconButton(onClick = { viewModel.exportRoute(routeId) }) {
+                    Icon(
+                        imageVector = Icons.Default.Share,
+                        contentDescription = "Compartir recorrido",
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(8.dp))
+
+                IconButton(onClick = { viewModel.exportarRutaZip(routeId) }) {
+                    Icon(
+                        imageVector = Icons.Default.Save,
+                        contentDescription = "Guardar recorrido",
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
             }
         }
     }
@@ -483,4 +562,3 @@ class GuideLinesOverlay(
         }
     }
 }
-

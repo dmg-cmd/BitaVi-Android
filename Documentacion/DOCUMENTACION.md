@@ -135,3 +135,8 @@ avigationBarsPadding(): colchón dinámico que empuja la barra por encima de la 
 - **Lint residual**: ~49 warnings reales + 5 falsos positivos Markdown. Fase 11 declinada por ROI negativo (riesgo de regresión en delegados Compose no justifica barrer imports cosméticos).
 - **Tiempo de compilación**: 41s (vs >2min al inicio de la sesión, mejora del 65%).
 - **Declaración**: Suite BiTaRu declarada Production-Ready bajo el amparo del protocolo de Código Seguro y Modularidad Estricta.
+
+## 10. Mapa de Experiencia Inmersivo (ExperienceMapScreen)
+- **Arquitectura**: Box(fillMaxSize) con 4 capas Z: [0] MapView fullscreen, [1] Panel fotos translucido lateral, [2] FABs navegacion, [3] Dock flotante inferior, [4] Dialogos.
+- **Dock Flotante**: Barra inferior con 50% de transparencia (surfaceContainerHigh alpha=0.50), bordes grandes (shapes.large) y margen flotante (padding 24.dp). Contiene: boton retroceso, titulo + indicador de precision GPS, botones Compartir y Guardar.
+- **GPS Telemetria**: Prevision categorizada en 4 niveles (Excelente/Buena/Regular/Baja) segun accuracy del LocationService. Consumido reactivamente via StateFlow en RouteViewModel + collectAsStateWithLifecycle.
