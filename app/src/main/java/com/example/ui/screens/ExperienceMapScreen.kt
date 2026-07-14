@@ -1,5 +1,7 @@
-﻿package com.example.ui.screens
+package com.example.ui.screens
 
+import com.example.ui.theme.IconCompartir
+import com.example.ui.theme.IconExportar
 import com.example.ui.toRouteSegments
 import android.content.Intent
 import android.graphics.Bitmap
@@ -503,7 +505,7 @@ fun ExperienceMapScreen(
                     Icon(
                         imageVector = Icons.Default.Share,
                         contentDescription = "Compartir recorrido",
-                        tint = MaterialTheme.colorScheme.primary
+                        tint = IconCompartir
                     )
                 }
 
@@ -513,7 +515,7 @@ fun ExperienceMapScreen(
                     Icon(
                         imageVector = Icons.Default.Save,
                         contentDescription = "Guardar recorrido",
-                        tint = MaterialTheme.colorScheme.primary
+                        tint = IconExportar
                     )
                 }
             }

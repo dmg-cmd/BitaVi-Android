@@ -140,3 +140,32 @@ avigationBarsPadding(): colchón dinámico que empuja la barra por encima de la 
 - **Arquitectura**: Box(fillMaxSize) con 4 capas Z: [0] MapView fullscreen, [1] Panel fotos translucido lateral, [2] FABs navegacion, [3] Dock flotante inferior, [4] Dialogos.
 - **Dock Flotante**: Barra inferior con 50% de transparencia (surfaceContainerHigh alpha=0.50), bordes grandes (shapes.large) y margen flotante (padding 24.dp). Contiene: boton retroceso, titulo + indicador de precision GPS, botones Compartir y Guardar.
 - **GPS Telemetria**: Prevision categorizada en 4 niveles (Excelente/Buena/Regular/Baja) segun accuracy del LocationService. Consumido reactivamente via StateFlow en RouteViewModel + collectAsStateWithLifecycle.
+
+## 13/07/2026 - Paleta semantica de colores para botones de accion
+- **IconCompartir** (Cian #4DD0E1): Botones de compartir/enviar. Ej: icono Send en Compartir ruta.
+- **IconExportar** (Amber #FFB74D): Botones de exportar/guardar/descargar. Ej: iconos GPX, CSV, ZIP.
+- **IconFavorito** (Dorado #FFD54F): Botones de marcar/agregar a favoritos. Ej: icono corazon en Vincular Favoritos.
+- **Definiciones**: Centralizadas en Color.kt (com.example.ui.theme). Visibles sobre fondo oscuro #1C1B1F en cualquier tema.
+## 13/07/2026 — Esquema de referencia de pantallas (ESQUEMA_PANTALLAS.md)
+- Se creo Documentacion/ESQUEMA_PANTALLAS.md con diagramas ASCII de todas las pantallas del proyecto.
+- Cada pantalla tiene un sistema de numeracion PANTALLA.BARRA.BOTON para referenciar elementos UI sin ambiguedad.
+- Incluye colores semanticos para botones de accion (Compartir=Cian, Exportar=Amber, Favorito=Dorado).
+- El agente ahora carga este esquema al iniciar sesion para mejorar la comunicacion.
+- Los botones de la sub-barra de detalle ahora usan colores semanticos visibles sobre fondo oscuro.
+
+## 14/07/2026 — Sub-barra dinámica de historial (DynamicHistoryBottomBar)
+- **DynamicHistoryBottomBar.kt**: Nueva sub-barra contextual con dos estados:
+  - **Normal**: Export All (Amber IconExportar), Delete All (Rojo IconEliminar), Close (←), GPS Accuracy (Verde/rojo segun precision).
+  - **Multiselect**: Cancelar + contador + Export Selected (Amber) + Delete Selected (Rojo).
+- **MainActivity.kt (Capa 2 BETA)**: Integrado DynamicHistoryBottomBar para ruta HISTORY via if-else. La capsula GPS se preserva en el bloque else para rutas DETAIL, EXPERIENCE_MAP, etc.
+- **RouteViewModel.kt**: Nuevo estado _selectedRouteIds: MutableStateFlow<Set<Int>> con metodos toggleSelection(), clearSelection(), deleteRoutes().
+- **HistoryScreen.kt**: Refactor para consumir iewModel.selectedRouteIds en lugar de estado local. Botones exportar/eliminar ahora operan sobre seleccion del ViewModel.
+- **Color.kt**: Nuevo IconEliminar = Color(0xFFE74C3C) (Rojo) para acciones de eliminacion.
+## 14/07/2026 — WaypointsHorizontalSelector (Puntos de Interés con Empty State)
+- **Sección 4.5 (Puntos de Interés)**: Refactorizada en un composable independiente WaypointsHorizontalSelector.
+- **Empty State integrado**: Cuando la ruta no tiene waypoints, se muestra un OutlinedCard con icono Place + mensaje "Sin puntos de interés. Añade el primero" + botón "Añadir" que navega a la creación.
+- **Modo con datos**: LazyRow horizontal de ElevatedCards, cada una con foto (AsyncImage o icono Place por defecto), nombre en negrita y descripción en dos líneas.
+- **Diagnóstico en Logcat**: LaunchedEffect registra el conteo de waypoints con tag "BitaruDebug" para depuración.
+- **Navegación robusta**: LaunchedEffect en MainActivity.kt asegura que selectRouteForDetail() se ejecute al navegar a DetailScreen.
+- **Creación desde detalle**: prepareWaypointCreation(routeId) en RouteViewModel sincroniza el estado para que el flujo de creación de waypoints funcione en rutas del historial.
+

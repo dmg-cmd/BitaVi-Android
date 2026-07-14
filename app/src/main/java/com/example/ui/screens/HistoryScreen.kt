@@ -28,9 +28,6 @@ import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.TimeUnit
 
-/**
- * Pantalla Historial con soporte para selección múltiple y exportación GPX.
- */
 @Composable
 fun HistoryScreen(
     viewModel: RouteViewModel,
@@ -40,15 +37,12 @@ fun HistoryScreen(
     modifier: Modifier = Modifier
 ) {
     val routes by viewModel.allRoutes.collectAsState()
+    val selectedRouteIds by viewModel.selectedRouteIds.collectAsState()
+    val isSelectionMode = selectedRouteIds.isNotEmpty()
     var routeToDelete by remember { mutableStateOf<Route?>(null) }
     var showBulkDeleteConfirm by remember { mutableStateOf(false) }
     var showImportDialog by remember { mutableStateOf(false) }
-    
-    // Estado para selección múltiple
-    var selectedRouteIds by remember { mutableStateOf(setOf<Int>()) }
-    val isSelectionMode = selectedRouteIds.isNotEmpty()
 
-    // Forzamos el ordenamiento por fecha (más reciente primero)
     val sortedRoutes = remember(routes) {
         routes.sortedByDescending { it.startTime }
     }
@@ -97,20 +91,20 @@ fun HistoryScreen(
             ) {
                 Icon(
                     imageVector = Icons.Default.HistoryToggleOff,
-                    contentDescription = "Historial vacío",
+                    contentDescription = "Historial vacio",
                     tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
                     modifier = Modifier.size(80.dp)
                 )
                 Spacer(modifier = Modifier.height(20.dp))
                 Text(
-                    text = "Aún no hay rutas guardadas",
+                    text = "Aun no hay rutas guardadas",
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onBackground
                 )
                 Spacer(modifier = Modifier.height(10.dp))
                 Text(
-                    text = "¡Sal al aire libre y graba tu primera aventura!",
+                    text = "!Sal al aire libre y graba tu primera aventura!",
                     style = MaterialTheme.typography.bodyMedium,
                     textAlign = TextAlign.Center,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -143,32 +137,14 @@ fun HistoryScreen(
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 18.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = if (isSelectionMode) "${selectedRouteIds.size} seleccionadas" else "Mis Recorridos",
+                            text = "Mis Recorridos",
                             style = MaterialTheme.typography.headlineMedium,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurface
                         )
-                        
-                        if (isSelectionMode) {
-                            Row {
-                                IconButton(onClick = { 
-                                    viewModel.exportRoutesAsGPX(selectedRouteIds)
-                                    selectedRouteIds = emptySet()
-                                }) {
-                                    Icon(Icons.Default.Share, contentDescription = "Exportar", tint = MaterialTheme.colorScheme.primary)
-                                }
-                                IconButton(onClick = { showBulkDeleteConfirm = true }) {
-                                    Icon(Icons.Default.Delete, contentDescription = "Borrar seleccionadas", tint = MaterialTheme.colorScheme.error)
-                                }
-                                IconButton(onClick = { selectedRouteIds = emptySet() }) {
-                                    Icon(Icons.Default.Close, contentDescription = "Cancelar")
-                                }
-                            }
-                        }
                     }
                 }
 
@@ -183,9 +159,9 @@ fun HistoryScreen(
                             route = route,
                             isSelected = isSelected,
                             isSelectionMode = isSelectionMode,
-                            onClick = { 
+                            onClick = {
                                 if (isSelectionMode) {
-                                    selectedRouteIds = if (isSelected) selectedRouteIds - route.id else selectedRouteIds + route.id
+                                    viewModel.toggleSelection(route.id)
                                 } else {
                                     viewModel.selectRouteForDetail(route.id)
                                     onRouteClick(route.id)
@@ -193,7 +169,7 @@ fun HistoryScreen(
                             },
                             onLongClick = {
                                 if (!isSelectionMode) {
-                                    selectedRouteIds = setOf(route.id)
+                                    viewModel.toggleSelection(route.id)
                                 }
                             },
                             onDelete = { routeToDelete = route },
@@ -204,7 +180,6 @@ fun HistoryScreen(
             }
         }
 
-        // ✨ FAB de importación omnipresente
         ExtendedFloatingActionButton(
             onClick = { showImportDialog = true },
             icon = { Icon(Icons.Default.UploadFile, contentDescription = null) },
@@ -217,13 +192,12 @@ fun HistoryScreen(
         )
     }
 
-    // Modal de Confirmación de Borrado
     routeToDelete?.let { route ->
         AlertDialog(
             onDismissRequest = { routeToDelete = null },
             icon = { Icon(Icons.Default.DeleteForever, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
-            title = { Text("¿Eliminar recorrido?") },
-            text = { Text("Esta acción eliminará de forma irreversible el recorrido '${route.name}'.") },
+            title = { Text("Eliminar recorrido?") },
+            text = { Text("Esta accion eliminara de forma irreversible el recorrido '" + route.name + "'.") },
             confirmButton = {
                 Button(
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
@@ -243,14 +217,14 @@ fun HistoryScreen(
         AlertDialog(
             onDismissRequest = { showBulkDeleteConfirm = false },
             icon = { Icon(Icons.Default.DeleteSweep, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
-            title = { Text("¿Eliminar ${selectedRouteIds.size} recorridos?") },
-            text = { Text("Se eliminarán de forma permanente todos los recorridos seleccionados y sus datos asociados.") },
+            title = { Text("Eliminar " + selectedRouteIds.size + " recorridos?") },
+            text = { Text("Se eliminaran de forma permanente todos los recorridos seleccionados y sus datos asociados.") },
             confirmButton = {
                 Button(
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
                     onClick = {
                         viewModel.deleteRoutes(selectedRouteIds)
-                        selectedRouteIds = emptySet()
+                        viewModel.clearSelection()
                         showBulkDeleteConfirm = false
                     }
                 ) { Text("Eliminar todos") }
@@ -261,7 +235,6 @@ fun HistoryScreen(
         )
     }
 
-    // ✨ Diálogo de selección de formato de importación
     if (showImportDialog) {
         AlertDialog(
             onDismissRequest = { showImportDialog = false },
@@ -349,13 +322,13 @@ fun RouteCard(
             Spacer(modifier = Modifier.height(14.dp))
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 StatItem(icon = Icons.AutoMirrored.Filled.TrendingUp, value = String.format(Locale.ROOT, "%.2f km", km), label = "Distancia", tint = MaterialTheme.colorScheme.primary)
-                StatItem(icon = Icons.Default.Schedule, value = formattedDuration, label = "Duración", tint = MaterialTheme.colorScheme.secondary)
+                StatItem(icon = Icons.Default.Schedule, value = formattedDuration, label = "Duracion", tint = MaterialTheme.colorScheme.secondary)
             }
             if (route.maxSpeed > 0) {
                 Spacer(modifier = Modifier.height(8.dp))
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     StatItem(icon = Icons.Default.Speed, value = String.format(Locale.ROOT, "%.1f km/h", route.avgSpeed * 3.6f), label = "Promedio", tint = Color(0xFF4CAF50))
-                    StatItem(icon = Icons.Default.Bolt, value = String.format(Locale.ROOT, "%.1f km/h", route.maxSpeed * 3.6f), label = "Máxima", tint = Color(0xFFFF9800))
+                    StatItem(icon = Icons.Default.Bolt, value = String.format(Locale.ROOT, "%.1f km/h", route.maxSpeed * 3.6f), label = "Maxima", tint = Color(0xFFFF9800))
                 }
             }
         }

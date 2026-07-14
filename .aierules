@@ -29,3 +29,15 @@ Al finalizar cada tarea o antes de cerrar la sesión, el agente DEBE:
 - Ser conciso pero técnicamente preciso.
 - Siempre desplegar la app en el dispositivo (`deploy`) tras cambios significativos.
 - No borrar historial previo en los archivos de texto; siempre añadir al final o principio según el formato.
+## Convencion de Colores para Botones de Accion
+- IconCompartir (Color 0xFF4DD0E1, Cian) para cualquier boton de compartir/enviar.
+- IconExportar (Color 0xFFFFB74D, Amber) para cualquier boton de exportar/guardar/descargar.
+- IconFavorito (Color 0xFFFFD54F, Dorado) para cualquier boton de marcar/agregar a favoritos.
+- Definiciones centralizadas en pp/src/main/java/com/example/ui/theme/Color.kt.
+- Siempre usar estas constantes en lugar de colores hardcodeados para acciones semanticas.
+- Iconos: Icons.Default.Favorite (lleno) para favoritos, iconos de accion segun contexto.
+
+## Esquema de Referencia de Pantallas (IMPORTANTE)
+- Leer `Documentacion/ESQUEMA_PANTALLAS.md` al iniciar sesion para conocer la nomenclatura exacta de cada pantalla, barra y boton.
+- Usar el sistema de numeracion `PANTALLA.BARRA.BOTON` (ej: 4.2.3 = Pantalla Detalle, Sub-barra, Exportar) para referenciar elementos UI.
+- Los colores semanticos de botones se definen en `app/src/main/java/com/example/ui/theme/Color.kt`.

@@ -50,6 +50,7 @@ import java.util.concurrent.TimeUnit
 import androidx.core.graphics.toColorInt
 import java.util.Locale
 
+import android.util.Log
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DetailScreen(
@@ -143,45 +144,19 @@ fun DetailScreen(
                     }
                 }
             }
-            // PUNTOS DE INTERÉS Y FOTOS
-            if (waypoints.isNotEmpty()) {
-                Text("Puntos de Interés", modifier = Modifier.padding(16.dp), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                LazyRow(
-                    modifier = Modifier.fillMaxWidth(),
-                    contentPadding = PaddingValues(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    items(waypoints) { wp ->
-                        Card(
-                            modifier = Modifier.width(200.dp),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Column {
-                                if (wp.photoPath != null) {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .height(120.dp)
-                                            .clickable { photoToZoom = wp.photoPath }
-                                    ) {
-                                        AsyncImage(
-                                            model = wp.photoPath,
-                                            contentDescription = wp.name,
-                                            modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                                        )
-                                    }
-                                }
-                                Column(modifier = Modifier.padding(12.dp)) {
-                                    Text(text = wp.name, fontWeight = FontWeight.Bold, maxLines = 1)
-                                    if (wp.author.isNotBlank()) {
-                                        Text(text = "Por: ${wp.author}", style = MaterialTheme.typography.labelSmall)
-                                    }
-                                    Text(text = wp.description, style = MaterialTheme.typography.bodySmall, maxLines = 2)
-                                }
-                            }
-                        }
-                    }
+            // PUNTOS DE INTERÉS Y FOTOS (4.5)
+            WaypointsHorizontalSelector(
+                waypoints = waypoints,
+                onWaypointClick = { wp ->
+                    if (wp.photoPath != null) { photoToZoom = wp.photoPath }
+                },
+                onAddWaypointClick = {
+                    viewModel.prepareWaypointCreation(routeId)
                 }
+            )
+
+            LaunchedEffect(routeId, waypoints) {
+                Log.d("BitaruDebug", "Puntos de interés: ${waypoints.size}")
             }
 
             // ANÁLISIS CON IA

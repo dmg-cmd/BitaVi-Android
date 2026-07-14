@@ -1,4 +1,4 @@
-﻿package com.example
+package com.example
 
 import android.app.Activity
 import android.content.Context
@@ -124,7 +124,11 @@ import com.example.ui.screens.MapScreen
 import com.example.ui.screens.RouteAnalyticsScreen
 import com.example.ui.screens.RouteOptionsMenu
 import com.example.ui.screens.SavedLocationsScreen
+import com.example.ui.screens.DynamicHistoryBottomBar
 import com.example.ui.theme.MyApplicationTheme
+import com.example.ui.theme.IconFavorito
+import com.example.ui.theme.IconCompartir
+import com.example.ui.theme.IconExportar
 import com.example.util.AppConstants
 import java.io.File
 import java.io.FileOutputStream
@@ -757,12 +761,12 @@ fun MainContainer(viewModel: RouteViewModel, encryptedPrefs: SharedPreferences) 
                                         Icon(Icons.Default.Explore, "Mapa de experiencia", tint = Color(0xFF7C4DFF))
                                     }
                                     IconButton(onClick = { viewModel.detailAction = DetailAction.ShowSheet }) {
-                                        Icon(Icons.Default.BookmarkBorder, "Favoritos")
+                                        Icon(Icons.Default.Favorite, "Favoritos", tint = IconFavorito)
                                     }
                                     IconButton(onClick = {
                                         val name = viewModel.selectedDetailRoute.value?.name ?: ""
                                         viewModel.detailAction = DetailAction.ShowEditDialog(name)
-                                    }) { Icon(Icons.Default.Edit, "Editar nombre") }
+                                    }) { Icon(Icons.Default.Edit, "Editar nombre", tint = IconExportar) }
                                     val rid = currentDetailRouteId
                                     if (rid != null) {
                                         RouteOptionsMenu(
@@ -791,37 +795,57 @@ fun MainContainer(viewModel: RouteViewModel, encryptedPrefs: SharedPreferences) 
                                                 Intent.createChooser(intent, "Compartir pantalla").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).let(context::startActivity)
                                             } catch (e: Exception) { Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show() }
                                         }
-                                    }) { Icon(Icons.Default.Share, "Compartir pantalla") }
+                                    }) { Icon(Icons.Default.Share, "Compartir pantalla", tint = IconCompartir) }
                                     IconButton(onClick = {
                                         val ts = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
                                         val routeName = viewModel.selectedDetailRoute.value?.name ?: "ruta"
                                         val sanitized = routeName.trim().replace(Regex("[\\s/\\\\?%*:|\"<>]"), "_")
                                         val exportName = "ROUTE_${currentExperienceRouteId ?: 0}_${sanitized}_$ts"
                                         experienceSaveZipLauncher.launch("$exportName.zip")
-                                    }) { Icon(Icons.Default.Save, "Guardar como ZIP") }
+                                    }) { Icon(Icons.Default.Save, "Guardar como ZIP", tint = IconExportar) }
                                 }
                             }
                         }
                     }
 
-                    // Zona Derecha: Cápsula GPS dinámica
-                    Surface(
-                        color = Color.White.copy(alpha = 0.08f),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                    if (currentRoute == NavRoutes.HISTORY) {
+                        DynamicHistoryBottomBar(
+                            selectedCount = viewModel.selectedRouteIds.value.size,
+                            gpsAccuracyText = "GPS: " + (latestLocation?.accuracy?.let { "${it.toInt()}m" } ?: "Sin Senal"),
+                            onExportAll = {
+                                val ids = viewModel.allRoutes.value.map { it.id }.toSet()
+                                viewModel.exportRoutesAsGPX(ids)
+                            },
+                            onDeleteAll = { showDeleteAllConfirm = true },
+                            onCloseScreen = {
+                                navController.navigate(NavRoutes.TRACKING) {
+                                    popUpTo(NavRoutes.TRACKING) { inclusive = true }
+                                }
+                            },
+                            onExportSelected = { viewModel.exportRoutesAsGPX(viewModel.selectedRouteIds.value) },
+                            onDeleteSelected = { viewModel.deleteRoutes(viewModel.selectedRouteIds.value); viewModel.clearSelection() },
+                            onClearSelection = { viewModel.clearSelection() }
+                        )
+                    } else {
+                        // Zona Derecha: Cápsula GPS dinámica
+                        Surface(
+                            color = Color.White.copy(alpha = 0.08f),
+                            shape = RoundedCornerShape(12.dp)
                         ) {
-                            val gpsColor = if ((latestLocation?.accuracy ?: 100f) < 10f) Color(0xFF2ECC71) else Color(0xFFE74C3C)
-                            Box(modifier = Modifier.size(6.dp).background(gpsColor, CircleShape))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "GPS: ${latestLocation?.accuracy?.let { "${it.toInt()}m" } ?: "Sin Señal"}",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = Color.White.copy(alpha = 0.85f),
-                                fontWeight = FontWeight.Medium
-                            )
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                val gpsColor = if ((latestLocation?.accuracy ?: 100f) < 10f) Color(0xFF2ECC71) else Color(0xFFE74C3C)
+                                Box(modifier = Modifier.size(6.dp).background(gpsColor, CircleShape))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "GPS: ${latestLocation?.accuracy?.let { "${it.toInt()}m" } ?: "Sin Señal"}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color.White.copy(alpha = 0.85f),
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
                         }
                     }
                 }
@@ -957,7 +981,10 @@ fun MainContainer(viewModel: RouteViewModel, encryptedPrefs: SharedPreferences) 
                 arguments = listOf(navArgument("routeId") { type = NavType.IntType })
             ) { backStackEntry ->
                 val routeId = backStackEntry.arguments?.getInt("routeId") ?: return@composable
-                currentDetailRouteId = routeId
+                LaunchedEffect(routeId) {
+                    viewModel.selectRouteForDetail(routeId)
+                }
+                                currentDetailRouteId = routeId
                 DetailScreen(
                     viewModel = viewModel,
                     routeId = routeId,

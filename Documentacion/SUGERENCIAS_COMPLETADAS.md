@@ -176,3 +176,31 @@
 - **Build 41s**: Tiempo de compilación reducido de >2min a 41s estables (-65%).
 - **Declaración Production-Ready**: Dictamen arquitectónico de cierre. Fase 11 declinada.
 - **Commit sellado**: chore(arch): consolidacion perimetral fases 6-10, purga de codigo muerto y optimizacion de tiempos de build (41s)
+
+## 13/07/2026 — Paleta semantica de colores para botones de accion
+- **Color.kt**: Nuevas constantes IconCompartir, IconExportar e IconFavorito para acciones semanticas.
+- **MainActivity.kt**: Icono de favoritos cambiado a corazon dorado IconFavorito.
+- **DetailScreen.kt**: Compartir en cian IconCompartir, exportacion en ambar IconExportar.
+- **.aierules**: Nueva regla de convencion de colores para botones de accion.
+## 13/07/2026 — Esquema de referencia de pantallas (ESQUEMA_PANTALLAS.md)
+- **ESQUEMA_PANTALLAS.md**: Documento maestro con diagramas ASCII de las 7 pantallas.
+- **Sistema de numeracion**: PANTALLA.BARRA.BOTON para comunicacion precisa.
+- **Colores semanticos**: Tabla de referencia con codigos y usos.
+- **.aierules**: Regla para cargar esquema al iniciar sesion.
+
+## 14/07/2026 — Sub-barra dinámica de historial (DynamicHistoryBottomBar)
+- [x] Crear DynamicHistoryBottomBar.kt con estados Normal/Multiselect
+- [x] Integrar en MainActivity.kt Capa 2 BETA para ruta HISTORY
+- [x] Agregar _selectedRouteIds a RouteViewModel.kt
+- [x] Refactor HistoryScreen.kt para usar estado del ViewModel
+- [x] Agregar IconEliminar a Color.kt
+- [x] Compilacion exitosa y deploy en Pixel 9 Pro XL
+
+## 14/07/2026 — WaypointsHorizontalSelector + Empty State en Puntos de Interés
+- [x] Crear WaypointsHorizontalSelector.kt con Empty State y LazyRow de ElevatedCards
+- [x] Integrar en DetailScreen.kt reemplazando el bloque if (waypoints.isNotEmpty())
+- [x] Agregar LaunchedEffect diagnóstico (Log.d con tag "BitaruDebug")
+- [x] Agregar LaunchedEffect de navegación robusta en MainActivity.kt
+- [x] Agregar prepareWaypointCreation() en RouteViewModel.kt
+- [x] Compilación exitosa (assembleDebug) y deploy en Pixel 9 Pro XL
+

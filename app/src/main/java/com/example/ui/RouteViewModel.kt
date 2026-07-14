@@ -76,6 +76,20 @@ class RouteViewModel(
 
     var detailAction by mutableStateOf<DetailAction?>(null)
 
+    // ─── Selection State (History multi-select) ────────────────────
+    private val _selectedRouteIds = MutableStateFlow<Set<Int>>(emptySet())
+    val selectedRouteIds: StateFlow<Set<Int>> = _selectedRouteIds.asStateFlow()
+
+    fun toggleSelection(id: Int) {
+        _selectedRouteIds.value = if (_selectedRouteIds.value.contains(id))
+            _selectedRouteIds.value - id
+        else
+            _selectedRouteIds.value + id
+    }
+
+    fun clearSelection() {
+        _selectedRouteIds.value = emptySet()
+    }
     var mapTargetLocation by mutableStateOf<GeoPoint?>(null)
         private set
     var isOfflineMode by mutableStateOf(false)
@@ -240,6 +254,10 @@ class RouteViewModel(
     fun clearAllAppData() { viewModelScope.launch { repository.deleteAllData() } }
 
     fun selectRouteForDetail(routeId: Int) {
+        _selectedDetailRouteId.value = routeId
+    }
+
+    fun prepareWaypointCreation(routeId: Int) {
         _selectedDetailRouteId.value = routeId
     }
 
@@ -533,5 +551,3 @@ class RouteViewModel(
     fun shareLocation(location: SavedLocation) = shareUseCase.shareLocation(location)
 
 }
-
-
