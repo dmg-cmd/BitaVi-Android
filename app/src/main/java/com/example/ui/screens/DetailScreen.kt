@@ -2,18 +2,14 @@ package com.example.ui.screens
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
-import androidx.compose.material.icons.automirrored.filled.DirectionsBike
 import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.automirrored.filled.ShowChart
 import androidx.compose.material.icons.automirrored.filled.Send
@@ -28,12 +24,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
-import coil.compose.AsyncImage
 import com.example.ui.components.FullScreenPhotoDialog
 import com.example.ui.components.TourOverlay
 import com.example.ui.AiAnalysisState
@@ -45,12 +38,6 @@ import com.example.ui.theme.IconFavorito
 import com.example.ui.theme.IconExportar
 import com.example.ui.theme.IconCompartir
 import com.example.ui.theme.IconGps
-import com.github.mikephil.charting.charts.LineChart
-import com.github.mikephil.charting.data.Entry
-import com.github.mikephil.charting.data.LineData
-import com.github.mikephil.charting.data.LineDataSet
-import com.github.mikephil.charting.components.XAxis
-import android.graphics.Color as AndroidColor
 import java.util.concurrent.TimeUnit
 import androidx.core.graphics.toColorInt
 import java.util.Locale
@@ -68,7 +55,6 @@ fun DetailScreen(
     onAnalytics: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val context = LocalContext.current
     val route by viewModel.selectedDetailRoute.collectAsState()
     val points by viewModel.selectedDetailPoints.collectAsState()
     val waypoints by viewModel.selectedDetailWaypoints.collectAsState()
@@ -286,7 +272,7 @@ fun DetailScreen(
                 .fillMaxWidth()
                 .padding(horizontal = 12.dp, vertical = 8.dp),
             shape = MaterialTheme.shapes.medium,
-            color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.95f),
+            color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.70f),
             shadowElevation = 6.dp
         ) {
             Row(
@@ -524,73 +510,6 @@ fun DetailScreen(
     }
 }
 
-@Composable
-fun ProfessionalChart(data: List<Float>, color: Int, modifier: Modifier = Modifier) {
-    AndroidView(
-        modifier = modifier,
-        factory = { context ->
-            LineChart(context).apply {
-                description.isEnabled = false
-                setTouchEnabled(true)
-                isDragEnabled = true
-                setScaleEnabled(true)
-                setPinchZoom(true)
-                setDrawGridBackground(false)
-
-                xAxis.apply {
-                    position = XAxis.XAxisPosition.BOTTOM
-                    setDrawGridLines(false)
-                    textColor = AndroidColor.GRAY
-                }
-
-                axisLeft.apply {
-                    textColor = AndroidColor.GRAY
-                    setDrawGridLines(true)
-                }
-
-                axisRight.isEnabled = false
-                legend.isEnabled = false
-            }
-        },
-        update = { chart ->
-            val entries = data.mapIndexed { index, value -> Entry(index.toFloat(), value) }
-            val dataSet = LineDataSet(entries, "Datos").apply {
-                this.color = color
-                setDrawValues(false)
-                setDrawCircles(false)
-                lineWidth = 2f
-                mode = LineDataSet.Mode.CUBIC_BEZIER
-                setDrawFilled(true)
-                fillColor = color
-                fillAlpha = 50
-            }
-            chart.data = LineData(dataSet)
-            chart.invalidate()
-        }
-    )
-}
-
-@Composable
-fun ElevationChart(data: List<Float>, color: Color, modifier: Modifier = Modifier) {
-    val max = data.maxOrNull() ?: 1f
-    val min = data.minOrNull() ?: 0f
-    val range = if (max - min == 0f) 1f else max - min
-
-    Canvas(modifier = modifier.background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), RoundedCornerShape(8.dp))) {
-        val width = size.width
-        val height = size.height
-        val stepX = if (data.size > 1) width / (data.size - 1) else width
-
-        val path = Path()
-        data.forEachIndexed { i, d ->
-            val x = i * stepX
-            val y = height - ((d - min) / range * height)
-            if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
-        }
-
-        drawPath(path, color = color, style = Stroke(width = 4f))
-    }
-}
 
 @Composable
 fun DetailStatItem(icon: ImageVector, title: String, value: String, tint: Color) {

@@ -392,6 +392,8 @@ fun MainContainer(viewModel: RouteViewModel, encryptedPrefs: SharedPreferences) 
     var currentExperienceRouteId by remember { mutableStateOf<Int?>(null) }
     var currentRouteAnalyticsId by remember { mutableStateOf<Int?>(null) }
     var currentFocusFavoriteId by remember { mutableIntStateOf(0) }
+    val selectedRouteIds by viewModel.selectedRouteIds.collectAsState()
+    val allRoutes by viewModel.allRoutes.collectAsState()
     LaunchedEffect(currentRoute) {
         if (currentRoute !in NavRoutes.auxiliaryRoutes) {
             currentDetailRouteId = null
@@ -782,10 +784,10 @@ fun MainContainer(viewModel: RouteViewModel, encryptedPrefs: SharedPreferences) 
 
                     if (currentRoute == NavRoutes.HISTORY) {
                         DynamicHistoryBottomBar(
-                            selectedCount = viewModel.selectedRouteIds.value.size,
+                            selectedCount = selectedRouteIds.size,
                             gpsAccuracyText = "GPS: " + (latestLocation?.accuracy?.let { "${it.toInt()}m" } ?: "Sin Senal"),
                             onExportAll = {
-                                val ids = viewModel.allRoutes.value.map { it.id }.toSet()
+                                val ids = allRoutes.map { it.id }.toSet()
                                 viewModel.exportRoutesAsGPX(ids)
                             },
                             onDeleteAll = { showDeleteAllConfirm = true },
@@ -794,8 +796,8 @@ fun MainContainer(viewModel: RouteViewModel, encryptedPrefs: SharedPreferences) 
                                     popUpTo(NavRoutes.TRACKING) { inclusive = true }
                                 }
                             },
-                            onExportSelected = { viewModel.exportRoutesAsGPX(viewModel.selectedRouteIds.value) },
-                            onDeleteSelected = { viewModel.deleteRoutes(viewModel.selectedRouteIds.value); viewModel.clearSelection() },
+                            onExportSelected = { viewModel.exportRoutesAsGPX(selectedRouteIds) },
+                            onDeleteSelected = { viewModel.deleteRoutes(selectedRouteIds); viewModel.clearSelection() },
                             onClearSelection = { viewModel.clearSelection() }
                         )
                     } else {
