@@ -47,6 +47,7 @@ import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.SettingsBackupRestore
@@ -752,59 +753,30 @@ fun MainContainer(viewModel: RouteViewModel, encryptedPrefs: SharedPreferences) 
                 ) {
                     // Zona Izquierda: Botones contextuales de DETAIL / EXPERIENCE_MAP
                     Box(modifier = Modifier.weight(1f)) {
-                        if (currentRoute == NavRoutes.DETAIL) {
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                if (currentRoute == NavRoutes.DETAIL) {
-                                    IconButton(onClick = {
-                                        currentDetailRouteId?.let { navController.navigate(NavRoutes.experienceMap(it)) }
-                                    }) {
-                                        Icon(Icons.Default.Explore, "Mapa de experiencia", tint = Color(0xFF7C4DFF))
-                                    }
-                                    IconButton(onClick = { viewModel.detailAction = DetailAction.ShowSheet }) {
-                                        Icon(Icons.Default.Favorite, "Favoritos", tint = IconFavorito)
-                                    }
-                                    IconButton(onClick = {
-                                        val name = viewModel.selectedDetailRoute.value?.name ?: ""
-                                        viewModel.detailAction = DetailAction.ShowEditDialog(name)
-                                    }) { Icon(Icons.Default.Edit, "Editar nombre", tint = IconExportar) }
-                                    val rid = currentDetailRouteId
-                                    if (rid != null) {
-                                        RouteOptionsMenu(
-                                            onShare = { viewModel.exportRoute(rid) },
-                                            onExportGpx = { viewModel.exportRoutesAsGPX(setOf(rid)) },
-                                            onExportCsv = { viewModel.exportRoutesAsCSV(rid) },
-                                            onExportZip = { viewModel.exportarRutaZip(rid) },
-                                            onDelete = { viewModel.detailAction = DetailAction.ShowDeleteDialog },
-                                            onHelp = { viewModel.detailAction = DetailAction.ShowHelpDialog }
-                                        )
-                                    }
-                                }
-                                if (currentRoute == NavRoutes.EXPERIENCE_MAP) {
-                                    IconButton(onClick = {
-                                        val a = context as? Activity ?: return@IconButton
-                                        Handler(a.mainLooper).post {
-                                            try {
-                                                val bitmap = a.window.decorView.drawToBitmap()
-                                                val cacheFile = File(context.cacheDir, "screenshot_exp.png")
-                                                FileOutputStream(cacheFile).use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
-                                                val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", cacheFile)
-                                                val intent = Intent(Intent.ACTION_SEND).apply {
-                                                    type = "image/png"; putExtra(Intent.EXTRA_STREAM, uri)
-                                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                                }
-                                                Intent.createChooser(intent, "Compartir pantalla").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).let(context::startActivity)
-                                            } catch (e: Exception) { Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show() }
+                        if (currentRoute == NavRoutes.EXPERIENCE_MAP) {
+                            IconButton(onClick = {
+                                val a = context as? Activity ?: return@IconButton
+                                Handler(a.mainLooper).post {
+                                    try {
+                                        val bitmap = a.window.decorView.drawToBitmap()
+                                        val cacheFile = File(context.cacheDir, "screenshot_exp.png")
+                                        FileOutputStream(cacheFile).use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                                        val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", cacheFile)
+                                        val intent = Intent(Intent.ACTION_SEND).apply {
+                                            type = "image/png"; putExtra(Intent.EXTRA_STREAM, uri)
+                                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                         }
-                                    }) { Icon(Icons.Default.Share, "Compartir pantalla", tint = IconCompartir) }
-                                    IconButton(onClick = {
-                                        val ts = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
-                                        val routeName = viewModel.selectedDetailRoute.value?.name ?: "ruta"
-                                        val sanitized = routeName.trim().replace(Regex("[\\s/\\\\?%*:|\"<>]"), "_")
-                                        val exportName = "ROUTE_${currentExperienceRouteId ?: 0}_${sanitized}_$ts"
-                                        experienceSaveZipLauncher.launch("$exportName.zip")
-                                    }) { Icon(Icons.Default.Save, "Guardar como ZIP", tint = IconExportar) }
+                                        Intent.createChooser(intent, "Compartir pantalla").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).let(context::startActivity)
+                                    } catch (e: Exception) { Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show() }
                                 }
-                            }
+                            }) { Icon(Icons.Default.Share, "Compartir pantalla", tint = IconCompartir) }
+                            IconButton(onClick = {
+                                val ts = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+                                val routeName = viewModel.selectedDetailRoute.value?.name ?: "ruta"
+                                val sanitized = routeName.trim().replace(Regex("[\\s/\\\\?%*:|\"<>]"), "_")
+                                val exportName = "ROUTE_${currentExperienceRouteId ?: 0}_${sanitized}_$ts"
+                                experienceSaveZipLauncher.launch("$exportName.zip")
+                            }) { Icon(Icons.Default.Save, "Guardar como ZIP", tint = IconExportar) }
                         }
                     }
 

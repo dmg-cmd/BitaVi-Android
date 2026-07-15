@@ -40,6 +40,11 @@ import com.example.ui.AiAnalysisState
 import com.example.ui.DetailAction
 import com.example.ui.model.IconCategory
 import com.example.ui.RouteViewModel
+import com.example.ui.theme.IconExplorar
+import com.example.ui.theme.IconFavorito
+import com.example.ui.theme.IconExportar
+import com.example.ui.theme.IconCompartir
+import com.example.ui.theme.IconGps
 import com.github.mikephil.charting.charts.LineChart
 import com.github.mikephil.charting.data.Entry
 import com.github.mikephil.charting.data.LineData
@@ -49,8 +54,10 @@ import android.graphics.Color as AndroidColor
 import java.util.concurrent.TimeUnit
 import androidx.core.graphics.toColorInt
 import java.util.Locale
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 import android.util.Log
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DetailScreen(
@@ -67,6 +74,7 @@ fun DetailScreen(
     val waypoints by viewModel.selectedDetailWaypoints.collectAsState()
     val favorites by viewModel.allFavorites.collectAsState()
     val linkedFavorites by viewModel.getFavoritesForRouteFlow(routeId).collectAsState(initial = emptyList())
+    val gpsPrecisionState by viewModel.gpsAccuracy.collectAsStateWithLifecycle()
 
     var showEditDialog by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
@@ -75,39 +83,17 @@ fun DetailScreen(
     var editedName by remember { mutableStateOf("") }
     var photoToZoom by remember { mutableStateOf<String?>(null) }
     var showTourFotos by remember { mutableStateOf(!viewModel.esTourVisto("fotos")) }
+    var showRouteMenu by remember { mutableStateOf(false) }
 
-    Scaffold(
-        modifier = modifier,
-        topBar = {
-            TopAppBar(
-                title = { 
-                    Text(
-                        text = "Detalle del Recorrido", 
-                        style = MaterialTheme.typography.titleLarge.copy(
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 20.sp
-                        )
-                    ) 
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Volver al historial"
-                        )
-                    }
-                },
-                windowInsets = WindowInsets(0, 0, 0, 0),
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    titleContentColor = MaterialTheme.colorScheme.onSurface,
-                    navigationIconContentColor = MaterialTheme.colorScheme.onSurface
-                )
-            )
-        }
-    ) { paddingValues ->
-        Column(modifier = Modifier.fillMaxSize().padding(paddingValues).verticalScroll(rememberScrollState())) {
-            // ESTADISTICAS CONSOLIDADAS
+    Box(modifier = modifier.fillMaxSize()) {
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(bottom = 88.dp)
+        ) {
+            // ESTADISTICAS CONSOLIDADAS (4.4)
             Card(
                 modifier = Modifier.padding(16.dp).fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp),
@@ -139,12 +125,13 @@ fun DetailScreen(
                             val pMin = paceMinPerKm.toInt()
                             val pSec = ((paceMinPerKm - pMin) * 60).toInt()
                             String.format(Locale.US, "%d:%02d min/km", pMin, pSec)
-                        } else "—"
+                        } else "\u2014"
                         DetailStatItem(Icons.Default.Timer, "Ritmo", paceStr, MaterialTheme.colorScheme.error)
                     }
                 }
             }
-            // PUNTOS DE INTERÉS Y FOTOS (4.5)
+
+            // PUNTOS DE INTERES Y FOTOS (4.5)
             WaypointsHorizontalSelector(
                 waypoints = waypoints,
                 onWaypointClick = { wp ->
@@ -156,10 +143,10 @@ fun DetailScreen(
             )
 
             LaunchedEffect(routeId, waypoints) {
-                Log.d("BitaruDebug", "Puntos de interés: ${waypoints.size}")
+                Log.d("BitaruDebug", "Puntos de inter\u00e9s: ${waypoints.size}")
             }
 
-            // ANÁLISIS CON IA
+            // ANALISIS CON IA (4.6)
             Card(
                 modifier = Modifier.padding(16.dp).fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.4f))
@@ -170,9 +157,9 @@ fun DetailScreen(
                         Spacer(Modifier.width(8.dp))
                         Text("Resumen Inteligente (Llama 3)", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     }
-                    
+
                     Spacer(Modifier.height(8.dp))
-                    
+
                     val aiState = viewModel.aiAnalysisState
                     when (aiState) {
                         is AiAnalysisState.Idle -> {
@@ -205,7 +192,7 @@ fun DetailScreen(
                                     Icon(Icons.Default.VpnKey, null, tint = MaterialTheme.colorScheme.onErrorContainer)
                                     Spacer(Modifier.width(8.dp))
                                     Text(
-                                        "⚠️ Configure su API Key en el menú de Ajustes.",
+                                        "\u26a0\ufe0f Configure su API Key en el men\u00fa de Ajustes.",
                                         color = MaterialTheme.colorScheme.onErrorContainer,
                                         style = MaterialTheme.typography.bodySmall
                                     )
@@ -222,7 +209,7 @@ fun DetailScreen(
                                         Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error)
                                         Spacer(Modifier.width(8.dp))
                                         Text(
-                                            "⚠️ Su API Key ha vencido o se quedó sin créditos.",
+                                            "\u26a0\ufe0f Su API Key ha vencido o se qued\u00f3 sin cr\u00e9ditos.",
                                             color = MaterialTheme.colorScheme.onErrorContainer,
                                             style = MaterialTheme.typography.bodyMedium
                                         )
@@ -274,7 +261,7 @@ fun DetailScreen(
                 }
             }
 
-            // BOTON: IR A GRAFICOS DE RENDIMIENTO
+            // BOTON: IR A GRAFICOS DE RENDIMIENTO (4.7)
             Button(
                 onClick = { onAnalytics(routeId) },
                 modifier = Modifier
@@ -285,14 +272,120 @@ fun DetailScreen(
             ) {
                 Icon(Icons.AutoMirrored.Filled.ShowChart, null, modifier = Modifier.size(20.dp))
                 Spacer(Modifier.width(8.dp))
-                Text("Ver Gráficos de Rendimiento", fontWeight = FontWeight.SemiBold)
+                Text("Ver Gr\u00e1ficos de Rendimiento", fontWeight = FontWeight.SemiBold)
             }
 
             Spacer(Modifier.height(80.dp))
         }
+
+        // DOCK INFERIOR UNIFICADO (4.2 + 4.3 reconcilidas)
+        Surface(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            shape = MaterialTheme.shapes.medium,
+            color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.95f),
+            shadowElevation = 6.dp
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // 4.3.1 - Retroceso
+                IconButton(onClick = onBack) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Volver atr\u00e1s",
+                        tint = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(2.dp))
+
+                // 4.2.1 - Explorar experiencia (Violeta)
+                IconButton(onClick = { onExperienceMap(routeId) }) {
+                    Icon(
+                        imageVector = Icons.Default.Explore,
+                        contentDescription = "Explorar recorrido",
+                        tint = IconExplorar
+                    )
+                }
+
+                // 4.2.2 - Vincular favoritos (Dorado)
+                IconButton(onClick = { showSheet = true }) {
+                    Icon(
+                        imageVector = Icons.Default.Favorite,
+                        contentDescription = "Vincular a favoritos",
+                        tint = IconFavorito
+                    )
+                }
+
+                // 4.2.3 - Editar nombre (Amber)
+                IconButton(onClick = {
+                    editedName = route?.name ?: ""
+                    showEditDialog = true
+                }) {
+                    Icon(
+                        imageVector = Icons.Default.Edit,
+                        contentDescription = "Editar ruta",
+                        tint = IconExportar
+                    )
+                }
+
+                // 4.2.4 - Menu contextual (Cian)
+                Box {
+                    IconButton(onClick = { showRouteMenu = true }) {
+                        Icon(
+                            imageVector = Icons.Default.MoreVert,
+                            contentDescription = "M\u00e1s opciones",
+                            tint = IconCompartir
+                        )
+                    }
+                    RouteOptionsMenu(
+                        expanded = showRouteMenu,
+                        onDismiss = { showRouteMenu = false },
+                        onShare = { showRouteMenu = false; viewModel.exportRoute(routeId) },
+                        onExportGpx = { showRouteMenu = false; viewModel.exportRoutesAsGPX(setOf(routeId)) },
+                        onExportCsv = { showRouteMenu = false; viewModel.exportRoutesAsCSV(routeId) },
+                        onExportZip = { showRouteMenu = false; viewModel.exportarRutaZip(routeId) },
+                        onDelete = { showRouteMenu = false; showDeleteDialog = true },
+                        onHelp = { showRouteMenu = false; showHelpDialog = true }
+                    )
+                }
+
+
+                // 4.3.2 - Titulo unificado (con peso elastico)
+                Text(
+                    text = "Detalle de la Ruta",
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    modifier = Modifier.weight(1f)
+                )
+                // 4.2.5 - Indicador GPS (Verde)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.GpsFixed,
+                        contentDescription = "Se\u00f1al de precisi\u00f3n",
+                        tint = IconGps,
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = gpsPrecisionState,
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
     }
 
-    // ─── Puente: escucha acciones desde la bottom bar ────────────────
+    // ─── Puente: escucha acciones desde vistas externas ────────────
     LaunchedEffect(viewModel.detailAction) {
         when (val action = viewModel.detailAction) {
             is DetailAction.ShowSheet -> showSheet = true
@@ -382,7 +475,7 @@ fun DetailScreen(
         AlertDialog(
             onDismissRequest = { showDeleteDialog = false },
             title = { Text("Eliminar ruta") },
-            text = { Text("Esta acción no se puede deshacer. Se eliminarán todos los puntos GPS, waypoints y fotos asociados.") },
+            text = { Text("Esta acci\u00f3n no se puede deshacer. Se eliminar\u00e1n todos los puntos GPS, waypoints y fotos asociados.") },
             confirmButton = {
                 Button(
                     onClick = {
@@ -403,11 +496,11 @@ fun DetailScreen(
             title = { Text("Ayuda de la pantalla") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    HelpItem(Icons.Default.Explore, "Mapa de Experiencia", "Visualiza el recorrido completo con altimetría y velocidad en 3D/interactivo.")
+                    HelpItem(Icons.Default.Explore, "Mapa de Experiencia", "Visualiza el recorrido completo con altimetr\u00eda y velocidad en 3D/interactivo.")
                     HelpItem(Icons.Default.BookmarkBorder, "Vincular Favoritos", "Guarda esta ruta en tu lista de ubicaciones preferidas.")
                     HelpItem(Icons.Default.Edit, "Editar nombre", "Cambia el nombre de la ruta.")
-                    HelpItem(Icons.AutoMirrored.Filled.Send, "Compartir", "Genera un ZIP con telemetría GPX+CSV y fotos para compartir por mensajería.")
-                    HelpItem(Icons.Default.Archive, "Exportar", "Convierte tus datos a formatos estándar (GPX para otras apps, CSV para Excel, ZIP para respaldos completos).")
+                    HelpItem(Icons.AutoMirrored.Filled.Send, "Compartir", "Genera un ZIP con telemetr\u00eda GPX+CSV y fotos para compartir por mensajer\u00eda.")
+                    HelpItem(Icons.Default.Archive, "Exportar", "Convierte tus datos a formatos est\u00e1ndar (GPX para otras apps, CSV para Excel, ZIP para respaldos completos).")
                     HelpItem(Icons.Default.Delete, "Eliminar ruta", "Borra permanentemente la ruta y todos sus datos asociados.")
                 }
             },
@@ -422,7 +515,7 @@ fun DetailScreen(
 
     if (showTourFotos) {
         TourOverlay(
-            message = "¡Toca cualquier foto para verla a pantalla completa!",
+            message = "\u00a1Toca cualquier foto para verla a pantalla completa!",
             onDismiss = {
                 showTourFotos = false
                 viewModel.marcarTourVisto("fotos")
@@ -443,18 +536,18 @@ fun ProfessionalChart(data: List<Float>, color: Int, modifier: Modifier = Modifi
                 setScaleEnabled(true)
                 setPinchZoom(true)
                 setDrawGridBackground(false)
-                
+
                 xAxis.apply {
                     position = XAxis.XAxisPosition.BOTTOM
                     setDrawGridLines(false)
                     textColor = AndroidColor.GRAY
                 }
-                
+
                 axisLeft.apply {
                     textColor = AndroidColor.GRAY
                     setDrawGridLines(true)
                 }
-                
+
                 axisRight.isEnabled = false
                 legend.isEnabled = false
             }
@@ -487,14 +580,14 @@ fun ElevationChart(data: List<Float>, color: Color, modifier: Modifier = Modifie
         val width = size.width
         val height = size.height
         val stepX = if (data.size > 1) width / (data.size - 1) else width
-        
+
         val path = Path()
         data.forEachIndexed { i, d ->
             val x = i * stepX
             val y = height - ((d - min) / range * height)
             if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
         }
-        
+
         drawPath(path, color = color, style = Stroke(width = 4f))
     }
 }
@@ -508,7 +601,6 @@ fun DetailStatItem(icon: ImageVector, title: String, value: String, tint: Color)
     }
 }
 
-
 private fun formatMovingTime(ms: Long): String {
     val h = TimeUnit.MILLISECONDS.toHours(ms)
     val m = TimeUnit.MILLISECONDS.toMinutes(ms) % 60
@@ -517,15 +609,10 @@ private fun formatMovingTime(ms: Long): String {
     else String.format(Locale.US, "%02d:%02d min", m, s)
 }
 
-private fun formatDuration(ms: Long): String {
-    val h = TimeUnit.MILLISECONDS.toHours(ms)
-    val m = TimeUnit.MILLISECONDS.toMinutes(ms) % 60
-    val s = TimeUnit.MILLISECONDS.toSeconds(ms) % 60
-    return String.format(Locale.US, "%02d:%02d:%02d", h, m, s)
-}
-
 @Composable
 fun RouteOptionsMenu(
+    expanded: Boolean,
+    onDismiss: () -> Unit,
     onShare: () -> Unit,
     onExportGpx: () -> Unit,
     onExportCsv: () -> Unit,
@@ -533,59 +620,53 @@ fun RouteOptionsMenu(
     onDelete: () -> Unit,
     onHelp: () -> Unit
 ) {
-    var expanded by remember { mutableStateOf(false) }
     var exportExpanded by remember { mutableStateOf(false) }
 
-    Box(modifier = Modifier.wrapContentSize(Alignment.TopEnd)) {
-        IconButton(onClick = { expanded = true }) {
-            Icon(Icons.Default.MoreVert, contentDescription = "Más opciones")
-        }
+    DropdownMenu(
+        expanded = expanded,
+        onDismissRequest = onDismiss
+    ) {
+        DropdownMenuItem(
+            text = { Text("Compartir ruta") },
+            onClick = { onShare() },
+            leadingIcon = { Icon(Icons.AutoMirrored.Filled.Send, null) }
+        )
+        DropdownMenuItem(
+            text = { Text("Exportar") },
+            trailingIcon = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null) },
+            onClick = { exportExpanded = true }
+        )
         DropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false }
+            expanded = exportExpanded,
+            onDismissRequest = { exportExpanded = false }
         ) {
             DropdownMenuItem(
-                text = { Text("Compartir ruta") },
-                onClick = { expanded = false; onShare() },
-                leadingIcon = { Icon(Icons.AutoMirrored.Filled.Send, null) }
+                text = { Text("GPX") },
+                onClick = { exportExpanded = false; onDismiss(); onExportGpx() },
+                leadingIcon = { Icon(Icons.Default.Description, null) }
             )
             DropdownMenuItem(
-                text = { Text("Exportar") },
-                trailingIcon = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null) },
-                onClick = { exportExpanded = true }
+                text = { Text("CSV (Excel)") },
+                onClick = { exportExpanded = false; onDismiss(); onExportCsv() },
+                leadingIcon = { Icon(Icons.Default.TableChart, null) }
             )
-            DropdownMenu(
-                expanded = exportExpanded,
-                onDismissRequest = { exportExpanded = false }
-            ) {
-                DropdownMenuItem(
-                    text = { Text("GPX") },
-                    onClick = { exportExpanded = false; expanded = false; onExportGpx() },
-                    leadingIcon = { Icon(Icons.Default.Description, null) }
-                )
-                DropdownMenuItem(
-                    text = { Text("CSV (Excel)") },
-                    onClick = { exportExpanded = false; expanded = false; onExportCsv() },
-                    leadingIcon = { Icon(Icons.Default.TableChart, null) }
-                )
-                DropdownMenuItem(
-                    text = { Text("ZIP") },
-                    onClick = { exportExpanded = false; expanded = false; onExportZip() },
-                    leadingIcon = { Icon(Icons.Default.Archive, null) }
-                )
-            }
             DropdownMenuItem(
-                text = { Text("Ayuda de la pantalla") },
-                onClick = { expanded = false; onHelp() },
-                leadingIcon = { Icon(Icons.AutoMirrored.Filled.HelpOutline, null) }
-            )
-            HorizontalDivider()
-            DropdownMenuItem(
-                text = { Text("Eliminar ruta", color = MaterialTheme.colorScheme.error) },
-                onClick = { expanded = false; onDelete() },
-                leadingIcon = { Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error) }
+                text = { Text("ZIP") },
+                onClick = { exportExpanded = false; onDismiss(); onExportZip() },
+                leadingIcon = { Icon(Icons.Default.Archive, null) }
             )
         }
+        DropdownMenuItem(
+            text = { Text("Ayuda de la pantalla") },
+            onClick = { onHelp() },
+            leadingIcon = { Icon(Icons.AutoMirrored.Filled.HelpOutline, null) }
+        )
+        HorizontalDivider()
+        DropdownMenuItem(
+            text = { Text("Eliminar ruta", color = MaterialTheme.colorScheme.error) },
+            onClick = { onDelete() },
+            leadingIcon = { Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error) }
+        )
     }
 }
 

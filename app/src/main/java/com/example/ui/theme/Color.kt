@@ -34,3 +34,6 @@ val IconCompartir = Color(0xFF4DD0E1)   // Cian - Accion de compartir
 val IconExportar  = Color(0xFFFFB74D)   // Amber - Accion de exportar
 val IconFavorito  = Color(0xFFFFD54F)   // Dorado - Marcar como favorito
 val IconEliminar  = Color(0xFFE74C3C)   // Rojo - Accion de eliminar
+
+val IconExplorar = Color(0xFF7C4DFF)   // Violeta - Explorar experiencia
+val IconGps      = Color(0xFF2ECC71)   // Verde - Indicador GPS preciso

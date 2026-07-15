@@ -100,6 +100,7 @@ fun MapScreen(
     var photoGpsLocation by remember { mutableStateOf<Pair<Double, Double>?>(null) }
     var usePhotoGps by remember { mutableStateOf(false) }
     var photoToZoom by remember { mutableStateOf<String?>(null) }
+    var pendingPhotoUri by remember { mutableStateOf<android.net.Uri?>(null) }
     var showTourMapa by remember { mutableStateOf(!viewModel.esTourVisto("actividad")) }
 
     val cameraLauncher = rememberLauncherForActivityResult(
@@ -111,16 +112,38 @@ fun MapScreen(
             capturedPhotoUri?.let { photoGpsLocation = viewModel.getPhotoLocation(it) }
         }
     }
+    val mediaLocationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted && pendingPhotoUri != null) {
+            scope.launch {
+                val internalUri = viewModel.saveImageToInternalStorage(pendingPhotoUri!!)
+                capturedPhotoUri = internalUri
+                photoGpsLocation = viewModel.getPhotoLocation(pendingPhotoUri!!)
+                usePhotoGps = photoGpsLocation != null
+            }
+            pendingPhotoUri = null
+        }
+    }
+
 
     val galleryLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.GetContent()
     ) { uri ->
         uri?.let {
-            scope.launch {
-                val internalUri = viewModel.saveImageToInternalStorage(it)
-                capturedPhotoUri = internalUri
-                photoGpsLocation = viewModel.getPhotoLocation(it)
-                usePhotoGps = photoGpsLocation != null
+            val hasMediaLocation = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_MEDIA_LOCATION) == PackageManager.PERMISSION_GRANTED
+            } else true
+            if (hasMediaLocation) {
+                scope.launch {
+                    val internalUri = viewModel.saveImageToInternalStorage(it)
+                    capturedPhotoUri = internalUri
+                    photoGpsLocation = viewModel.getPhotoLocation(it)
+                    usePhotoGps = photoGpsLocation != null
+                }
+            } else {
+                pendingPhotoUri = it
+                mediaLocationPermissionLauncher.launch(Manifest.permission.ACCESS_MEDIA_LOCATION)
             }
         }
     }
@@ -197,9 +220,6 @@ fun MapScreen(
             Manifest.permission.ACCESS_FINE_LOCATION,
             Manifest.permission.ACCESS_COARSE_LOCATION
         )
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            permissions.add(Manifest.permission.ACCESS_MEDIA_LOCATION)
-        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             permissions.add(Manifest.permission.POST_NOTIFICATIONS)
         }
@@ -1087,6 +1107,8 @@ fun IndicadorTranslucidoContenedor(
         }
     }
 }
+
+
 
 
 

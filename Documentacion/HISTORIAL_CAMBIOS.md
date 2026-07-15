@@ -26,3 +26,24 @@
 - **Build**: assembleDebug + installDebug exitoso en Pixel 9 Pro XL.
 - **Respaldos**: 20260714_0133_*.kt en RESPALDO_ANTERIOR/ (pre y post cambio).
 
+
+[2026/07/14 15:30 - Fix permisos ACCESS_MEDIA_LOCATION en arranque (Pantalla 1)]
+- **MapScreen.kt**: Removido ACCESS_MEDIA_LOCATION del LaunchedEffect(Unit) de arranque (lineas 200-202 anteriores).
+- **MapScreen.kt**: Nuevo mediaLocationPermissionLauncher con RequestPermission() para solicitar ACCESS_MEDIA_LOCATION solo bajo demanda.
+- **MapScreen.kt**: galleryLauncher ahora verifica si ACCESS_MEDIA_LOCATION ya fue concedido antes de extraer EXIF; si no, almacena la URI y solicita el permiso de forma lazy.
+- **MapScreen.kt**: Nuevo estado pendingPhotoUri para retener la URI de la foto mientras se espera la concesion del permiso.
+- **Build**: assembleDebug exitoso (0 errores).
+- **Raiz del problema**: ACCESS_MEDIA_LOCATION estaba en el mismo lote de permisos que ACCESS_FINE_LOCATION y ACCESS_COARSE_LOCATION en el LaunchedEffect(Unit), provocando que Android mostrara el dialogo "permiso para usar fotos y videos" inmediatamente al arrancar la app.
+- **Respaldo**: RESPALDO_ANTERIOR/20260714_MapScreen_pre_permisos.kt
+
+[2026/07/14 02:30 - Dock inferior unificado en DetailScreen (Pantalla 4.0)]
+- **DetailScreen.kt**: Eliminado Scaffold + TopAppBar. Reemplazado por Box(fillMaxSize) inmersivo con dock flotante Surface al BottomCenter.
+- **4.3.1 + 4.3.2**: Boton de retroceso y titulo "Detalle" migrados de la barra superior al nuevo dock inferior unificado.
+- **Nuevo orden Dock 4.2**: [← 4.3.1] [🧪 4.2.1] [❤️ 4.2.2] [✏️ 4.2.3] [⁝ 4.2.4] (Detalle 4.3.2) [🟢 2m 4.2.5].
+- **Cableado**: Botones conectados a lambdas existentes (onBack, onExperienceMap) y estados locales (showSheet, showEditDialog, showRouteMenu).
+- **RouteOptionsMenu.kt**: Firmas actualizadas: nuevo parametro expanded/onDismiss para control externo del dropdown.
+- **MainActivity.kt**: RouteOptionsMenu actualizado para usar nueva firma con Box + estado local menuExpanded.
+- **Color.kt**: Nuevas constantes centralizadas IconExplorar (0xFF7C4DFF, Violeta) e IconGps (0xFF2ECC71, Verde).
+- **ESQUEMA_PANTALLAS.md**: Diagrama 4.0 actualizado: eliminada linea de barra superior 4.3, dock inferior reconciliado con nuevo orden.
+- **RESPALDO_ANTERIOR**: Backup creado como 20260714_DetailScreen_pre_dock.kt.
+- **Build**: assembleDebug exitoso (39 tareas, 0 errores).

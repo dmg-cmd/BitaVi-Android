@@ -169,3 +169,6 @@ avigationBarsPadding(): colchón dinámico que empuja la barra por encima de la 
 - **Navegación robusta**: LaunchedEffect en MainActivity.kt asegura que selectRouteForDetail() se ejecute al navegar a DetailScreen.
 - **Creación desde detalle**: prepareWaypointCreation(routeId) en RouteViewModel sincroniza el estado para que el flujo de creación de waypoints funcione en rutas del historial.
 
+
+## Dock inferior unificado en Pantalla de Detalle (v2.0)
+La DetailScreen ahora usa un diseño inmersivo sin barra superior. El boton de retroceso y el titulo "Detalle" se integraron en el dock inferior flotante, que contiene (de izquierda a derecha): [←] [Explorar] [Favoritos] [Editar] [Menú] "Detalle" [GPS]. Esto mejora la ergonomia a una mano y libera espacio vertical para el contenido.
