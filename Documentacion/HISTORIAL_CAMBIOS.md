@@ -1,3 +1,43 @@
+[2026/07/16 03:00 - AL-01: Desintegracion de LocationService (Fase III - GpsFilterPipeline + Auto-stop 3 min)]
+- **CinematicFilterManager.kt**: Refactor completo. Removidos filterAndProcess(), calculateFallbackSpeed(), evaluatePoint(), lastValidLocation, lowSpeedCounter. Nuevo método unificado evaluateAndProcess(lat, lon, accuracy, timestamp, speed): Boolean que integra filtro de aberración cinemática + máquina de auto-stop por ventana temporal de 180s. Nuevo isAutoStopActive(): Boolean. seedReferencePoint() y reset() preservados. Parámetros de constructor configurables con defaults desde AppConstants.
+- **GpsFilterPipeline.kt**: Nuevo orquestador JVM-safe que combina CinematicFilterManager.evaluateAndProcess() + StationaryAnchorManager.processStationaryState()/getResolvedCoordinate(). processLocation(rawPoint: BufferPoint): BufferPoint?. shouldTriggerAutoStop(): Boolean.
+- **LocationService.kt**: Cirugía de precisión (3 líneas): reemplazadas líneas 446-450 (filterAndProcess + processAnchor) por pipeline + BufferPoint. triggerAutomaticTracking() eliminado bridge BufferPoint→Location→filterAndProcess→BufferPoint, ahora usa GpsFilterPipeline directamente. Inicialización de filterPipeline añadida en onCreate().
+- **CinematicFilterManagerTest.kt**: Actualizado a nueva API evaluateAndProcess() + isAutoStopActive(). 4 tests (aberración, coherencia, auto-stop 3 min, reanudación cancela auto-stop).
+- **GpsFilterPipelineTest.kt**: Nuevo. 3 tests que validan pipeline completo (aberración, auto-stop 3 min, reanudación).
+- **Resultado**: BUILD SUCCESSFUL (compileDebugKotlin + 9/9 tests + assembleDebug).
+- **Respaldos**: RESPALDO_ANTERIOR/20260716_CinematicFilterManager.kt, 20260716_LocationService.kt.
+[2026/07/16 01:00 - AL-01: Desintegracion de LocationService (Fase I - Managers)]
+- **ServiceNotificationManager.kt**: Nuevo manager que encapsula creacion de canal de notificacion, buildNotification() y foreground service.
+- **TrackingSessionManager.kt**: Nuevo manager que encapsula buffer de pre-grabacion (60s, ConcurrentLinkedDeque), odometro (totalDistanceMeters, currentDistanceMeters), estado de sesion (isTracking, currentRouteId, latestLocation, currentActivityMode), timer de sesion, y extension function Location.toBufferPoint().
+- **LocationService.kt**: notificationManager y sessionManager integrados como campos privados. buildNotification() delegado a notificationManager.buildNotification(). updateNotification() renombrado a updateServiceNotification(). preRecordingBuffer y handlePreRecording() delegados a sessionManager.
+- **Resultado**: BUILD SUCCESSFUL (32 tareas test + 39 assembleDebug). APK generado.
+- **Respaldos**: RESPALDO_ANTERIOR/{timestamp}_*_AL01_Phase1.kt, ServiceNotificationManager.kt, TrackingSessionManager.kt.
+[2026/07/15 19:45 - CR-02: Migracion Global de Namespace (com.example -> com.aistudio.localizador)]
+- **build.gradle.kts**: namespace = ""com.aistudio.localizador"", applicationId preservado (com.aistudio.localizador.vqtspk).
+- **themes.xml**: Theme.MyApplication -> Theme.Localizador, parent migrado a Theme.Material3.DayNight.NoActionBar.
+- **AndroidManifest.xml**: Theme actualizado a @style/Theme.Localizador en <application> y <activity>.
+- **Theme.kt**: MyApplicationTheme -> LocalizadorTheme.
+- **MainActivity.kt**: Referencias a MyApplicationTheme actualizadas a LocalizadorTheme.
+- **Directorio fisico**: 61 archivos movidos de com/example/ a com/aistudio/localizador/.
+- **Test**: 3 archivos movidos de com/example/ a com/aistudio/localizador/ + 2 pre-existentes actualizados.
+- **Package/imports**: 66 archivos .kt actualizados (134 ocurrencias import, hardcoded FQNs corregidos en AppDatabase, LocationService, BackupUseCase).
+- **Dependencias**: com.google.android.material:material:1.12.0 anadido al version catalog y build.gradle.kts.
+- **androidTest**: ExampleInstrumentedTest migrado, assertion corregida.
+- **Fix pre-existente**: ExampleRobolectricTest SDK 36->34, app_name corregido a ""BiTaRu"".
+- **Resultado**: BUILD SUCCESSFUL, 7/7 tests pasan, assembleDebug exitoso.
+- **Respaldos**: RESPALDO_ANTERIOR/20260715_com.example.backup/.
+
+[2026/07/15 19:13 - CR-01: Suite de Pruebas Unitarias (Filtrado cinemático y anclaje estacionario)]
+- **Suite JVM pura**: Creados 2 test files en app/src/test/java/com/aistudio/localizador/location/manager/.
+  - CinematicFilterManagerTest: 2 tests (rechazo de salto aberrante + aceptacion de punto coherente).
+  - StationaryAnchorManagerTest: 2 tests (congelacion de posicion en drift + liberacion de anclaje por movimiento).
+- **Refactor managers**: Nuevos metodos JVM-safe con primitivas (Double, Float, Long) sin dependencia de android.location.Location.
+  - CinematicFilterManager: seedReferencePoint(), evaluatePoint(), haversineDistance().
+  - StationaryAnchorManager: processStationaryState(), getResolvedCoordinate(), evaluateRelease().
+- **Dependencias**: mockk 1.13.8 anadido al version catalog y build.gradle.kts.
+- **Resultado**: BUILD SUCCESSFUL, 4/4 tests pasan en JVM local.
+- **Respaldos**: RESPALDO_ANTERIOR/20260715_CinematicFilterManager.kt y 20260715_StationaryAnchorManager.kt.
+
 [2026/07/13 10:30 - Esquema de referencia de pantallas (ESQUEMA_PANTALLAS.md)]
 - **ESQUEMA_PANTALLAS.md**: Nuevo documento maestro con diagramas ASCII de las 7 pantallas + sub-barra + drawer + dialogos.
 - **Sistema de numeracion**: Formato PANTALLA.BARRA.BOTON (ej: 4.2.3 = Detalle, Sub-barra, Exportar) para referencias rapidas.
@@ -47,3 +87,73 @@
 - **ESQUEMA_PANTALLAS.md**: Diagrama 4.0 actualizado: eliminada linea de barra superior 4.3, dock inferior reconciliado con nuevo orden.
 - **RESPALDO_ANTERIOR**: Backup creado como 20260714_DetailScreen_pre_dock.kt.
 - **Build**: assembleDebug exitoso (39 tareas, 0 errores).
+
+[2026/07/15 00:45 - Fix centrado repetitivo de cámara en ExperienceMapScreen (Pantalla 5.0)]
+- **ExperienceMapScreen.kt**: Añadida guardia hasInitiallyCenteredRoute con emember { mutableStateOf(false) } para evitar que LaunchedEffect(points, waypoints, linkedFavorites, routeId) re-centre el mapa en cada tick de GPS.
+- **Motivo**: El estado reactivo points cambiaba en cada actualización GPS, forzando zoomToBoundingBox repetido que anulaba los gestos táctiles del usuario.
+- **Comportamiento corregido**: El mapa se centra en la ruta una única vez al cargar la pantalla; los gestos de exploración manual no son interrumpidos.
+- **Build**: assembleDebug exitoso (29s, 0 errores, 0 warnings nuevos).
+- **Respaldo**: RESPALDO_ANTERIOR/20260714_ExperienceMapScreen_pre_fix.kt
+
+
+[2026/07/15 02:15 - Sincronizacion norteada forzada en ExperienceMapScreen (Paso 2)]
+- **ExperienceMapScreen.kt**: Reemplazado el bloque else if (view.mapOrientation != 0f) { view.mapOrientation = 0f } por un guardia determinista if (!isAutoRotationEnabled) { view.mapOrientation = 0f } en cada ciclo del bloque update.
+- **Motivo**: El else if condicional solo se ejecutaba en la primera recomposicion tras desactivar auto-rotacion cuando mapOrientation != 0f. El nuevo guardia corre en cada actualizacion, garantizando que el mapa este siempre norteado en modo exploracion libre.
+- **Efecto colateral**: Las lineas de GuideLinesOverlay ahora proyectan correctamente porque projection.toPixels() y las coordenadas fijas del panel de fotos (CAPA 1, Compose) operan en el mismo sistema cartesiano no-rotado.
+- **Build**: assembleDebug exitoso (1m 3s, 0 errores, 0 warnings nuevos). installDebug exitoso en Pixel 9 Pro XL.
+- **Respaldo**: RESPALDO_ANTERIOR/20260715_ExperienceMapScreen_post_norteado.kt
+
+
+[2026/07/15 03:00 - Panel de fotos inmersivo en ExperienceMapScreen (5.5)]
+- **ExperienceMapScreen.kt**: Reemplazado .statusBarsPadding() por .padding(top = 8.dp, start = 8.dp) en el modificador de AnimatedVisibility (CAPA 1, linea 341).
+- **Motivo**: El statusBarsPadding() dejaba un espacio muerto equivalente a la barra de estado (statusBarHeight) entre el borde superior fisico y el panel de fotos. En el diseno inmersivo edge-to-edge actual (sin TopAppBar ni Scaffold), ese espaciado era una barrera fantasma.
+- **Efecto**: El panel de fotos fluye ahora desde el limite real del hardware, aprovechando el 100% de la altura de pantalla. El verticalScroll interno maneja el contenido.
+- **Build**: assembleDebug exitoso (53s, 0 errores, 0 warnings nuevos). installDebug exitoso en Pixel 9 Pro XL.
+
+
+[2026/07/15 04:00 - Snapshot de datos para ExperienceMapScreen (fuga de GPS en vivo)]
+- **RouteViewModel.kt**: Nuevos `_experiencePoints: MutableStateFlow<List<LocationPoint>>` + `experiencePoints` (StateFlow público) + `fun prepareExperience(routeId: Int)` que carga puntos una sola vez con `repository.getLocationPointsSync(routeId)`.
+- **ExperienceMapScreen.kt**: Linea 120 cambiado de `viewModel.selectedDetailPoints.collectAsState()` (Room Flow en vivo) a `viewModel.experiencePoints.collectAsState()` (snapshot estatico).
+- **MainActivity.kt**: Linea 976 anadida llamada `viewModel.prepareExperience(routeId)` al navegar a ExperienceMapScreen.
+- **Motivo**: Room Flow `getLocationPointsForRouteFlow` reemite cada vez que el tracking activo inserta un punto en la misma `routeId`, dibujando un trazo recto desde la ruta historica a la ubicacion GPS actual. El snapshot rompe esa conexion.
+- **Build**: assembleDebug exitoso (1m 3s, 0 errores, 0 warnings nuevos). installDebug exitoso en Pixel 9 Pro XL.
+
+
+[2026/07/15 05:00 - Migracion a PickVisualMedia en SavedLocationsScreen (Pantalla 3.0)]
+- **SavedLocationsScreen.kt**: Reemplazado `ActivityResultContracts.GetContent()` por `ActivityResultContracts.PickVisualMedia()` como selector de fotos del sistema.
+- **ACCESS_MEDIA_LOCATION**: Anadido `mediaLocationPermissionLauncher` con `RequestPermission()` + `pendingPhotoUri` para solicitar el permiso bajo demanda en API 29+ antes de extraer EXIF GPS, siguiendo el mismo patron que MapScreen.kt.
+- **Imports**: Agregados `android.Manifest`, `android.os.Build`, `androidx.activity.result.PickVisualMediaRequest`.
+- **Motivo**: PickVisualMedia no requiere permisos de almacenamiento general (READ_EXTERNAL_STORAGE/READ_MEDIA_IMAGES) porque el usuario otorga acceso implicito al seleccionar la foto. El permiso ACCESS_MEDIA_LOCATION se solicita solo al extraer metadatos EXIF de geolocalizacion.
+- **Build**: assembleDebug exitoso (44s, 0 errores, 0 warnings nuevos). installDebug exitoso en Pixel 9 Pro XL.
+
+[2026/07/15 20:10 - CR-03: Eliminacion de fallbackToDestructiveMigration en AppDatabase]
+- **AppDatabase.kt**: Eliminado .fallbackToDestructiveMigration(dropAllTables = true) de la construccion de la BD.
+- **AppDatabase.kt**: Anadido try-catch en buildDatabase() con handleDatabaseCorruption() que registra el error via Log.e.
+- **AppDatabase.kt**: Refactorizado getDatabase() -> getInstance() con delegacion a buildDatabase() privada.
+- **AppDatabase.kt**: Nueva constante DATABASE_NAME = "localizador_database" (nombre preservado).
+- **AppDatabase.kt**: SupportOpenHelperFactory (net.zetetic) preservado; passphrase: ByteArray? = null preservado.
+- **MainActivity.kt**: Llamadas AppDatabase.getDatabase() -> AppDatabase.getInstance().
+- **LocationService.kt**: Llamada AppDatabase.getDatabase() -> AppDatabase.getInstance().
+- **Resultado**: BUILD SUCCESSFUL, 32/32 tareas completadas, 7/7 tests pasan, assembleDebug exitoso.
+- **Respaldo**: RESPALDO_ANTERIOR/20260715_AppDatabase_pre_CR03.kt.
+
+[2026/07/15 20:55 - CR-04: Saneamiento de Capturas Silenciosas de Excepciones]
+- **UiEvent.kt**: Creado sealed class UiEvent con ShowSnackbar para eventos one-shot.
+- **RouteViewModel.kt**: Anadido _uiEvent: Channel<UiEvent> + val uiEvent expuesto como Flow.
+  - importGpxFile(): catch silencioso reemplazado por Log.e + _uiEvent.send().
+  - importarRutaZip(): catch silencioso reemplazado por Log.e + _uiEvent.send().
+  - restoreFromBackup(): catch silencioso reemplazado por Log.e + _uiEvent.send().
+- **RouteExportUseCase.kt**: 4 catches silenciosos saneados con Log.e:
+  - exportCsv(), exportGpx(), importGpx(), shareFile().
+- **BackupUseCase.kt**: detectRestoreType(): catch silencioso saneado con Log.e.
+- **MainActivity.kt**: SnackbarHostState + LaunchedEffect colector de uiEvent + SnackbarHost en Scaffold.
+- **Resultado**: BUILD SUCCESSFUL, 32/32 tareas (7 tests), 39 tareas assembleDebug, APK generado.
+- **Respaldos**: RESPALDO_ANTERIOR/20260715_*_pre_CR04.kt (4 archivos).
+
+[2026/07/16 02:30 - AL-01: Desintegracion de LocationService (Fase II - BufferPoint + TrackinSessionManager puro)]
+- **TrackingSessionManager.kt**: Refactor completo. Nuevo BufferPoint (DTO puro JVM con lat, lon, accuracy, speed, altitude, timestamp). preRecordingBuffer migrado de ConcurrentLinkedDeque<Location> a ArrayDeque<BufferPoint> (FIFO circular, max 60). RouteRepository inyectado en constructor. Nuevos métodos: startSession(routeId: Long), stopSession(): List<LocationPoint>, ddPointToActiveSession(BufferPoint), ddDistanceFromStep(Double), setInitialDistance(Double), clearPreRecordingBuffer(), getPreRecordingBufferSnapshot(), getActiveRouteId().
+- **LocationService.kt**: Eliminadas 5 variables/estructuras del monolito: ctiveRouteId: Int, 	otalDistanceMeters: Double, preRecordingBuffer: ConcurrentLinkedDeque<Location>, handlePreRecording(Location), Location.toBufferPoint(Int). Callers actualizados a sessionManager.*. 	riggerAutomaticTracking refactorizada: acepta ufferSnapshot: List<BufferPoint> + callback, puente interno BufferPoint → Location("gps") para CinematicFilterManager intacto.
+- **Errores corregidos durante la cirugía**: Stray brace del handlePreRecording (L98), ctiveRouteId residual (L622, L874, L1007, L1060), 	otalDistanceMeters residual (L635, L968), ccuracy fantasma en LocationPoint (L592, TSM L87), Long→Int en outeId (TSM L84), ndSession→stopSession (L1013).
+- **Resultado**: BUILD SUCCESSFUL (compileDebugKotlin + test + assembleDebug). installDebug exitoso en Pixel 9 Pro XL (Android 16).
+- **Respaldos**: RESPALDO_ANTERIOR/20260716_LocationService.kt, 20260716_TrackingSessionManager.kt.
+

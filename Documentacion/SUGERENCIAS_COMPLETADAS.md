@@ -1,3 +1,9 @@
+## 16/07/2026 — AL-01 Fase III: Pipeline de Filtrado Unificado (GpsFilterPipeline + Auto-stop 3 min)
+- **GpsFilterPipeline.kt**: Nueva tubería JVM-safe que orquesta CinematicFilterManager + StationaryAnchorManager en flujo ordenado.
+- **Auto-stop por ventana temporal**: Migrado de 3 ticks a 180s de inactividad sostenida, inmunizando contra frecuencia de muestreo variable.
+- **Bridge eliminado**: triggerAutomaticTracking() ya no convierte BufferPoint→Location→BufferPoint. Usa GpsFilterPipeline directamente.
+- **Cirugía de precisión**: LocationService.processNewLocation() modificado solo 3 líneas, preservando watchdog, BLE, paradas cortas, odómetro y persistencia.
+- **Suite de pruebas**: 9 tests unitarios JVM pasando (CinematicFilterManager: 4, GpsFilterPipeline: 3, StationaryAnchorManager: 2).
 ## 12/07/2026 — Navegación Jerárquica MD3 (TopAppBar + onBack)
 - **ExperienceMapScreen.kt**: Añadido callback onBack: () -> Unit y Scaffold con TopAppBar (ArrowBack + título "Experiencias").
 - **DetailScreen.kt**: Migración a Scaffold con TopAppBar (ArrowBack + título "Detalle del Recorrido").
@@ -203,4 +209,21 @@
 - [x] Agregar LaunchedEffect de navegación robusta en MainActivity.kt
 - [x] Agregar prepareWaypointCreation() en RouteViewModel.kt
 - [x] Compilación exitosa (assembleDebug) y deploy en Pixel 9 Pro XL
+
+
+## 16/07/2026 — AL-01 Fase I: Desintegracion de LocationService en managers
+- [x] Crear ServiceNotificationManager.kt con canal de notificacion, buildNotification(), foreground service
+- [x] Crear TrackingSessionManager.kt con buffer de pre-grabacion (60s), odometro, estado de sesion, timer
+- [x] Integrar notificationManager en LocationService (buildNotification delegado, updateNotification renombrado)
+- [x] Integrar sessionManager en LocationService (field + preRecordingBuffer/handlePreRecording delegados)
+- [x] BUILD SUCCESSFUL, assembleDebug OK, APK generado
+- [x] Respaldos creados en RESPALDO_ANTERIOR/
+
+## 16/07/2026 — AL-01 Fase II: BufferPoint + cirugia completa de LocationService
+- [x] Refactor TrackingSessionManager.kt con BufferPoint, ArrayDeque FIFO, RouteRepository en constructor
+- [x] Eliminar activeRouteId, totalDistanceMeters, preRecordingBuffer, handlePreRecording, toBufferPoint de LocationService.kt
+- [x] Refactor triggerAutomaticTracking con bufferSnapshot: List<BufferPoint> y callback
+- [x] Puente BufferPoint→Location("gps") preservando CinematicFilterManager intacto
+- [x] BUILD SUCCESSFUL, assembleDebug OK, installDebug en Pixel 9 Pro XL
+- [x] Respaldos creados en RESPALDO_ANTERIOR/
 

@@ -3,6 +3,7 @@ plugins {
   alias(libs.plugins.kotlin.compose)
   alias(libs.plugins.google.devtools.ksp)
   alias(libs.plugins.roborazzi)
+  alias(libs.plugins.hilt)
 }
 
 kotlin {
@@ -10,7 +11,7 @@ kotlin {
 }
 
 android {
-  namespace = "com.example"
+  namespace = "com.aistudio.localizador"
   compileSdk = 35
 
   defaultConfig {
@@ -116,6 +117,7 @@ dependencies {
   implementation(libs.androidx.biometric)
   implementation(libs.androidx.security.crypto)
   implementation(libs.androidx.appcompat)
+  implementation(libs.material)
   implementation(libs.sqlcipher.android)
   
   // Librería para leer coordenadas de las fotos
@@ -133,6 +135,10 @@ dependencies {
   testImplementation(libs.roborazzi)
   testImplementation(libs.roborazzi.compose)
   testImplementation(libs.roborazzi.junit.rule)
+  implementation(libs.hilt.android)
+  ksp(libs.hilt.compiler)
+  implementation(libs.androidx.hilt.navigation.compose)
+  testImplementation(libs.mockk)
   androidTestImplementation(platform(libs.androidx.compose.bom))
   androidTestImplementation(libs.androidx.compose.ui.test.junit4)
   androidTestImplementation(libs.androidx.espresso.core)

@@ -172,3 +172,32 @@ avigationBarsPadding(): colchón dinámico que empuja la barra por encima de la 
 
 ## Dock inferior unificado en Pantalla de Detalle (v2.0)
 La DetailScreen ahora usa un diseño inmersivo sin barra superior. El boton de retroceso y el titulo "Detalle" se integraron en el dock inferior flotante, que contiene (de izquierda a derecha): [←] [Explorar] [Favoritos] [Editar] [Menú] "Detalle" [GPS]. Esto mejora la ergonomia a una mano y libera espacio vertical para el contenido.
+
+## Control Inteligente de Centrado del Mapa de Experiencia (15/07/2026)
+- **Pantalla 5.0 (ExperienceMap)**: El mapa centra la ruta automáticamente al cargar la pantalla mediante zoomToBoundingBox. El centrado se ejecuta **una sola vez** gracias a la bandera hasInitiallyCenteredRoute.
+- **Navegación libre**: Una vez centrada la ruta, el usuario puede desplazar y hacer zoom manualmente sin que el GPS o la actualización de puntos interfiera con la cámara.
+- **Gestos preservados**: Zooms táctiles, arrastres y rotaciones manuales no son anulados por el motor de geolocalización.
+
+## Sincronizacion Norteada Forzada en Experiencias (15/07/2026)
+- **Pantalla 5.0 (ExperienceMap)**: El mapa fuerza orientacion 0 grados (norte verdadero) cuando la auto-rotacion de navegacion esta desactivada.
+- **Guidelines corregidas**: Las lineas de guia entre el panel de fotos y los puntos geograficos ahora proyectan correctamente porque `toPixels()` y las coordenadas del layout de Compose operan en el mismo sistema cartesiano.
+- **Exploracion libre**: El usuario puede hacer pan y zoom manual sin interferencias de rotacion residual.
+
+
+## Panel de Fotos Inmersivo en Experiencias (15/07/2026)
+- **Pantalla 5.0 (ExperienceMap)**: El panel de fotos translucido (CAPA 1, lateral izquierdo) ahora ocupa el 100% de la altura de pantalla desde el borde superior fisico, eliminando el espacio muerto que dejaba statusBarsPadding().
+- **Padding minimo**: 8dp de separacion superior y lateral para mantener distancia visual con los bordes del dispositivo.
+- **Scroll autonomo**: El contenido del panel sigue desplazandose con verticalScroll sin perdida de frames ni clipping.
+
+## 16/07/2026 — LocationService desintegrado en managers (AL-01 Fase I)
+- **ServiceNotificationManager**: Encapsula la creación de canal de notificación, construcción de notificación de servicio en primer plano y obtención del pendingIntent de la app. Aislado de la lógica de tracking para facilitar tests unitarios y reemplazo de canales.
+- **TrackingSessionManager**: Encapsula todo el estado de sesión activa de tracking: buffer de pre-grabación (60s elástico en ConcurrentLinkedDeque), odómetro (totalDistanceMeters/currentDistanceMeters), timer de sesión con callbacks de inactividad y rotación diaria, y estado reactivo via StateFlow (isTracking, currentRouteId, latestLocation, currentActivityMode).
+- **Arquitectura**: LocationService ahora delega responsabilidades a estos dos managers mediante composición simple (field + delegación de llamadas), manteniendo los companion Flows como bridge para callers externos.
+- **Próximo paso (AL-01 Fase II)**: Mover handlePreRecording(), preRecordingBuffer y Location.toBufferPoint() del LocationService al TrackingSessionManager.
+
+## 16/07/2026 — AL-01 Fase II: BufferPoint + TrackingSessionManager puro
+- **BufferPoint**: Nuevo DTO JVM (sin dependencias Android) con campos latitude, longitude, accuracy, speed, altitude, timestamp. Reemplaza el almacenamiento crudo de Location en el buffer de pre-grabación.
+- **TrackingSessionManager**: Ahora usa ArrayDeque<BufferPoint> (FIFO circular, máx 60 puntos) en lugar de ConcurrentLinkedDeque<Location>. Inyecta RouteRepository en constructor para persistencia atómica de puntos. Odómetro delegado completamente (ddDistanceFromStep, setInitialDistance, getTotalDistance). Ciclo de sesión con startSession(routeId: Long) y stopSession(): List<LocationPoint>.
+- **LocationService**: Saneado de todas las variables y funciones del monolito que ahora viven en sessionManager. El bridge 	riggerAutomaticTracking acepta List<BufferPoint> y convierte internamente a Location("gps") para preservar el CinematicFilterManager sin modificaciones.
+- **Próximo paso (AL-01 Fase III)**: Suite de tests unitarios JVM para TrackingSessionManager (buffer FIFO, odómetro, ciclo de sesión).
+
