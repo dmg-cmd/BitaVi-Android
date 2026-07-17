@@ -21,7 +21,7 @@ android {
     versionCode = 2
     versionName = "2.0"
 
-    testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    testInstrumentationRunner = "com.aistudio.localizador.HiltTestRunner"
 
     externalNativeBuild {
       cmake {
@@ -137,6 +137,7 @@ dependencies {
   testImplementation(libs.roborazzi.junit.rule)
   implementation(libs.hilt.android)
   ksp(libs.hilt.compiler)
+  kspAndroidTest(libs.hilt.compiler)
   implementation(libs.androidx.hilt.navigation.compose)
   testImplementation(libs.mockk)
   androidTestImplementation(platform(libs.androidx.compose.bom))
@@ -144,6 +145,7 @@ dependencies {
   androidTestImplementation(libs.androidx.espresso.core)
   androidTestImplementation(libs.androidx.junit)
   androidTestImplementation(libs.androidx.runner)
+  androidTestImplementation(libs.hilt.android.testing)
   debugImplementation(libs.androidx.compose.ui.test.manifest)
   debugImplementation(libs.androidx.compose.ui.tooling)
   "ksp"(libs.androidx.room.compiler)

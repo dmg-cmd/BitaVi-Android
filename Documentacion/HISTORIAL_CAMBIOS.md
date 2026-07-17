@@ -1,3 +1,27 @@
+## [2026-07-16] ME-01: Infraestructura Hilt + Migración DI Completa (MVP)
+
+### Logro
+Hilt 2.59 compila y funciona nativamente con AGP 9.2.1 usando KSP (sin kapt). Se migró toda la capa de inyección de dependencias del proyecto.
+
+### Archivos Modificados
+- gradle/libs.versions.toml: hilt = "2.52" → "2.59", añadido hilt-android-testing
+- gradle/gradle.properties: añadidos flags ndroid.builtInKotlin=false, ndroid.newDsl=false (luego revertidos)
+- pp/build.gradle.kts: kotlin("kapt") eliminado, kapt(libs.hilt.compiler) → ksp(libs.hilt.compiler), añadido kspAndroidTest(libs.hilt.compiler), ndroidTestImplementation(libs.hilt.android.testing), 	estInstrumentationRunner → HiltTestRunner
+- pp/src/main/java/.../MainActivity.kt: @AndroidEntryPoint, RouteViewModel inyectado via y viewModels(), import ViewModelProvider/RouteViewModelFactory eliminados
+- pp/src/main/java/.../ui/RouteViewModel.kt: @HiltViewModel + @Inject constructor
+- pp/src/main/java/.../ui/RouteViewModelFactory.kt: **eliminado** (reemplazado por Hilt)
+- pp/src/main/java/.../di/DatabaseModule.kt: añadido @Provides fun provideRouteRepository()
+- pp/src/main/java/.../di/AppModule.kt: **nuevo** — providers para PreferencesManager, GeocoderUseCase, PhotoManager, GroqAiUseCase, GeminiAiUseCase, RouteExchanger, RouteExportUseCase, BackupUseCase, ContactUseCase, ShareUseCase, LocationServiceManager
+- pp/src/main/java/.../location/LocationService.kt: @AndroidEntryPoint, 3 fields @Inject (repository, contactUseCase, geocoderUseCase), bloque dbPassphrase/database/repository removido de onCreate()
+- pp/src/main/java/.../location/manager/StationaryAnchorManager.kt: **bugfix** — processStationaryState() ahora congela anclaje con if (!hasAnchor) en lugar de sobrescribir en cada llamado
+- pp/src/androidTest/java/.../HiltTestRunner.kt: **nuevo**
+
+### Tests
+- 	estDebugUnitTest: 14/14 passing (incluyendo drift prolongado)
+- ssembleDebug: BUILD SUCCESSFUL (0 errores)
+
+### Pendiente
+- Migrar LocationService a @AndroidEntryPoint con inyección de campo
 [2026/07/16 03:00 - AL-01: Desintegracion de LocationService (Fase III - GpsFilterPipeline + Auto-stop 3 min)]
 - **CinematicFilterManager.kt**: Refactor completo. Removidos filterAndProcess(), calculateFallbackSpeed(), evaluatePoint(), lastValidLocation, lowSpeedCounter. Nuevo método unificado evaluateAndProcess(lat, lon, accuracy, timestamp, speed): Boolean que integra filtro de aberración cinemática + máquina de auto-stop por ventana temporal de 180s. Nuevo isAutoStopActive(): Boolean. seedReferencePoint() y reset() preservados. Parámetros de constructor configurables con defaults desde AppConstants.
 - **GpsFilterPipeline.kt**: Nuevo orquestador JVM-safe que combina CinematicFilterManager.evaluateAndProcess() + StationaryAnchorManager.processStationaryState()/getResolvedCoordinate(). processLocation(rawPoint: BufferPoint): BufferPoint?. shouldTriggerAutoStop(): Boolean.
@@ -156,4 +180,5 @@
 - **Errores corregidos durante la cirugía**: Stray brace del handlePreRecording (L98), ctiveRouteId residual (L622, L874, L1007, L1060), 	otalDistanceMeters residual (L635, L968), ccuracy fantasma en LocationPoint (L592, TSM L87), Long→Int en outeId (TSM L84), ndSession→stopSession (L1013).
 - **Resultado**: BUILD SUCCESSFUL (compileDebugKotlin + test + assembleDebug). installDebug exitoso en Pixel 9 Pro XL (Android 16).
 - **Respaldos**: RESPALDO_ANTERIOR/20260716_LocationService.kt, 20260716_TrackingSessionManager.kt.
+
 

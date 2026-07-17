@@ -1,3 +1,23 @@
+## ME-01: Inyección de Dependencias con Hilt (Julio 2026)
+
+El proyecto ahora usa **Hilt 2.59** para inyección de dependencias, compatible con AGP 9.2.1 mediante **KSP** (no kapt).
+
+### ¿Qué cambió para el usuario?
+- **Nada visible.** La funcionalidad es idéntica.
+- El código internamente es más limpio y testeable.
+
+### Componentes inyectados
+| Componente | Tipo de Inyección |
+|---|---|
+| RouteViewModel | @HiltViewModel con @Inject constructor |
+| MainActivity | @AndroidEntryPoint, ViewModel via y viewModels() |
+| LocationService | @AndroidEntryPoint, 3 campos @Inject |
+| Database/Repository | Singleton via DatabaseModule |
+| Use Cases y Managers | Singleton via AppModule |
+
+### Tests
+- HiltTestRunner configurado para instrumentation tests
+- Tests unitarios existentes: 14/14 pasando
 # Guía de Uso y Documentación Técnica: Localizador Pro
 
 ## Descripción General
@@ -200,4 +220,5 @@ La DetailScreen ahora usa un diseño inmersivo sin barra superior. El boton de r
 - **TrackingSessionManager**: Ahora usa ArrayDeque<BufferPoint> (FIFO circular, máx 60 puntos) en lugar de ConcurrentLinkedDeque<Location>. Inyecta RouteRepository en constructor para persistencia atómica de puntos. Odómetro delegado completamente (ddDistanceFromStep, setInitialDistance, getTotalDistance). Ciclo de sesión con startSession(routeId: Long) y stopSession(): List<LocationPoint>.
 - **LocationService**: Saneado de todas las variables y funciones del monolito que ahora viven en sessionManager. El bridge 	riggerAutomaticTracking acepta List<BufferPoint> y convierte internamente a Location("gps") para preservar el CinematicFilterManager sin modificaciones.
 - **Próximo paso (AL-01 Fase III)**: Suite de tests unitarios JVM para TrackingSessionManager (buffer FIFO, odómetro, ciclo de sesión).
+
 

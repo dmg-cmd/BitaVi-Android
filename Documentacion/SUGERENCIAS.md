@@ -1,3 +1,11 @@
+## Completadas (Julio 2026)
+
+- [x] **ME-01 Foundation**: Migrar a Hilt con KSP en lugar de kapt para compatibilidad AGP 9
+- [x] **ME-01 MainActivity**: Agregar @AndroidEntryPoint y migrar ViewModel a y viewModels()
+- [x] **ME-01 AppModule**: Crear módulo con providers para todos los use cases
+- [x] **ME-01 LocationService**: Migrar a @AndroidEntryPoint con field injection
+- [x] **ME-01 Tests**: Configurar HiltTestRunner + dependencias de testing
+- [x] **AL-01 Bugfix**: StationaryAnchorManager.processStationaryState() no congelaba anclaje (causaba fallo en test de drift)
 # Lista de Sugerencias y Mejoras Pendientes
 
 ## Prioridad 1: IA y Multimedia Avanzada (Fase 4)
@@ -14,4 +22,5 @@
 ## Prioridad 3: Investigación (04/07/2026)
 - [ ] **Modo Inmersivo del Pixel**: Investigar si se puede personalizar el comportamiento nativo (ocultación de status bar al tocar el mapa) sin romper el renderizado de Compose. Alternativa: aceptar el comportamiento por defecto del SO.
 - [ ] **Watermark definitivo**: Una vez confirmado el layout, decidir estilo final del texto "agenviaje" en la card (verde neón debug vs elegante alpha=0.4).
+
 
