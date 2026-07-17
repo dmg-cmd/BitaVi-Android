@@ -11,13 +11,35 @@ El proyecto ahora usa **Hilt 2.59** para inyección de dependencias, compatible 
 |---|---|
 | RouteViewModel | @HiltViewModel con @Inject constructor |
 | MainActivity | @AndroidEntryPoint, ViewModel via y viewModels() |
-| LocationService | @AndroidEntryPoint, 3 campos @Inject |
+| LocationService | @AndroidEntryPoint, 5 campos @Inject (incl. sessionManager + filterPipeline) |
 | Database/Repository | Singleton via DatabaseModule |
 | Use Cases y Managers | Singleton via AppModule |
 
 ### Tests
 - HiltTestRunner configurado para instrumentation tests
 - Tests unitarios existentes: 16/16 pasando
+
+## ME-02: ExtractPhotoLocationUseCase --- Extraccion Segura de EXIF (Julio 2026)
+
+### Que cambio para el usuario?
+- **Nada visible.** La funcionalidad es identica.
+- **Bug corregido:** Al seleccionar una foto de la galeria para crear un favorito, la app ahora obtiene correctamente las coordenadas GPS de los metadatos EXIF incluso en Android 10+ (Scoped Storage).
+
+### Arquitectura
+| Capa | Componente | Responsabilidad |
+|---|---|---|
+| Dominio | domain/usecase/ExtractPhotoLocationUseCase.kt | Orquesta la extraccion en Dispatchers.IO, devuelve Pair<Double,Double>? |
+| Infraestructura | ui/PhotoManager.kt | Lee EXIF via MediaStore.setRequireOriginal() + ExifInterface (sin cambios) |
+| Presentacion | ui/RouteViewModel.kt | Expone suspend fun extractLocationFromPhoto(uri): Pair<Double,Double>? |
+| UI | SavedLocationsScreen, MapScreen | Llaman a extractLocationFromPhoto() desde scope.launch (corrutina) |
+
+### Causa Raiz del Bug
+getPhotoLocation() se ejecutaba en el hilo principal de Compose. En Android 10+, ContentResolver.openInputStream() desde un content:// URI (galeria) puede lanzar SecurityException por Scoped Storage. El catch (_: Exception) lo tragaba -> devolvia null. Solucion: envolver la llamada en withContext(Dispatchers.IO).
+
+### Tests
+- ExtractPhotoLocationUseCaseTest.kt: 2 tests (coordenadas exitosas, null seguro) con mockk
+- Suite total: 16/16 pasando
+
 # Guía de Uso y Documentación Técnica: Localizador Pro
 
 ## Descripción General
