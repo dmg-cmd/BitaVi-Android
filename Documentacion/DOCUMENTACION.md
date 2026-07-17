@@ -17,7 +17,7 @@ El proyecto ahora usa **Hilt 2.59** para inyección de dependencias, compatible 
 
 ### Tests
 - HiltTestRunner configurado para instrumentation tests
-- Tests unitarios existentes: 14/14 pasando
+- Tests unitarios existentes: 16/16 pasando
 # Guía de Uso y Documentación Técnica: Localizador Pro
 
 ## Descripción General

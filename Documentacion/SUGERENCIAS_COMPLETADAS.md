@@ -1,3 +1,10 @@
+## 17/07/2026 — ME-02: ExtractPhotoLocationUseCase + Corrección de EXIF en Hilo Principal
+- **ExtractPhotoLocationUseCase.kt**: Nuevo use case en domain/usecase/ que extrae coordenadas GPS de metadatos EXIF en Dispatchers.IO, delegando en PhotoManager.
+- **RouteViewModel.kt**: Agregado extractLocationFromPhoto(uri) como suspend fun, inyectado via Hilt.
+- **Bug corregido**: getPhotoLocation() se ejecutaba en hilo principal (Compose), causando SecurityException silenciosas en Android 10+ al leer EXIF desde content:// URIs de la galería.
+- **SavedLocationsScreen/MapScreen**: Todas las llamadas a getPhotoLocation() migradas a corrutinas con scope.launch + extractLocationFromPhoto().
+- **Tests**: 2 nuevos tests unitarios (16/16 pasando).
+
 ## 16/07/2026 — AL-01 Fase III: Pipeline de Filtrado Unificado (GpsFilterPipeline + Auto-stop 3 min)
 - **GpsFilterPipeline.kt**: Nueva tubería JVM-safe que orquesta CinematicFilterManager + StationaryAnchorManager en flujo ordenado.
 - **Auto-stop por ventana temporal**: Migrado de 3 ticks a 180s de inactividad sostenida, inmunizando contra frecuencia de muestreo variable.

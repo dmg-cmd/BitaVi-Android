@@ -109,7 +109,11 @@ fun MapScreen(
         if (!success) {
             capturedPhotoUri = null
         } else {
-            capturedPhotoUri?.let { photoGpsLocation = viewModel.getPhotoLocation(it) }
+            capturedPhotoUri?.let { uri ->
+                scope.launch {
+                    photoGpsLocation = viewModel.extractLocationFromPhoto(uri)
+                }
+            }
         }
     }
     val mediaLocationPermissionLauncher = rememberLauncherForActivityResult(
@@ -119,7 +123,7 @@ fun MapScreen(
             scope.launch {
                 val internalUri = viewModel.saveImageToInternalStorage(pendingPhotoUri!!)
                 capturedPhotoUri = internalUri
-                photoGpsLocation = viewModel.getPhotoLocation(pendingPhotoUri!!)
+                photoGpsLocation = viewModel.extractLocationFromPhoto(pendingPhotoUri!!)
                 usePhotoGps = photoGpsLocation != null
             }
             pendingPhotoUri = null
@@ -138,7 +142,7 @@ fun MapScreen(
                 scope.launch {
                     val internalUri = viewModel.saveImageToInternalStorage(it)
                     capturedPhotoUri = internalUri
-                    photoGpsLocation = viewModel.getPhotoLocation(it)
+                    photoGpsLocation = viewModel.extractLocationFromPhoto(it)
                     usePhotoGps = photoGpsLocation != null
                 }
             } else {

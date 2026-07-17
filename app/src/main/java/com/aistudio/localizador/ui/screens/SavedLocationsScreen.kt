@@ -91,9 +91,11 @@ fun SavedLocationsScreen(
         } else {
             // Intentar extraer GPS de la foto recién sacada
             capturedPhotoUri?.let { uri ->
-                val loc = viewModel.getPhotoLocation(uri)
-                photoGpsLocation = loc
-                if (loc != null) usePhotoGps = true
+                scope.launch {
+                    val loc = viewModel.extractLocationFromPhoto(uri)
+                    photoGpsLocation = loc
+                    if (loc != null) usePhotoGps = true
+                }
             }
         }
     }
@@ -105,7 +107,7 @@ fun SavedLocationsScreen(
             scope.launch {
                 val internalUri = viewModel.saveImageToInternalStorage(pendingPhotoUri!!)
                 capturedPhotoUri = internalUri
-                photoGpsLocation = viewModel.getPhotoLocation(pendingPhotoUri!!)
+                photoGpsLocation = viewModel.extractLocationFromPhoto(pendingPhotoUri!!)
                 usePhotoGps = photoGpsLocation != null
             }
             pendingPhotoUri = null
@@ -124,7 +126,7 @@ fun SavedLocationsScreen(
                     scope.launch {
                         val internalUri = viewModel.saveImageToInternalStorage(it)
                         capturedPhotoUri = internalUri
-                        photoGpsLocation = viewModel.getPhotoLocation(it)
+                        photoGpsLocation = viewModel.extractLocationFromPhoto(it)
                         usePhotoGps = photoGpsLocation != null
                     }
                 } else {
@@ -135,7 +137,7 @@ fun SavedLocationsScreen(
                 scope.launch {
                     val internalUri = viewModel.saveImageToInternalStorage(it)
                     capturedPhotoUri = internalUri
-                    photoGpsLocation = viewModel.getPhotoLocation(it)
+                    photoGpsLocation = viewModel.extractLocationFromPhoto(it)
                     usePhotoGps = photoGpsLocation != null
                 }
             }

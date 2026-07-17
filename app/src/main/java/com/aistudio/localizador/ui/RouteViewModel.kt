@@ -15,6 +15,7 @@ import com.aistudio.localizador.data.model.Route
 import com.aistudio.localizador.data.model.SavedLocation
 import com.aistudio.localizador.data.model.Waypoint
 import com.aistudio.localizador.data.repository.RouteRepository
+import com.aistudio.localizador.domain.usecase.ExtractPhotoLocationUseCase
 import com.aistudio.localizador.location.ActivityMode
 import com.aistudio.localizador.location.LocationService
 import kotlinx.coroutines.Dispatchers
@@ -71,6 +72,7 @@ class RouteViewModel @Inject constructor(
     private val prefsManager: PreferencesManager,
     private val geocoderUseCase: GeocoderUseCase,
     private val photoManager: PhotoManager,
+    private val extractPhotoLocationUseCase: ExtractPhotoLocationUseCase,
     private val groqAiUseCase: GroqAiUseCase,
     private val geminiAiUseCase: GeminiAiUseCase,
     private val routeExportUseCase: RouteExportUseCase,
@@ -289,10 +291,10 @@ class RouteViewModel @Inject constructor(
             if (location != null && location.hasAccuracy()) {
                 val acc = location.accuracy.toInt()
                 when {
-                    acc <= 5 -> "GPS: Excelente (±${acc}m)"
-                    acc <= 15 -> "GPS: Buena (±${acc}m)"
-                    acc <= 50 -> "GPS: Regular (±${acc}m)"
-                    else -> "GPS: Baja (±${acc}m)"
+                    acc <= 5 -> "GPS: Excelente (±m)"
+                    acc <= 15 -> "GPS: Buena (±m)"
+                    acc <= 50 -> "GPS: Regular (±m)"
+                    else -> "GPS: Baja (±m)"
                 }
             } else {
                 "GPS: Buscando señal..."
@@ -374,8 +376,8 @@ class RouteViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             val finalComment = if (photoPath != null) {
                 val datePart = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(Date())
-                val meta = "📸 Capturada el ${datePart}"
-                if (comment.isBlank()) meta else "${comment}\n\n${meta}"
+                val meta = "📸 Capturada el "
+                if (comment.isBlank()) meta else "\n\n"
             } else comment
             val details = geocoderUseCase.fetchLocationDetails(latitude, longitude)
             val country = details.second.ifBlank { "Desconocido" }
@@ -404,7 +406,7 @@ class RouteViewModel @Inject constructor(
         val allFavorites = repository.getAllSavedLocationsSync()
         val seen = mutableSetOf<String>()
         allFavorites.forEach { fav ->
-            val fingerprint = "${fav.name}_${fav.latitude}_${fav.longitude}"
+            val fingerprint = "__"
             if (seen.contains(fingerprint)) repository.deleteSavedLocation(fav) else seen.add(fingerprint)
         }
     }
@@ -441,6 +443,9 @@ class RouteViewModel @Inject constructor(
 
     fun getPhotoLocation(uri: Uri): Pair<Double, Double>? = photoManager.getPhotoLocation(uri)
 
+    suspend fun extractLocationFromPhoto(uri: Uri): Pair<Double, Double>? =
+        extractPhotoLocationUseCase.execute(uri)
+
     fun createImageFile(): Uri? = photoManager.createImageFile()
 
     suspend fun saveImageToInternalStorage(uri: Uri): Uri? = photoManager.saveImageToInternalStorage(uri)
@@ -469,7 +474,7 @@ class RouteViewModel @Inject constructor(
                 if (e.code() == 401) {
                     aiAnalysisState = AiAnalysisState.ExpiredKey
                 } else {
-                    aiAnalysisState = AiAnalysisState.Error("Error de servidor: ${e.code()}")
+                    aiAnalysisState = AiAnalysisState.Error("Error de servidor: ")
                 }
             } catch (t: Throwable) {
                 t.printStackTrace()
@@ -523,7 +528,7 @@ class RouteViewModel @Inject constructor(
             try {
                 routeExportUseCase.importGpx(uri)
             } catch (e: Exception) {
-                Log.e("RouteViewModel", "Error al importar GPX: ${e.message}", e)
+                Log.e("RouteViewModel", "Error al importar GPX: ", e)
                 _uiEvent.send(UiEvent.ShowSnackbar("Error al importar el archivo GPX"))
             } finally { isImporting = false }
         }
@@ -539,7 +544,7 @@ class RouteViewModel @Inject constructor(
             try {
                 routeExportUseCase.importZip(uri)
             } catch (e: Exception) {
-                Log.e("RouteViewModel", "Error al importar ZIP: ${e.message}", e)
+                Log.e("RouteViewModel", "Error al importar ZIP: ", e)
                 _uiEvent.send(UiEvent.ShowSnackbar("El archivo ZIP es invalido o esta corrupto"))
             } finally { isImporting = false }
         }
@@ -563,7 +568,7 @@ class RouteViewModel @Inject constructor(
                     is BackupUseCase.RestoreDecision.Invalid -> { }
                 }
             } catch (e: Exception) {
-                Log.e("RouteViewModel", "Error al restaurar respaldo: ${e.message}", e)
+                Log.e("RouteViewModel", "Error al restaurar respaldo: ", e)
                 _uiEvent.send(UiEvent.ShowSnackbar("Fallo al restaurar la copia de seguridad"))
             } finally { isImporting = false }
         }

@@ -3,6 +3,7 @@ package com.aistudio.localizador.di
 import android.content.Context
 import com.aistudio.localizador.data.export.RouteExchanger
 import com.aistudio.localizador.data.repository.RouteRepository
+import com.aistudio.localizador.domain.usecase.ExtractPhotoLocationUseCase
 import com.aistudio.localizador.ui.BackupUseCase
 import com.aistudio.localizador.ui.ContactUseCase
 import com.aistudio.localizador.ui.GeminiAiUseCase
@@ -49,6 +50,12 @@ object AppModule {
     @Provides
     @Singleton
     fun provideGeminiAiUseCase(): GeminiAiUseCase = GeminiAiUseCase()
+
+    @Provides
+    @Singleton
+    fun provideExtractPhotoLocationUseCase(
+        photoManager: PhotoManager
+    ): ExtractPhotoLocationUseCase = ExtractPhotoLocationUseCase(photoManager)
 
     @Provides
     @Singleton

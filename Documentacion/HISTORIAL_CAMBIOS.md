@@ -1,3 +1,24 @@
+## [2026-07-17] ME-02: ExtractPhotoLocationUseCase + Corrección de EXIF en Hilo Principal
+
+### Logro
+Creación de ExtractPhotoLocationUseCase en domain/usecase/ para extraer coordenadas GPS de metadatos EXIF de forma segura (Dispatchers.IO + withContext), delegando en PhotoManager existente. Corrección del bug donde getPhotoLocation() se ejecutaba en el hilo principal de UI, causando SecurityException/FileNotFoundException silenciosas en Android 10+ (Scoped Storage).
+
+### Archivos Modificados
+- domain/usecase/ExtractPhotoLocationUseCase.kt: **nuevo** — use case puro que envuelve PhotoManager.getPhotoLocation() en withContext(Dispatchers.IO)
+- di/AppModule.kt: añadido provider @Singleton para ExtractPhotoLocationUseCase
+- ui/RouteViewModel.kt: inyectado ExtractPhotoLocationUseCase como parámetro 12 del constructor; añadida suspend fun extractLocationFromPhoto(uri)
+- ui/screens/SavedLocationsScreen.kt: cameraLauncher wrap en scope.launch; gallery/media pickers migrados a extractLocationFromPhoto()
+- ui/screens/MapScreen.kt: cameraLauncher wrap en scope.launch; gallery/media pickers migrados a extractLocationFromPhoto()
+
+### Principio de Diseño (Regla de Oro V)
+- Separación de responsabilidades: PhotoManager queda como capa de infraestructura (E/S de archivos + EXIF)
+- ExtractPhotoLocationUseCase actúa como orquestador de dominio puro, añadiendo seguridad de hilo (IO) sin acoplar al ViewModel con dispatchers
+
+### Tests
+- domain/usecase/ExtractPhotoLocationUseCaseTest.kt: **nuevo** — 2 tests (coordenadas exitosas y null seguro) con mockk para Uri y PhotoManager
+- assembleDebug: BUILD SUCCESSFUL
+- testDebugUnitTest: 16/16 passing
+
 ## [2026-07-16] ME-01 Fase IV: LocationModule + Inyección Total de Managers
 
 ### Logro
