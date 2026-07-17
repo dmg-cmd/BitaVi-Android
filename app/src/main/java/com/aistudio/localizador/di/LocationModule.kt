@@ -1,0 +1,43 @@
+package com.aistudio.localizador.di
+
+import com.aistudio.localizador.data.repository.RouteRepository
+import com.aistudio.localizador.location.manager.CinematicFilterManager
+import com.aistudio.localizador.location.manager.GpsFilterPipeline
+import com.aistudio.localizador.location.manager.StationaryAnchorManager
+import com.aistudio.localizador.location.manager.TrackingSessionManager
+import com.aistudio.localizador.util.AppConstants
+import dagger.Module
+import dagger.Provides
+import dagger.hilt.InstallIn
+import dagger.hilt.components.SingletonComponent
+
+@Module
+@InstallIn(SingletonComponent::class)
+object LocationModule {
+
+    @Provides
+    fun provideTrackingSessionManager(repository: RouteRepository): TrackingSessionManager {
+        return TrackingSessionManager(repository)
+    }
+
+    @Provides
+    fun provideCinematicFilterManager(): CinematicFilterManager {
+        return CinematicFilterManager(
+            maxAllowedSpeedMps = AppConstants.Location.MAX_SPEED_METERS_PER_SECOND.toDouble(),
+            autoStopSpeedMps = AppConstants.Location.AUTO_STOP_SPEED_MPS.toDouble()
+        )
+    }
+
+    @Provides
+    fun provideStationaryAnchorManager(): StationaryAnchorManager {
+        return StationaryAnchorManager()
+    }
+
+    @Provides
+    fun provideGpsFilterPipeline(
+        cinematicFilter: CinematicFilterManager,
+        stationaryAnchor: StationaryAnchorManager
+    ): GpsFilterPipeline {
+        return GpsFilterPipeline(cinematicFilter, stationaryAnchor)
+    }
+}

@@ -1,3 +1,20 @@
+## [2026-07-16] ME-01 Fase IV: LocationModule + Inyección Total de Managers
+
+### Logro
+Creación de LocationModule.kt con providers unscoped para TrackingSessionManager, CinematicFilterManager, StationaryAnchorManager y GpsFilterPipeline. Integración completa en LocationService mediante field injection.
+
+### Archivos Modificados
+- di/LocationModule.kt: **nuevo** — providers unscoped para los 4 managers de tracking
+- location/manager/GpsFilterPipeline.kt: añadidos métodos eset() y shouldForceStop(Location) para delegar desde el servicio sin referencias directas a los managers internos
+- location/LocationService.kt: sessionManager y ilterPipeline migrados a @Inject; eliminadas las 4 declaraciones manuales de campo y su creación en onCreate(); todas las llamadas directas a stationaryAnchorManager.* y cinematicFilter.* redirigidas a ilterPipeline.*
+
+### Principio de Diseño (Regla de Oro V)
+- Ningún provider usa @Singleton — cada inyección en LocationService recibe instancias frescas, evitando fugas de estado entre sesiones de tracking
+- 	riggerAutomaticTracking() continúa creando su propio pipeline limpio localmente para backfill (no comparte estado con el pipeline inyectado)
+
+### Tests
+- ssembleDebug: BUILD SUCCESSFUL
+- 	estDebugUnitTest: 14/14 passing
 ## [2026-07-16] ME-01: Infraestructura Hilt + Migración DI Completa (MVP)
 
 ### Logro
@@ -180,5 +197,6 @@ Hilt 2.59 compila y funciona nativamente con AGP 9.2.1 usando KSP (sin kapt). Se
 - **Errores corregidos durante la cirugía**: Stray brace del handlePreRecording (L98), ctiveRouteId residual (L622, L874, L1007, L1060), 	otalDistanceMeters residual (L635, L968), ccuracy fantasma en LocationPoint (L592, TSM L87), Long→Int en outeId (TSM L84), ndSession→stopSession (L1013).
 - **Resultado**: BUILD SUCCESSFUL (compileDebugKotlin + test + assembleDebug). installDebug exitoso en Pixel 9 Pro XL (Android 16).
 - **Respaldos**: RESPALDO_ANTERIOR/20260716_LocationService.kt, 20260716_TrackingSessionManager.kt.
+
 
 

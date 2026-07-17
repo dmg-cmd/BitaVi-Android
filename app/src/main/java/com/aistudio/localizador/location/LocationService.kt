@@ -81,11 +81,6 @@ class LocationService : Service() {
 
     private var lastValidLocation: Location? = null
     private val notificationManager = ServiceNotificationManager(this)
-    private lateinit var sessionManager: TrackingSessionManager
-    private val cinematicFilter = com.aistudio.localizador.location.manager.CinematicFilterManager(
-        maxAllowedSpeedMps = AppConstants.Location.MAX_SPEED_METERS_PER_SECOND.toDouble(),
-        autoStopSpeedMps = AppConstants.Location.AUTO_STOP_SPEED_MPS.toDouble()
-    )
     private var lastStopLocation: Location? = null
 
     private var timerJob: Job? = null
@@ -130,13 +125,13 @@ class LocationService : Service() {
     // BLE Proximity (Módulo 3B)
     private var alertNotifier: AlertNotifier? = null
     private var proximityManager: ProximityManager? = null
-    private val stationaryAnchorManager = StationaryAnchorManager()
-    private val filterPipeline = GpsFilterPipeline(cinematicFilter, stationaryAnchorManager)
     private var activityRecognitionManager: ActivityRecognitionManager? = null
     private var isBleActive = false
     private var lastBleNotificationTime: Long = 0L
     @Inject lateinit var contactUseCase: ContactUseCase
     @Inject lateinit var geocoderUseCase: GeocoderUseCase
+    @Inject lateinit var sessionManager: TrackingSessionManager
+    @Inject lateinit var filterPipeline: GpsFilterPipeline
 
     companion object {
         private const val TAG = "LocationService"
@@ -226,7 +221,6 @@ class LocationService : Service() {
         val database = AppDatabase.getInstance(applicationContext, dbPassphrase)
         repository = RouteRepository(database.routeDao())
 
-        sessionManager = TrackingSessionManager(repository)
 
         // Inicializar WakeLock para evitar que el sistema suspenda el CPU
         val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
@@ -455,7 +449,7 @@ class LocationService : Service() {
         val anchoredLocation = location.apply { latitude = processedBp.latitude; longitude = processedBp.longitude }
 
         // Guarda de contingencia: forzar parada si 3 min de precision degradada (>25m)
-        if (stationaryAnchorManager.shouldForceStop(location)) {
+        if (filterPipeline.shouldForceStop(location)) {
             Log.w(TAG, "Guarda de 3min activada. Forzando parada automatica por degradacion de senhal en interiores.")
             stopTrackingWithAutoRestart()
             return
@@ -998,8 +992,7 @@ class LocationService : Service() {
                 shortStopLat = 0.0
                 shortStopLon = 0.0
                 shortStopAddress = ""
-                stationaryAnchorManager.reset()
-                cinematicFilter.reset()
+                filterPipeline.reset()
                 _elapsedTimeSeconds = 0L
                 _currentDistanceMeters = 0.0
 
