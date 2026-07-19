@@ -34,5 +34,4 @@ class PreferencesManager(context: Context) {
     }
     fun setStrokeWidth(w: Float) { prefs.edit { putFloat("map_stroke_width", w) } }
     fun getStrokeWidth(): Float = prefs.getFloat("map_stroke_width", 8f)
-
 }
