@@ -1,10 +1,14 @@
 package com.aistudio.localizador.di
 
 import com.aistudio.localizador.data.repository.RouteRepository
+import com.aistudio.localizador.location.manager.ActivityModeManager
+import com.aistudio.localizador.location.manager.AutoTrackingManager
 import com.aistudio.localizador.location.manager.CinematicFilterManager
 import com.aistudio.localizador.location.manager.GpsFilterPipeline
+import com.aistudio.localizador.location.manager.ShortStopMarkManager
 import com.aistudio.localizador.location.manager.StationaryAnchorManager
 import com.aistudio.localizador.location.manager.TrackingSessionManager
+import com.aistudio.localizador.ui.GeocoderUseCase
 import com.aistudio.localizador.util.AppConstants
 import dagger.Module
 import dagger.Provides
@@ -39,5 +43,23 @@ object LocationModule {
         stationaryAnchor: StationaryAnchorManager
     ): GpsFilterPipeline {
         return GpsFilterPipeline(cinematicFilter, stationaryAnchor)
+    }
+
+    @Provides
+    fun provideActivityModeManager(): ActivityModeManager {
+        return ActivityModeManager()
+    }
+
+    @Provides
+    fun provideShortStopMarkManager(
+        repository: RouteRepository,
+        geocoderUseCase: GeocoderUseCase
+    ): ShortStopMarkManager {
+        return ShortStopMarkManager(repository, geocoderUseCase)
+    }
+
+    @Provides
+    fun provideAutoTrackingManager(): AutoTrackingManager {
+        return AutoTrackingManager()
     }
 }

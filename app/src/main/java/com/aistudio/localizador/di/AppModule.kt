@@ -12,7 +12,7 @@ import com.aistudio.localizador.ui.GroqAiUseCase
 import com.aistudio.localizador.ui.LocationServiceManager
 import com.aistudio.localizador.ui.PhotoManager
 import com.aistudio.localizador.ui.PreferencesManager
-import com.aistudio.localizador.ui.RouteExportUseCase
+import com.aistudio.localizador.domain.usecase.RouteExportUseCase
 import com.aistudio.localizador.ui.ShareUseCase
 import dagger.Module
 import dagger.Provides
@@ -54,8 +54,8 @@ object AppModule {
     @Provides
     @Singleton
     fun provideExtractPhotoLocationUseCase(
-        photoManager: PhotoManager
-    ): ExtractPhotoLocationUseCase = ExtractPhotoLocationUseCase(photoManager)
+        @ApplicationContext context: Context
+    ): ExtractPhotoLocationUseCase = ExtractPhotoLocationUseCase(context)
 
     @Provides
     @Singleton
@@ -98,3 +98,4 @@ object AppModule {
         return LocationServiceManager(context)
     }
 }
+

@@ -1,6 +1,6 @@
 package com.aistudio.localizador.ui.screens
 
-import com.aistudio.localizador.ui.toRouteSegments
+import com.aistudio.localizador.ui.toGradientRouteSegments
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
@@ -111,7 +111,7 @@ fun MapScreen(
         } else {
             capturedPhotoUri?.let { uri ->
                 scope.launch {
-                    photoGpsLocation = viewModel.extractLocationFromPhoto(uri)
+                    photoGpsLocation = viewModel.extractLocationFromPhoto(uri)?.let { Pair(it.latitude, it.longitude) }
                 }
             }
         }
@@ -123,7 +123,7 @@ fun MapScreen(
             scope.launch {
                 val internalUri = viewModel.saveImageToInternalStorage(pendingPhotoUri!!)
                 capturedPhotoUri = internalUri
-                photoGpsLocation = viewModel.extractLocationFromPhoto(pendingPhotoUri!!)
+                photoGpsLocation = viewModel.extractLocationFromPhoto(pendingPhotoUri!!)?.let { Pair(it.latitude, it.longitude) }
                 usePhotoGps = photoGpsLocation != null
             }
             pendingPhotoUri = null
@@ -142,7 +142,7 @@ fun MapScreen(
                 scope.launch {
                     val internalUri = viewModel.saveImageToInternalStorage(it)
                     capturedPhotoUri = internalUri
-                    photoGpsLocation = viewModel.extractLocationFromPhoto(it)
+                    photoGpsLocation = viewModel.extractLocationFromPhoto(it)?.let { Pair(it.latitude, it.longitude) }
                     usePhotoGps = photoGpsLocation != null
                 }
             } else {
@@ -398,7 +398,7 @@ fun MapScreen(
                     var needsInvalidate = false
 
                     // 1. Polyline segmentada por modo de actividad (OPTIMIZADA: diffing incremental)
-                    val newSegments = routePoints.toRouteSegments()
+                    val newSegments = routePoints.toGradientRouteSegments(viewModel.routeColorUseCase)
                     val currentTotalPoints = routePoints.size
                     val newModes = newSegments.map { it.mode }
                     val structureChanged = newSegments.size != prevSegmentModes.size || newModes != prevSegmentModes
@@ -633,6 +633,16 @@ fun MapScreen(
             } else {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     FloatingActionButton(onClick = { showWaypointDialog = true }) { Icon(Icons.Default.AddLocationAlt, null) }
+                    FloatingActionButton(
+                        onClick = { viewModel.addQuickFavoriteFromTracking() },
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.LocationOn,
+                            contentDescription = "Guardar punto en ruta",
+                            tint = Color(0xFFFFD54F)
+                        )
+                    }
                     FloatingActionButton(onClick = { viewModel.stopTrackingRoute() }, containerColor = MaterialTheme.colorScheme.error) { Icon(Icons.Default.Stop, null) }
                 }
             }
@@ -1111,6 +1121,7 @@ fun IndicadorTranslucidoContenedor(
         }
     }
 }
+
 
 
 

@@ -1,6 +1,7 @@
 package com.aistudio.localizador.ui
 
 import com.aistudio.localizador.data.model.LocationPoint
+import com.aistudio.localizador.domain.usecase.RouteColorUseCase
 import com.aistudio.localizador.location.ActivityMode
 import org.osmdroid.util.GeoPoint
 
@@ -24,7 +25,6 @@ fun ActivityMode.toSegmentColor(): Int = when (this) {
     ActivityMode.DRIVING -> android.graphics.Color.rgb(255, 82, 82)
     ActivityMode.SIN_SENAL -> android.graphics.Color.argb(128, 220, 53, 69)
 }
-
 
 fun List<LocationPoint>.toRouteSegments(): List<SegmentoRuta> {
     if (isEmpty()) return emptyList()
@@ -65,4 +65,36 @@ fun List<LocationPoint>.toRouteSegments(): List<SegmentoRuta> {
     }
 
     return segments
+}
+
+/**
+ * Genera segmentos de polilínea con gradiente térmico continuo basado en velocidad.
+ * Cada segmento conecta un par consecutivo de puntos con el color interpolado
+ * según la velocidad promedio del tramo: Azul (lento) → Rojo (rápido).
+ */
+fun List<LocationPoint>.toGradientRouteSegments(
+    colorUseCase: RouteColorUseCase
+): List<SegmentoRuta> {
+    if (size < 2) return emptyList()
+
+    val maxSpeed = maxOfOrNull { it.speed } ?: 1.0f
+    val minSpeed = minOfOrNull { it.speed } ?: 0.0f
+
+    return zipWithNext { p1, p2 ->
+        val avgSpeed = (p1.speed + p2.speed) / 2.0f
+        val segmentColor = colorUseCase.speedToGradientColor(
+            speedMps = avgSpeed,
+            minSpeedMps = minSpeed,
+            maxSpeedMps = maxSpeed
+        )
+
+        SegmentoRuta(
+            points = listOf(
+                GeoPoint(p1.latitude, p1.longitude),
+                GeoPoint(p2.latitude, p2.longitude)
+            ),
+            mode = avgSpeed.toActivityMode(),
+            color = segmentColor
+        )
+    }
 }

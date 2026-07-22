@@ -10,7 +10,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import android.Manifest
 import android.os.Build
-import androidx.activity.result.PickVisualMediaRequest
+import android.util.Log
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -42,13 +42,21 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import com.aistudio.localizador.ui.components.TourOverlay
 import com.aistudio.localizador.ui.dialogs.DeleteConfirmationDialog
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.core.graphics.toColorInt
 import java.util.Locale
 import com.aistudio.localizador.data.model.SavedLocation
 import com.aistudio.localizador.ui.model.IconCategory
+import com.aistudio.localizador.domain.usecase.CountryFavoritesGroup
 import com.aistudio.localizador.ui.RouteViewModel
 import org.osmdroid.util.GeoPoint
+import org.osmdroid.views.MapView
+import org.osmdroid.tileprovider.tilesource.TileSourceFactory
+import org.osmdroid.views.overlay.Marker
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.draw.clip
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -75,70 +83,72 @@ fun SavedLocationsScreen(
     var selectedColor by remember { mutableStateOf("#FFD700") }
     
     var capturedPhotoUri by remember { mutableStateOf<Uri?>(null) }
-    var pendingPhotoUri by remember { mutableStateOf<Uri?>(null) }
     var photoGpsLocation by remember { mutableStateOf<Pair<Double, Double>?>(null) }
     var usePhotoGps by remember { mutableStateOf(false) }
+    var inputLatitude by remember { mutableStateOf("") }
+    var inputLongitude by remember { mutableStateOf("") }
     var photoToZoom by remember { mutableStateOf<String?>(null) }
     var showDeleteConfirmation by remember { mutableStateOf(false) }
     var favoriteToDelete by remember { mutableStateOf<SavedLocation?>(null) }
     var showTourFotos by remember { mutableStateOf(!viewModel.esTourVisto("fotos")) }
+    var selectedPhotoTimestamp by remember { mutableStateOf<Long?>(null) }
 
     val cameraLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.TakePicture()
     ) { success ->
-        if (!success) {
-            capturedPhotoUri = null
-        } else {
-            // Intentar extraer GPS de la foto recién sacada
-            capturedPhotoUri?.let { uri ->
-                scope.launch {
-                    val loc = viewModel.extractLocationFromPhoto(uri)
-                    photoGpsLocation = loc
-                    if (loc != null) usePhotoGps = true
+        if (success && capturedPhotoUri != null) {
+            scope.launch(Dispatchers.IO) {
+                val metadata = viewModel.extractLocationFromPhoto(capturedPhotoUri!!)
+                withContext(Dispatchers.Main) {
+                    photoGpsLocation = if (metadata != null) Pair(metadata.latitude, metadata.longitude) else null
+                    if (metadata != null) {
+                        inputLatitude = String.format(Locale.US, "%.6f", metadata.latitude)
+                        inputLongitude = String.format(Locale.US, "%.6f", metadata.longitude)
+                        usePhotoGps = true
+                        selectedPhotoTimestamp = metadata.timestamp
+                        viewModel.fetchPhotoAddress(metadata.latitude, metadata.longitude)
+                    }
                 }
             }
+        } else {
+            capturedPhotoUri = null
         }
     }
 
     val mediaLocationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { isGranted ->
-        if (isGranted && pendingPhotoUri != null) {
-            scope.launch {
-                val internalUri = viewModel.saveImageToInternalStorage(pendingPhotoUri!!)
-                capturedPhotoUri = internalUri
-                photoGpsLocation = viewModel.extractLocationFromPhoto(pendingPhotoUri!!)
-                usePhotoGps = photoGpsLocation != null
-            }
-            pendingPhotoUri = null
+        if (isGranted) {
+            Log.i("Bitaru_EXIF", "Permiso ACCESS_MEDIA_LOCATION concedido. Reintente selección de galería.")
+        } else {
+            Log.w("Bitaru_EXIF", "Permiso ACCESS_MEDIA_LOCATION denegado. Cabeceras EXIF bloqueadas.")
         }
     }
 
     val photoPickerLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.PickVisualMedia()
+        contract = ActivityResultContracts.GetContent()
     ) { uri ->
-        uri?.let {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                val hasMediaLocation = ContextCompat.checkSelfPermission(
-                    context, Manifest.permission.ACCESS_MEDIA_LOCATION
-                ) == PackageManager.PERMISSION_GRANTED
-                if (hasMediaLocation) {
-                    scope.launch {
-                        val internalUri = viewModel.saveImageToInternalStorage(it)
-                        capturedPhotoUri = internalUri
-                        photoGpsLocation = viewModel.extractLocationFromPhoto(it)
-                        usePhotoGps = photoGpsLocation != null
+        uri?.let { targetUri ->
+            scope.launch(Dispatchers.IO) {
+                val savedUri = viewModel.saveImageToInternalStorage(targetUri)
+                val metadata = viewModel.extractLocationFromPhoto(targetUri)
+                
+                withContext(Dispatchers.Main) {
+                    capturedPhotoUri = savedUri
+                    
+                    if (metadata != null) {
+                        photoGpsLocation = Pair(metadata.latitude, metadata.longitude)
+                        inputLatitude = String.format(Locale.US, "%.6f", metadata.latitude)
+                        inputLongitude = String.format(Locale.US, "%.6f", metadata.longitude)
+                        usePhotoGps = true
+                        
+                        selectedPhotoTimestamp = metadata.timestamp
+                        
+                        viewModel.fetchPhotoAddress(metadata.latitude, metadata.longitude)
+                    } else {
+                        photoGpsLocation = null
+                        selectedPhotoTimestamp = null
                     }
-                } else {
-                    pendingPhotoUri = it
-                    mediaLocationPermissionLauncher.launch(Manifest.permission.ACCESS_MEDIA_LOCATION)
-                }
-            } else {
-                scope.launch {
-                    val internalUri = viewModel.saveImageToInternalStorage(it)
-                    capturedPhotoUri = internalUri
-                    photoGpsLocation = viewModel.extractLocationFromPhoto(it)
-                    usePhotoGps = photoGpsLocation != null
                 }
             }
         }
@@ -173,6 +183,11 @@ fun SavedLocationsScreen(
     // Al abrir el diálogo, disparamos la búsqueda de dirección actual
     LaunchedEffect(showAddDialog) {
         if (showAddDialog) {
+            val loc = viewModel.latestLocationLive.value
+            if (loc != null) {
+                inputLatitude = String.format(Locale.US, "%.6f", loc.latitude)
+                inputLongitude = String.format(Locale.US, "%.6f", loc.longitude)
+            }
             viewModel.fetchCurrentAddress()
         }
     }
@@ -314,14 +329,13 @@ fun SavedLocationsScreen(
     }
 
     if (showAddDialog) {
-        val currentFetchedAddress = viewModel.currentAddress
         
+        
+
         // Actualizar dirección si cambia el switch de ubicación de foto
         LaunchedEffect(usePhotoGps) {
             manualAddress = "" // Limpiamos para que tome la dirección del ViewModel
-            if (usePhotoGps && photoGpsLocation != null) {
-                viewModel.fetchAddressForCoordinates(photoGpsLocation!!.first, photoGpsLocation!!.second)
-            } else if (!usePhotoGps) {
+            if (!usePhotoGps) {
                 viewModel.fetchCurrentAddress()
             }
         }
@@ -334,7 +348,7 @@ fun SavedLocationsScreen(
                 viewModel.clearCurrentAddress()
                 capturedPhotoUri = null
             },
-            title = { Text("Guardar ubicación actual") },
+            title = { Text("Guardar ubicación") },
             text = {
                 Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                     OutlinedTextField(value = newName, onValueChange = { newName = it }, label = { Text("Nombre (ej. Casa, Trabajo)") }, modifier = Modifier.fillMaxWidth())
@@ -354,8 +368,41 @@ fun SavedLocationsScreen(
 
                     OutlinedTextField(value = author, onValueChange = { author = it }, label = { Text("¿Quién lo guarda?") }, modifier = Modifier.fillMaxWidth())
                     Spacer(modifier = Modifier.height(8.dp))
-                    OutlinedTextField(value = manualAddress.ifBlank { currentFetchedAddress ?: "" }, onValueChange = { manualAddress = it }, label = { Text("Dirección") }, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(value = manualAddress.ifBlank { if (usePhotoGps) { viewModel.photoExtractedAddress ?: "Obteniendo dirección..." } else { viewModel.currentAddress ?: "" } }, onValueChange = { manualAddress = it }, label = { Text("Dirección") }, modifier = Modifier.fillMaxWidth())
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(text = if (usePhotoGps) "📷 Guardar ubicación de la foto" else "📍 Guardar ubicación actual del GPS", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(modifier = Modifier.height(8.dp))
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(selected = !usePhotoGps, onClick = { usePhotoGps = false; val loc = viewModel.latestLocationLive.value; if (loc != null) { inputLatitude = String.format(Locale.US, "%.6f", loc.latitude); inputLongitude = String.format(Locale.US, "%.6f", loc.longitude) } }, label = { Text("📍 GPS del teléfono") })
+                        FilterChip(selected = usePhotoGps, onClick = { usePhotoGps = true; photoGpsLocation?.let { inputLatitude = String.format(Locale.US, "%.6f", it.first); inputLongitude = String.format(Locale.US, "%.6f", it.second) } }, label = { Text("📷 Ubicación de la foto") }, enabled = photoGpsLocation != null)
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(value = inputLatitude, onValueChange = { inputLatitude = it; usePhotoGps = false }, label = { Text("Latitud") }, modifier = Modifier.weight(1f), singleLine = true)
+                        OutlinedTextField(value = inputLongitude, onValueChange = { inputLongitude = it; usePhotoGps = false }, label = { Text("Longitud") }, modifier = Modifier.weight(1f), singleLine = true)
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Box(modifier = Modifier.fillMaxWidth().height(180.dp).clip(RoundedCornerShape(12.dp))) {
+                        AndroidView(factory = { ctx ->
+                            MapView(ctx).apply {
+                                setMultiTouchControls(true)
+                                controller.setZoom(16.0)
+                                setTileSource(TileSourceFactory.MAPNIK)
+                            }
+                        }, update = { mapView ->
+                            val lat = inputLatitude.toDoubleOrNull() ?: return@AndroidView
+                            val lon = inputLongitude.toDoubleOrNull() ?: return@AndroidView
+                            val point = GeoPoint(lat, lon)
+                            mapView.controller.animateTo(point)
+                            mapView.overlays.clear()
+                            mapView.overlays.add(org.osmdroid.views.overlay.Marker(mapView).apply {
+                                position = point
+                                setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+                            })
+                            mapView.invalidate()
+                        })
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
                     OutlinedTextField(value = comment, onValueChange = { comment = it }, label = { Text("Comentario / Nota") }, modifier = Modifier.fillMaxWidth())
                     Spacer(modifier = Modifier.height(12.dp))
 
@@ -473,7 +520,9 @@ fun SavedLocationsScreen(
                             }
                             
                             OutlinedButton(
-                                onClick = { photoPickerLauncher.launch(PickVisualMediaRequest.Builder().setMediaType(ActivityResultContracts.PickVisualMedia.ImageOnly).build()) },
+                                onClick = {
+                                    photoPickerLauncher.launch("image/*")
+                                },
                                 modifier = Modifier.weight(1f)
                             ) {
                                 Icon(Icons.Default.PhotoLibrary, null)
@@ -492,15 +541,14 @@ fun SavedLocationsScreen(
                         val finalLon: Double
                         val finalAddress: String
                         
-                        if (usePhotoGps && photoGpsLocation != null) {
-                            finalLat = photoGpsLocation!!.first
-                            finalLon = photoGpsLocation!!.second
-                            finalAddress = viewModel.currentAddress ?: manualAddress
-                        } else {
-                            val currentLoc = viewModel.latestLocationLive.value
-                            finalLat = currentLoc?.latitude ?: 0.0
-                            finalLon = currentLoc?.longitude ?: 0.0
-                            finalAddress = manualAddress.ifBlank { currentFetchedAddress ?: "" }
+                        finalLat = inputLatitude.toDoubleOrNull() ?: 0.0
+                        finalLon = inputLongitude.toDoubleOrNull() ?: 0.0
+                        finalAddress = manualAddress.ifBlank {
+                            if (usePhotoGps) {
+                                viewModel.photoExtractedAddress ?: String.format(Locale.US, "GPS Foto: %.5f, %.5f", finalLat, finalLon)
+                            } else {
+                                viewModel.currentAddress ?: String.format(Locale.US, "GPS: %.5f, %.5f", finalLat, finalLon)
+                            }
                         }
 
                         viewModel.saveSpecificLocation(
@@ -514,7 +562,8 @@ fun SavedLocationsScreen(
                             phoneNumber = phone,
                             email = email,
                             isContact = isContact,
-                            color = selectedColor
+                            color = selectedColor,
+                            photoTimestamp = selectedPhotoTimestamp
                         )
                         showAddDialog = false
                         newName = ""
@@ -527,7 +576,10 @@ fun SavedLocationsScreen(
                         selectedColor = "#FFD700"
                         capturedPhotoUri = null
                         photoGpsLocation = null
+                        selectedPhotoTimestamp = null
                         usePhotoGps = false
+                        inputLatitude = """
+                        inputLongitude = """
                         viewModel.clearCurrentAddress()
                     }
                 }) { Text("Guardar") }
@@ -537,6 +589,9 @@ fun SavedLocationsScreen(
                     showAddDialog = false
                     viewModel.clearCurrentAddress()
                     capturedPhotoUri = null
+                    selectedPhotoTimestamp = null
+                    inputLatitude = ""
+                    inputLongitude = ""
                 }) { Text("Cancelar") }
             }
         )
@@ -883,4 +938,33 @@ fun LocationCard(
         onDismiss = { photoToZoom = null }
     )
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 

@@ -3,19 +3,23 @@ package com.aistudio.localizador.ui.screens
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.filled.*
-import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -23,7 +27,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.aistudio.localizador.data.model.Route
+import com.aistudio.localizador.domain.usecase.DayGroupUiModel
 import com.aistudio.localizador.ui.RouteViewModel
+import java.time.LocalDate
 import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.TimeUnit
@@ -37,9 +43,10 @@ fun HistoryScreen(
     modifier: Modifier = Modifier
 ) {
     val routes by viewModel.allRoutes.collectAsState()
+    val groupedRoutes by viewModel.groupedRoutesState.collectAsState()
     val selectedRouteIds by viewModel.selectedRouteIds.collectAsState()
     val isSelectionMode = selectedRouteIds.isNotEmpty()
-    var routeToDelete by remember { mutableStateOf<Route?>(null) }
+    val collapsedDates by viewModel.collapsedDates.collectAsState()
     var showBulkDeleteConfirm by remember { mutableStateOf(false) }
     var showImportDialog by remember { mutableStateOf(false) }
 
@@ -153,28 +160,47 @@ fun HistoryScreen(
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    items(items = sortedRoutes, key = { it.id }) { route ->
-                        val isSelected = selectedRouteIds.contains(route.id)
-                        RouteCard(
-                            route = route,
-                            isSelected = isSelected,
-                            isSelectionMode = isSelectionMode,
-                            onClick = {
-                                if (isSelectionMode) {
-                                    viewModel.toggleSelection(route.id)
-                                } else {
-                                    viewModel.selectRouteForDetail(route.id)
-                                    onRouteClick(route.id)
-                                }
-                            },
-                            onLongClick = {
-                                if (!isSelectionMode) {
-                                    viewModel.toggleSelection(route.id)
-                                }
-                            },
-                            onDelete = { routeToDelete = route },
-                            modifier = Modifier.animateItem()
+                    items(items = groupedRoutes, key = { it.date.toString() }) { dayGroup ->
+                        val isCollapsed = collapsedDates.contains(dayGroup.date)
+                        DayGroupHeader(
+                            formattedDate = dayGroup.formattedDate,
+                            colorInt = dayGroup.colorInt,
+                            isCollapsed = isCollapsed,
+                            onToggle = {
+                                viewModel.toggleDateCollapse(dayGroup.date)
+                            }
                         )
+                        AnimatedVisibility(
+                            visible = !isCollapsed,
+                            enter = expandVertically(),
+                            exit = shrinkVertically()
+                        ) {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                dayGroup.routes.forEach { route ->
+                                    val isSelected = selectedRouteIds.contains(route.id)
+                                    RouteCard(
+                                        route = route,
+                                        stripeColor = Color(dayGroup.colorInt),
+                                        isSelected = isSelected,
+                                        isSelectionMode = isSelectionMode,
+                                        onClick = {
+                                            if (isSelectionMode) {
+                                                viewModel.toggleSelection(route.id)
+                                            } else {
+                                                viewModel.selectRouteForDetail(route.id)
+                                                onRouteClick(route.id)
+                                            }
+                                        },
+                                        onLongClick = {
+                                            if (!isSelectionMode) {
+                                                viewModel.toggleSelection(route.id)
+                                            }
+                                        },
+                                        modifier = Modifier.animateItem()
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -189,27 +215,6 @@ fun HistoryScreen(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(16.dp)
-        )
-    }
-
-    routeToDelete?.let { route ->
-        AlertDialog(
-            onDismissRequest = { routeToDelete = null },
-            icon = { Icon(Icons.Default.DeleteForever, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
-            title = { Text("Eliminar recorrido?") },
-            text = { Text("Esta accion eliminara de forma irreversible el recorrido '" + route.name + "'.") },
-            confirmButton = {
-                Button(
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
-                    onClick = {
-                        viewModel.deleteRoute(route.id)
-                        routeToDelete = null
-                    }
-                ) { Text("Eliminar definitivamente") }
-            },
-            dismissButton = {
-                TextButton(onClick = { routeToDelete = null }) { Text("Cancelar") }
-            }
         )
     }
 
@@ -272,12 +277,12 @@ fun HistoryScreen(
 @Composable
 fun RouteCard(
     route: Route,
+    stripeColor: Color = Color.Transparent,
     isSelected: Boolean = false,
     isSelectionMode: Boolean = false,
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
-    onLongClick: () -> Unit,
-    onDelete: () -> Unit
+    onLongClick: () -> Unit
 ) {
     val durationMillis = if (route.endTime > route.startTime) route.endTime - route.startTime else 0L
     val formattedDuration = formatDuration(durationMillis)
@@ -298,40 +303,80 @@ fun RouteCard(
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = if (isSelected) 8.dp else 2.dp)
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                    if (isSelectionMode) {
-                        Checkbox(checked = isSelected, onCheckedChange = { onClick() }, modifier = Modifier.padding(end = 8.dp))
-                    }
-                    Column {
-                        Text(text = route.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                        Text(text = formattedDate, style = MaterialTheme.typography.labelMedium)
+        Row(modifier = Modifier.fillMaxHeight()) {
+            if (stripeColor != Color.Transparent) {
+                Box(
+                    modifier = Modifier
+                        .width(6.dp)
+                        .fillMaxHeight()
+                        .clip(RoundedCornerShape(topStart = 16.dp, bottomStart = 16.dp))
+                        .background(stripeColor)
+                )
+            }
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                        if (isSelectionMode) {
+                            Checkbox(checked = isSelected, onCheckedChange = { onClick() }, modifier = Modifier.padding(end = 8.dp))
+                        }
+                        Column {
+                            Text(text = route.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                            Text(text = formattedDate, style = MaterialTheme.typography.labelMedium)
+                        }
                     }
                 }
-                if (!isSelectionMode) {
-                    IconButton(onClick = onDelete, colors = IconButtonDefaults.iconButtonColors(contentColor = MaterialTheme.colorScheme.error)) {
-                        Icon(imageVector = Icons.Outlined.Delete, contentDescription = "Eliminar")
-                    }
-                }
-            }
-            Spacer(modifier = Modifier.height(14.dp))
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                StatItem(icon = Icons.AutoMirrored.Filled.TrendingUp, value = String.format(Locale.ROOT, "%.2f km", km), label = "Distancia", tint = MaterialTheme.colorScheme.primary)
-                StatItem(icon = Icons.Default.Schedule, value = formattedDuration, label = "Duracion", tint = MaterialTheme.colorScheme.secondary)
-            }
-            if (route.maxSpeed > 0) {
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(14.dp))
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    StatItem(icon = Icons.Default.Speed, value = String.format(Locale.ROOT, "%.1f km/h", route.avgSpeed * 3.6f), label = "Promedio", tint = Color(0xFF4CAF50))
-                    StatItem(icon = Icons.Default.Bolt, value = String.format(Locale.ROOT, "%.1f km/h", route.maxSpeed * 3.6f), label = "Maxima", tint = Color(0xFFFF9800))
+                    StatItem(icon = Icons.AutoMirrored.Filled.TrendingUp, value = String.format(Locale.ROOT, "%.2f km", km), label = "Distancia", tint = MaterialTheme.colorScheme.primary)
+                    StatItem(icon = Icons.Default.Schedule, value = formattedDuration, label = "Duracion", tint = MaterialTheme.colorScheme.secondary)
+                }
+                if (route.maxSpeed > 0) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        StatItem(icon = Icons.Default.Speed, value = String.format(Locale.ROOT, "%.1f km/h", route.avgSpeed * 3.6f), label = "Promedio", tint = Color(0xFF4CAF50))
+                        StatItem(icon = Icons.Default.Bolt, value = String.format(Locale.ROOT, "%.1f km/h", route.maxSpeed * 3.6f), label = "Maxima", tint = Color(0xFFFF9800))
+                    }
                 }
             }
         }
+    }
+}
+
+@Composable
+fun DayGroupHeader(
+    formattedDate: String,
+    colorInt: Int,
+    isCollapsed: Boolean,
+    onToggle: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .combinedClickable(onClick = onToggle, onLongClick = { }),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(12.dp)
+                .clip(CircleShape)
+                .background(Color(colorInt))
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            text = formattedDate,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.weight(1f)
+        )
+        Icon(
+            imageVector = if (isCollapsed) Icons.Default.ExpandMore else Icons.Default.ExpandLess,
+            contentDescription = if (isCollapsed) "Expandir" else "Colapsar",
+            tint = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 

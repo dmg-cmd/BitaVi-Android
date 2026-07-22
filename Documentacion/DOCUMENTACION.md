@@ -1,3 +1,21 @@
+
+## CR-10: Eliminación de Botón Directo de Borrado en HistoryScreen (Julio 2026)
+
+### ¿Qué cambió para el usuario?
+- **Tarjetas de historial más limpias**: Se eliminó el botón de eliminar (🗑️) de cada tarjeta individual de ruta en la pantalla Historial.
+- **Sub-barra inferior mejorada**: La barra inferior ahora tiene:
+  - **Compartir** (cian) → exporta todas las rutas como GPX
+  - **Importar** (amber) → abre selector de archivos GPX
+  - **Eliminar todo** (rojo) → borra todas las rutas (con confirmación)
+  - **Indicador GPS** (verde) → precisión actual de señal
+- **Prevención de errores**: Al no tener botones destructivos en las tarjetas, se elimina el riesgo de borrar accidentalmente una ruta al deslizar el dedo o caminar.
+- **Modo multi-selección**: Se conserva intacto (checkboxes + borrado por lote).
+
+### ¿Dónde está el cambio?
+- Los botones de la sub-barra inferior están en DynamicHistoryBottomBar.kt.
+- Las tarjetas de ruta están en HistoryScreen.kt (función RouteCard).
+- El lanzador de importación GPX se agregó en MainActivity.kt.
+
 ## ME-01: Inyección de Dependencias con Hilt (Julio 2026)
 
 El proyecto ahora usa **Hilt 2.59** para inyección de dependencias, compatible con AGP 9.2.1 mediante **KSP** (no kapt).
@@ -23,7 +41,8 @@ El proyecto ahora usa **Hilt 2.59** para inyección de dependencias, compatible 
 
 ### Que cambio para el usuario?
 - **Nada visible.** La funcionalidad es identica.
-- **Bug corregido:** Al seleccionar una foto de la galeria para crear un favorito, la app ahora obtiene correctamente las coordenadas GPS de los metadatos EXIF incluso en Android 10+ (Scoped Storage).
+- **Bug corregido (EXIF-02):** Al seleccionar una foto de la galeria para crear un favorito, la app ahora extrae las coordenadas GPS del archivo local clonado en lugar del URI original de la galeria. Esto evita el error de stream IPC consumido que provocaba la perdida silenciosa de los metadatos EXIF.
+- **Diagnostico mejorado:** Ahora hay logs detallados con el tag "Bitaru_EXIF" en Logcat para diagnosticar cualquier fallo en la extraccion de coordenadas GPS (permiso faltante, stream corrupto, imagen sin metadatos).
 
 ### Arquitectura
 | Capa | Componente | Responsabilidad |
@@ -244,3 +263,115 @@ La DetailScreen ahora usa un diseño inmersivo sin barra superior. El boton de r
 - **Próximo paso (AL-01 Fase III)**: Suite de tests unitarios JVM para TrackingSessionManager (buffer FIFO, odómetro, ciclo de sesión).
 
 
+
+## 17/07/2026 — UI-05: Geocodificación Aislada para Fotos EXIF
+- **Estado separado**: La dirección de la foto (extraída de metadatos EXIF) ahora se almacena en photoExtractedAddress, independiente de currentAddress (GPS del dispositivo).
+- **Comportamiento corregido**: Al marcar "Foto tomada en..." en el diálogo de guardar favorito, el campo de dirección muestra exclusivamente la ubicación de la foto, sin riesgo de contaminación por la posición actual del GPS.
+- **Confirmación**: El botón Guardar también utiliza photoExtractedAddress cuando la opción de foto está activa.
+
+## 17/07/2026 — ME-02 Paso 1: AutoTrackingManager (Nuevo Manager)
+- **AutoTrackingManager.kt**: Nuevo gestor que encapsula la deteccion de movimiento sostenido para el arranque automatico de rutas.
+- **Reduccion de LocationService**: 59 lineas eliminadas del servicio principal (4 variables de estado + bloque de logica de 84 lineas).
+- **Arquitectura**: El manager se comunica con LocationService via la interfaz AutoTrackingListener, manteniendo el control del ciclo de vida del Service en el orquestador.
+- **Inyeccion**: Provider unscoped en LocationModule para evitar buffers fantasmas entre sesiones.
+- **Tests**: 5 tests unitarios JVM con mockk (21/21 suite completa).
+
+## 18/07/2026 — ME-03: Inyección Directa EXIF + Micro-Mapa en Favoritos
+- **Bug corregido (Sincronización EXIF-03)**: Al seleccionar una foto de la galería en el diálogo de guardar favorito, las coordenadas GPS del EXIF se inyectan directamente en los campos de latitud/longitud del formulario, eliminando la carrera asíncrona entre la corrutina de extracción y el clic de guardar.
+- **Nuevos campos Lat/Lon**: El diálogo ahora muestra dos OutlinedTextField editables con las coordenadas numéricas, actualizándose al instante cuando se selecciona una foto con GPS.
+- **Micro-mapa reflectivo**: Se agregó un mapa osmdroid (180dp) dentro del diálogo que se centra automáticamente en las coordenadas del formulario y muestra un marcador, dando retroalimentación visual inmediata al usuario.
+- **Edición manual segura**: Si el usuario edita manualmente latitud o longitud, el sistema desactiva automáticamente la sobrescritura de la foto (usePhotoGps = false), preservando la intención del operador.
+- **Inicialización al abrir**: Al abrir el diálogo, los campos se pre-rellenan con la última ubicación conocida del GPS del dispositivo.
+
+## ME-06: Extraccion de Metadatos de Fotos (Julio 2026)
+
+### Que cambio?
+La app ahora extrae correctamente las coordenadas GPS y la fecha de creacion original de las fotos seleccionadas de la galeria o tomadas con la camara, incluso en Android 10+.
+
+### Por que fallaba antes?
+Android entrega las fotos a traves de un stream secuencial (Binder pipe) que no permite movimientos aleatorios dentro del archivo. El lector de metadatos EXIF necesita saltar hacia adelante y atras en el archivo para encontrar los datos GPS, y fallaba silenciosamente al no poder hacerlo.
+
+### Como se soluciono?
+La app copia temporalmente el archivo de la foto a su propia area de almacenamiento antes de leer los metadatos. Esto le da al lector acceso completo al archivo fisico, permitiendole saltar libremente y extraer todos los datos (GPS + fecha de la foto).
+
+### Beneficio para el usuario
+- Las coordenadas GPS de las fotos ahora se detectan correctamente (el boton "Ubicacion de la foto" se habilita)
+- La fecha original de la foto se conserva al guardar un favorito desde una imagen
+- No requiere permisos especiales de ubicacion en medios
+- Compatible con fotos de galeria y de camara
+
+## CR-09: Mapa Térmico por Velocidad (Julio 2026)
+
+### ¿Qué cambió para el usuario?
+- **Las rutas en el mapa ahora se ven con un gradiente térmico de colores**: Azul/Cian para tramos lentos, Verde para ritmo medio, Amarillo para ciclismo/carrera, Rojo para alta velocidad.
+- El gradiente es continuo (HSV interpolado), no por saltos discretos de modo de actividad.
+- Cada segmento entre dos puntos consecutivos recibe su propio color según la velocidad promedio del tramo.
+
+### Arquitectura
+| Capa | Componente | Responsabilidad |
+|---|---|---|
+| Dominio | RouteColorUseCase.speedToGradientColor() | Normaliza velocidad y genera color ARGB vía HSV puro Kotlin |
+| UI | RouteSegmenter.toGradientRouteSegments() | Genera segmentos por par de puntos con color por velocidad |
+| Presentación | MapScreen / ExperienceMapScreen | Consume segmentos y renderiza polilíneas individuales en osmdroid |
+
+### Protecciones
+- División por cero: si maxSpeed == minSpeed (delta < 0.001f), el normalized factor es 0.0f (color azul de reposo).
+- Valores fuera de rango: coerceIn(0.0f, 1.0f) en la normalización.
+- Sin dependencias Android framework en la lógica de dominio.
+
+
+
+## CR-13: Branding Corporativo Bitaru en Pantalla de Bloqueo (Julio 2026)
+
+### ¿Qué cambió para el usuario?
+- **Nuevo banner corporativo Bitaru**: Al abrir la app con protección biométrica activada, ahora verás el logo rectangular de BiTaRu en la cabecera de la pantalla de bloqueo, con el subtítulo "SISTEMA PROTEGIDO POR BIOMETRÍA".
+- **Icono de huella reactivo**: El icono del sensor biométrico cambia a color rojo cuando hay un error de autenticación, proporcionando retroalimentación visual inmediata.
+- **Sin cambios funcionales**: La autenticación biométrica sigue funcionando exactamente igual. Es una mejora puramente visual de identidad corporativa.
+
+### Arquitectura
+| Componente | Archivo | Responsabilidad |
+|---|---|---|
+| BitaruBrandHeader | ui/components/BitaruBrandHeader.kt | Renderiza el banner rectangular corporativo con subtitle |
+| BiometricLockScreen | ui/screens/BiometricLockScreen.kt | Pantalla de gating que consume BitaruBrandHeader |
+| Asset | res/drawable/bitaru_logo.png | Logo corporativo BiTaRu-recta-003-esp |
+
+### Detalles Técnicos
+- Layout responsivo: illMaxWidth(0.70f) + spectRatio(3.5f) para escalar en cualquier densidad.
+- ContentScale.Fit preserva la proporción sin crops ni distorsión.
+- Sin dependencias de ViewModel ni capa de dominio (Regla de Oro I).
+
+
+## CR-15: Compartir Experiencias con Fotos (Julio 2026)
+
+### ¿Qué cambió para el usuario?
+- **Nuevo botón Compartir** (📤 cian) en la barra inferior de la pantalla de Experiencias.
+- Al presionarlo, abre el selector nativo de Android (Chooser) para compartir la experiencia actual (ruta + fotos) por cualquier app compatible (WhatsApp, Gmail, Telegram, etc.).
+- Si la ruta tiene fotos asociadas (waypoints con foto), se adjuntan automáticamente al mensaje.
+- El texto incluye el nombre de la ruta y la distancia total recorrida.
+
+### Arquitectura
+| Capa | Componente | Responsabilidad |
+|---|---|---|
+| Dominio | domain/usecase/ShareExperienceUseCase | Construye Intent (ACTION_SEND / ACTION_SEND_MULTIPLE) con fotos vía FileProvider |
+| Presentación | RouteViewModel.shareExperience() | Obtiene ruta del repositorio, llama al UseCase, emite Intent a _shareIntentTrigger |
+| UI | ExperienceMapScreen (botón Share) | Consume photoPathsForCurrentRoute, llama a viewModel.shareExperience() |
+| Infraestructura | MainActivity (LaunchedEffect) | Colecta shareIntentTrigger y lanza context.startActivity(intent) |
+
+### Canal Reactivo
+- _shareIntentTrigger: MutableSharedFlow<Intent> permite que el ViewModel emita Intents sin depender de Context.
+- MainActivity colecta en un LaunchedEffect(Unit) dentro de MainContainer.
+
+## CR-16: Barra Inferior Unificada en Experiencias (Julio 2026)
+
+### ¿Qué cambió para el usuario?
+- **Barra inferior más compacta y funcional**: Se eliminó la barra flotante semitransparente (50%) que ocupaba espacio innecesario.
+- **Nuevo layout**: Todos los controles están en una sola barra sólida en la parte inferior:
+  - **Izquierda**: ← Volver, 📤 Compartir (cian), 💾 Exportar (amber)
+  - **Derecha**: "Experiencias" + indicador de precisión GPS (🟢)
+- **BackHandler**: Ahora el botón de retroceso del sistema y el gesto de deslizar también funcionan para salir de la pantalla de Experiencias.
+- **Mapa más visible**: Al eliminar la capa flotante intermedia, el mapa de osmdroid tiene más área de visualización.
+
+### Comportamiento
+- **Compartir 📤**: Abre el selector de apps con la ruta actual y sus fotos adjuntas.
+- **Exportar 💾**: Guarda la ruta completa como archivo ZIP/GPX en el almacenamiento local.
+- **GPS 🟢**: Muestra la precisión actual de la señal satelital en tiempo real.

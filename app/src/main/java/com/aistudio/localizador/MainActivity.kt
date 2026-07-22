@@ -146,6 +146,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.withContext
 import dagger.hilt.android.AndroidEntryPoint
+import com.aistudio.localizador.domain.usecase.BiometricAuthUseCase
+import com.aistudio.localizador.ui.security.BiometricSessionManager
+import com.aistudio.localizador.ui.screens.BiometricLockScreen
+import javax.inject.Inject
 import org.osmdroid.config.Configuration
 
 /**
@@ -170,6 +174,14 @@ class MainActivity : FragmentActivity() {
 
 
     private lateinit var encryptedPrefs: SharedPreferences
+
+    @Inject
+    lateinit var biometricAuthUseCase: BiometricAuthUseCase
+
+    @Inject
+    lateinit var biometricSessionManager: BiometricSessionManager
+
+    private var biometricErrorMessage by mutableStateOf<String?>(null)
 
     // --- LÓGICA DE PERMISOS ESCALONADA (Hallazgo B03) ---
     private val backgroundLocationLauncher = registerForActivityResult(
@@ -376,11 +388,54 @@ class MainActivity : FragmentActivity() {
 
         setContent {
             LocalizadorTheme {
-                MainContainer(viewModel = viewModel, encryptedPrefs = encryptedPrefs)
+                val isUnlocked by biometricSessionManager.isUnlocked.collectAsState()
+
+                if (viewModel.isBiometricEnabled && !isUnlocked) {
+                    BiometricLockScreen(
+                        onRetryAuth = { triggerBiometricCheck() },
+                        errorMessage = biometricErrorMessage
+                    )
+                } else {
+                    MainContainer(viewModel = viewModel, encryptedPrefs = encryptedPrefs)
+                }
             }
         }
     }
+
+    override fun onStart() {
+        super.onStart()
+        biometricSessionManager.onAppForegrounded()
+        triggerBiometricCheck()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        biometricSessionManager.onAppBackgrounded()
+    }
+
+    private fun triggerBiometricCheck() {
+        if (!viewModel.isBiometricEnabled || biometricSessionManager.isUnlocked.value) return
+
+        if (!biometricAuthUseCase.canAuthenticate(this)) {
+            biometricSessionManager.onAuthenticationSuccess()
+            return
+        }
+
+        biometricAuthUseCase.authenticate(
+            activity = this,
+            onSuccess = {
+                biometricErrorMessage = null
+                biometricSessionManager.onAuthenticationSuccess()
+            },
+            onError = { error ->
+                biometricErrorMessage = error
+                biometricSessionManager.lockExplicitly()
+            }
+        )
+    }
+
 }
+
 
 /**
  * Contenedor Maestro de la Interfaz.
@@ -426,6 +481,12 @@ fun MainContainer(viewModel: RouteViewModel, encryptedPrefs: SharedPreferences) 
         }
     }
     
+    LaunchedEffect(Unit) {
+        viewModel.shareIntentTrigger.collect { intent ->
+            context.startActivity(intent)
+        }
+    }
+
     // Diálogos de ajustes
     var showApiKeyDialog by remember { mutableStateOf(false) }
     var showLocationDialog by remember { mutableStateOf(false) }
@@ -483,6 +544,14 @@ fun MainContainer(viewModel: RouteViewModel, encryptedPrefs: SharedPreferences) 
             if (uri != null && currentExperienceRouteId != null) {
                 viewModel.saveRouteZipToUri(currentExperienceRouteId!!, uri)
             }
+        }
+    )
+
+    // Launcher for GPX import from DynamicHistoryBottomBar
+    val gpxHistoryImportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument(),
+        onResult = { uri ->
+            uri?.let { viewModel.importGpxFile(it) }
         }
     )
 
@@ -590,7 +659,12 @@ fun MainContainer(viewModel: RouteViewModel, encryptedPrefs: SharedPreferences) 
                             Switch(checked = viewModel.isBiometricEnabled, onCheckedChange = { 
                                 val newState = it
                                 mainActivity?.authenticateSimple { 
-                                    viewModel.toggleBiometric(newState) 
+                                    viewModel.toggleBiometric(newState)
+                                    if (newState) {
+                                        mainActivity?.biometricSessionManager?.lockExplicitly()
+                                    } else {
+                                        mainActivity?.biometricSessionManager?.onAuthenticationSuccess()
+                                    }
                                 }
                             })
                         }
@@ -601,6 +675,11 @@ fun MainContainer(viewModel: RouteViewModel, encryptedPrefs: SharedPreferences) 
                         val newState = !viewModel.isBiometricEnabled
                         mainActivity?.authenticateSimple {
                             viewModel.toggleBiometric(newState)
+                            if (newState) {
+                                mainActivity?.biometricSessionManager?.lockExplicitly()
+                            } else {
+                                mainActivity?.biometricSessionManager?.onAuthenticationSuccess()
+                            }
                         }
                     }
                 )
@@ -819,7 +898,10 @@ fun MainContainer(viewModel: RouteViewModel, encryptedPrefs: SharedPreferences) 
                             },
                             onExportSelected = { viewModel.exportRoutesAsGPX(selectedRouteIds) },
                             onDeleteSelected = { viewModel.deleteRoutes(selectedRouteIds); viewModel.clearSelection() },
-                            onClearSelection = { viewModel.clearSelection() }
+                            onClearSelection = { viewModel.clearSelection() },
+                            onCollapseAllClick = { viewModel.collapseAllGroups() },
+                            onExpandAllClick = { viewModel.expandAllGroups() },
+                            onImport = { gpxHistoryImportLauncher.launch(arrayOf("*/*")) }
                         )
                     } else {
                         // Zona Derecha: Cápsula GPS dinámica
@@ -1059,6 +1141,9 @@ fun AgenviajeDrawerHeader() {
         )
     }
 }
+
+
+
 
 
 

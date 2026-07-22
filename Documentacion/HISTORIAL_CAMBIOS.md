@@ -1,3 +1,60 @@
+## [2026-07-21] CR-14: Gestión de Sesión Biométrica Reactiva (Ventana de Gracia 30s + Drawer 8.7)
+
+### Logro
+Implementado BiometricSessionManager (@Singleton) que administra el estado de desbloqueo biométrico con una ventana de gracia de 30 segundos de inactividad en segundo plano. Esto elimina la re-solicitud biométrica involuntaria al alternar entre aplicaciones por periodos cortos. Cableado completo del Drawer 8.7: al activar la protección, se bloquea la sesión inmediatamente (lockExplicitly); al desactivar, se libera (onAuthenticationSuccess).
+
+### Archivos Creados
+- **ui/security/BiometricSessionManager.kt**: Gestor inyectable con StateFlow<Boolean> isUnlocked, ventana de gracia de 30s, lockExplicitly(), onAppBackgrounded()/onAppForegrounded().
+- **test/.../ui/security/BiometricSessionManagerTest.kt**: 4 tests JVM puros (sesión inicial bloqueada, desbloqueo, gracia 30s, bloqueo explícito).
+
+### Archivos Modificados
+- **MainActivity.kt**: 
+  - Inyectado biometricSessionManager. Eliminado isAppUnlocked (mutableStateOf local).
+  - setContent usa biometricSessionManager.isUnlocked.collectAsState() + viewModel.isBiometricEnabled para el gating.
+  - onStart(): llama biometricSessionManager.onAppForegrounded() + triggerBiometricCheck().
+  - onStop(): llama biometricSessionManager.onAppBackgrounded().
+  - triggerBiometricCheck() refactorizada: guardia early-return si !isBiometricEnabled o ya desbloqueado; canAuthenticate usa onAuthenticationSuccess(); authenticate usa onAuthenticationSuccess/lockExplicitly.
+  - Drawer 8.7: Switch y onClick cableados a lockExplicitly() al activar y onAuthenticationSuccess() al desactivar.
+
+### Archivos Respaldados
+- RESPALDO_ANTERIOR/20260721_MainActivity.kt
+
+### Principio de Diseño (Reglas de Oro I, II, IV, V)
+- Modularidad estricta (Regla I): Toda la lógica de sesión encapsulada en BiometricSessionManager. Cero nuevas variables/funciones en ViewModel.
+- Testeable (Regla II): 4 tests JVM puros sin dependencias Android.
+- UX Profesional (Regla IV): Ventana de gracia de 30s evita re-autenticaciones molestas al volver rápido de otra app.
+- Control manual (Drawer 8.7): Bloqueo/desbloqueo inmediato con feedback táctil.
+
+### Build
+- compileDebugKotlin: PENDIENTE
+- testDebugUnitTest: PENDIENTE
+- assembleDebug: PENDIENTE
+## [2026-07-21] CR-13: Integración de Branding Corporativo Bitaru en BiometricLockScreen
+
+### Logro
+Implementado el banner rectangular corporativo Bitaru (BiTaRu-recta-003-esp.png) como elemento hero en la pantalla de bloqueo biométrico (BiometricLockScreen). Creado el componente reutilizable BitaruBrandHeader con layout responsivo (fillMaxWidth(0.70f) + aspectRatio(3.5f)) para renderizar el isotipo sin distorsión. Preservada la firma original de BiometricLockScreen (onRetryAuth, errorMessage) para garantizar retrocompatibilidad total con MainActivity.kt.
+
+### Archivos Creados
+- **ui/components/BitaruBrandHeader.kt**: Componente @Composable reutilizable con Image + subtitleText. Sin marcos circulares ni crops — respeta la proporción rectangular del asset.
+- **res/drawable/bitaru_logo.png**: Asset corporativo copiado desde imagenes/BiTaRu-recta-003-esp.png.
+
+### Archivos Modificados
+- **ui/screens/BiometricLockScreen.kt**: Integrado BitaruBrandHeader en cabecera superior. Icono Fingerprint cambia a tint error cuando hay errorMessage. Layout migrado a Arrangement.SpaceBetween. Firma intacta (onRetryAuth, errorMessage).
+- **Documentacion/ESQUEMA_PANTALLAS.md**: Agregada Sección 10 — diagrama ASCII de BiometricLockScreen con nomenclatura 10.x.x.
+
+### Archivos Respaldados
+- RESPALDO_ANTERIOR/20260721_BiometricLockScreen.kt
+
+### Principio de Diseño (Reglas de Oro I, IV, V)
+- Modularidad estricta (Regla I): Branding encapsulado en BitaruBrandHeader.kt, 0 líneas en ViewModels ni capa de dominio.
+- UX Profesional M3 (Regla IV): ContentScale.Fit con aspectRatio responsivo para densidad Pixel 9 Pro XL. Sin crops ni deformaciones.
+- 0% Regresión (Reglas II, III): Firma BiometricLockScreen preservada. No se tocaron MainActivity, ViewModel, ni ningún otro screen.
+- Asset real de marca (no placeholder): Se utilizó el banner definitivo BiTaRu-recta-003-esp.png.
+
+### Build
+- compileDebugKotlin: PENDIENTE
+- testDebugUnitTest: PENDIENTE
+- assembleDebug: PENDIENTE
 ## [2026-07-17] ME-02: ExtractPhotoLocationUseCase + Corrección de EXIF en Hilo Principal
 
 ### Logro
@@ -26,7 +83,8 @@ Creación de LocationModule.kt con providers unscoped para TrackingSessionManage
 
 ### Archivos Modificados
 - di/LocationModule.kt: **nuevo** — providers unscoped para los 4 managers de tracking
-- location/manager/GpsFilterPipeline.kt: añadidos métodos eset() y shouldForceStop(Location) para delegar desde el servicio sin referencias directas a los managers internos
+- location/manager/GpsFilterPipeline.kt: añadidos métodos 
+eset() y shouldForceStop(Location) para delegar desde el servicio sin referencias directas a los managers internos
 - location/LocationService.kt: sessionManager y ilterPipeline migrados a @Inject; eliminadas las 4 declaraciones manuales de campo y su creación en onCreate(); todas las llamadas directas a stationaryAnchorManager.* y cinematicFilter.* redirigidas a ilterPipeline.*
 
 ### Principio de Diseño (Regla de Oro V)
@@ -151,7 +209,8 @@ Hilt 2.59 compila y funciona nativamente con AGP 9.2.1 usando KSP (sin kapt). Se
 - **Build**: assembleDebug exitoso (39 tareas, 0 errores).
 
 [2026/07/15 00:45 - Fix centrado repetitivo de cámara en ExperienceMapScreen (Pantalla 5.0)]
-- **ExperienceMapScreen.kt**: Añadida guardia hasInitiallyCenteredRoute con emember { mutableStateOf(false) } para evitar que LaunchedEffect(points, waypoints, linkedFavorites, routeId) re-centre el mapa en cada tick de GPS.
+- **ExperienceMapScreen.kt**: Añadida guardia hasInitiallyCenteredRoute con 
+emember { mutableStateOf(false) } para evitar que LaunchedEffect(points, waypoints, linkedFavorites, routeId) re-centre el mapa en cada tick de GPS.
 - **Motivo**: El estado reactivo points cambiaba en cada actualización GPS, forzando zoomToBoundingBox repetido que anulaba los gestos táctiles del usuario.
 - **Comportamiento corregido**: El mapa se centra en la ruta una única vez al cargar la pantalla; los gestos de exploración manual no son interrumpidos.
 - **Build**: assembleDebug exitoso (29s, 0 errores, 0 warnings nuevos).
@@ -215,9 +274,125 @@ Hilt 2.59 compila y funciona nativamente con AGP 9.2.1 usando KSP (sin kapt). Se
 [2026/07/16 02:30 - AL-01: Desintegracion de LocationService (Fase II - BufferPoint + TrackinSessionManager puro)]
 - **TrackingSessionManager.kt**: Refactor completo. Nuevo BufferPoint (DTO puro JVM con lat, lon, accuracy, speed, altitude, timestamp). preRecordingBuffer migrado de ConcurrentLinkedDeque<Location> a ArrayDeque<BufferPoint> (FIFO circular, max 60). RouteRepository inyectado en constructor. Nuevos métodos: startSession(routeId: Long), stopSession(): List<LocationPoint>, ddPointToActiveSession(BufferPoint), ddDistanceFromStep(Double), setInitialDistance(Double), clearPreRecordingBuffer(), getPreRecordingBufferSnapshot(), getActiveRouteId().
 - **LocationService.kt**: Eliminadas 5 variables/estructuras del monolito: ctiveRouteId: Int, 	otalDistanceMeters: Double, preRecordingBuffer: ConcurrentLinkedDeque<Location>, handlePreRecording(Location), Location.toBufferPoint(Int). Callers actualizados a sessionManager.*. 	riggerAutomaticTracking refactorizada: acepta ufferSnapshot: List<BufferPoint> + callback, puente interno BufferPoint → Location("gps") para CinematicFilterManager intacto.
-- **Errores corregidos durante la cirugía**: Stray brace del handlePreRecording (L98), ctiveRouteId residual (L622, L874, L1007, L1060), 	otalDistanceMeters residual (L635, L968), ccuracy fantasma en LocationPoint (L592, TSM L87), Long→Int en outeId (TSM L84), ndSession→stopSession (L1013).
+- **Errores corregidos durante la cirugía**: Stray brace del handlePreRecording (L98), ctiveRouteId residual (L622, L874, L1007, L1060), 	otalDistanceMeters residual (L635, L968), ccuracy fantasma en LocationPoint (L592, TSM L87), Long→Int en 
+outeId (TSM L84), ndSession→stopSession (L1013).
 - **Resultado**: BUILD SUCCESSFUL (compileDebugKotlin + test + assembleDebug). installDebug exitoso en Pixel 9 Pro XL (Android 16).
 - **Respaldos**: RESPALDO_ANTERIOR/20260716_LocationService.kt, 20260716_TrackingSessionManager.kt.
+## [2026-07-22] CR-15: Compartir Experiencias y Recolección Canal Reactivo (shareIntentTrigger)
+
+### Logro
+Corregido el flujo huérfano de _shareIntentTrigger añadiendo un LaunchedEffect colector en MainActivity.kt. Creado ShareExperienceUseCase para empaquetar intenciones de compartir experiencias (fotos + telemetría de ruta) vía FileProvider. Expuesto photoPathsForCurrentRoute: StateFlow<List<String>> derivado reactivamente de selectedDetailWaypoints. Cableado el botón Share (5.2.1/5.3.3) en ExperienceMapScreen.kt al nuevo flujo.
+
+### Archivos Creados
+- **domain/usecase/ShareExperienceUseCase.kt**: UseCase @Inject constructor() que construye un Intent.createChooser con 0, 1 o N fotos (ACTION_SEND / ACTION_SEND_MULTIPLE) + texto de telemetría (distancia, nombre de ruta). Usa FileProvider.getUriForFile para URIs seguras tipo content:// con FLAG_GRANT_READ_URI_PERMISSION.
+- **test/.../domain/usecase/ShareExperienceUseCaseTest.kt**: 1 test con Robolectric validando que invoke con lista vacía retorna Intent.ACTION_CHOOSER no nulo.
+
+### Archivos Modificados
+- **RouteViewModel.kt**: 
+  - Constructor: inyectado shareExperienceUseCase: ShareExperienceUseCase.
+  - Nueva propiedad photoPathsForCurrentRoute: StateFlow<List<String>> (derivada de selectedDetailWaypoints.map { waypoints.mapNotNull { it.photoPath?.takeIf(String::isNotBlank) } }).
+  - Nueva función un shareExperience(context: Context, routeId: Int, photoPaths: List<String>): obtiene Route del repositorio, construye chooserIntent vía UseCase, emite a _shareIntentTrigger.
+- **ExperienceMapScreen.kt**: 
+  - Línea 122: añadido al currentPhotoPaths by viewModel.photoPathsForCurrentRoute.collectAsState().
+  - Botón Share (línea 510): reemplazado iewModel.exportRoute(routeId) por iewModel.shareExperience(context, routeId, currentPhotoPaths).
+- **MainActivity.kt**:
+  - MainContainer: añadido LaunchedEffect(Unit) { viewModel.shareIntentTrigger.collect { intent -> context.startActivity(intent) } }.
+
+### Archivos Respaldados
+- RESPALDO_ANTERIOR/20260722_RouteViewModel.kt
+- RESPALDO_ANTERIOR/20260722_ExperienceMapScreen.kt
+- RESPALDO_ANTERIOR/20260722_MainActivity_CR15.kt
+
+### Build
+- compileDebugKotlin: BUILD SUCCESSFUL
+- 	estDebugUnitTest: 75 tests, 9 pre-existing failures (0 nuevos)
+- ssembleDebug: BUILD SUCCESSFUL
+## [2026-07-22] CR-16: Restructuración de ExperienceMapScreen y Unificación de Barra 5.2
+
+### Logro
+Eliminada la barra flotante intermedia 5.3 (CAPA 3) que duplicaba botones y reducía superficie del mapa osmdroid. Consolidada la sub-barra inferior 5.2 unificada con dos Row internos: botones de acción a la izquierda [←][📤][💾], título "Experiencias" + indicador GPS a la derecha con Arrangement.SpaceBetween. Añadido BackHandler para retroceso nativo.
+
+### Archivos Modificados
+- **ExperienceMapScreen.kt**:
+  - Eliminada CAPA 3 (DOCK FLOTANTE INFERIOR, 50% transparencia).
+  - Añadido BackHandler(onBack = onBack) para retroceso por gesto/botón del sistema.
+  - Añadida sub-barra inferior 5.2 con Surface (surfaceContainer, tonalElevation 3.dp):
+    - Layout: Row(SpaceBetween) conteniendo dos Row(CenterVertically) internos
+    - 5.2.0 [← ArrowBack] — onBack (tint=onSurface)
+    - 5.2.1 [📤 Share] (Cian 0xFF4DD0E1) — viewModel.shareExperience(context, routeId, currentPhotoPaths)
+    - 5.2.2 [💾 Export] (Amber 0xFFFFB74D) — viewModel.exportRoute(routeId)
+    - 5.2.3 "Experiencias" (titleMedium, Bold) + GPS (gpsPrecisionState)
+  - Corregidos errores sintácticos: duplicado ) { eliminado, Box close faltante agregado, } extra eliminado.
+  - Firma preservada: (onBack, viewModel, routeId: Int, modifier).
+  - Import añadido: androidx.activity.compose.BackHandler.
+- **ESQUEMA_PANTALLAS.md**: Sección 5 actualizada — barra 5.3 eliminada, 5.2 renumerada.
+- **MainActivity.kt**: LaunchedEffect collector para shareIntentTrigger (ver CR-15).
+
+### Archivos Respaldados
+- RESPALDO_ANTERIOR/20260722_ExperienceMapScreen_CR16.kt (pre-corrección)
+- RESPALDO_ANTERIOR/20260722_ExperienceMapScreen.kt (post-corrección final)
+
+### Correcciones Aplicadas
+1. **Duplicate ) {**: El inner Row de botones se insertó con su propio ) { duplicando el del outer Row. Corregido vía Regex.Escape.
+2. **Missing Box close**: La edición inicial omitió el     } (4 espacios) que cierra el Box entre Surface y FullScreenPhotoDialog. Causó GuideLinesOverlay unresolved + "Expecting '}'".
+3. **Extra }**: El cierre extra del if (showShareButtons) original permanecía del layout previo. Eliminado.
+4. **Layout final**: Botones agrupados en inner Row izquierdo, título+GPS en inner Row derecho, separados por SpaceBetween.
+
+### Build
+- compileDebugKotlin: BUILD SUCCESSFUL (deprecation warning pre-existing)
+
+- testDebugUnitTest: 75 tests, 9 pre-existing failures (0 nuevos)
+
+---
+
+# APRENDIZAJES TÁCTICOS Y DIRECTIVAS ESTRICTAS (SUITE BITARU)
+
+#### A. LO QUE SÍ SE HACE (Patrones de Éxito Homologados)
+
+*   **Guardianes de Nulidad Tempranos:** En servicios imperativos (`LocationService`), la primera línea ante un callback o `onStartCommand` debe ser un guardián estricto: `if (intent == null) return`. Esto permite desempacar extras de forma segura más abajo.
+
+*   **Desempacado Limpio de Extras de Plataforma:** Las funciones nativas de Android como `intent.getIntExtra(KEY, default)` garantizan por contrato un tipo primitivo no nulo. Se consumen directamente sin añadir operadores Elvis (`?:`) redundantes al final que ensucien el bytecode.
+
+*   **Aislamiento del Ciclo de Vida en Mapas:** Al renderizar vistas tradicionales dentro de Compose mediante `AndroidView(factory = { ctx -> ... })`, cualquier lectura de configuración global (como densidades con `LocalDensity.current.density`) debe capturarse en variables locales **antes** de entrar al bloque imperativo de la factoría, ya que esta última no es un entorno `@Composable`.
+
+*   **Limpieza Manual de Cabeceras:** El barrido de advertencias por importaciones ociosas (`Unused import directive`) se realiza de forma manual y quirúrgica, archivo por archivo, inspeccionando visualmente las referencias.
+
+#### B. LO QUE "NO" SE HACE BAJO NINGUNA CIRCUNSTANCIA (Anti-Patrones Prohibidos)
+
+*   **PROHIBIDO - Optimize Imports Automatizado Masivo:** No se deben correr scripts automáticos de limpieza de imports en todo el proyecto. El analizador del IDE suele remover por error los delegados de propiedades reactivas de Compose (`import androidx.compose.runtime.getValue` / `setValue`), quebrando la compilación en caliente.
+
+*   **PROHIBIDO - Migrar Recursos en Entornos Imperativos (Falsos Positivos de Osmdroid):** Si el framework de un tercero (ej: Osmdroid en `MapScreen`) exige una instancia física de `android.content.res.Resources` (como `marker.icon = ...toDrawable(context.resources)`), NO se debe intentar migrar al wrapper de Compose (`stringResource`), ya que rompería el contrato de la API externa. Se documenta como falso positivo y se ignora.
+
+*   **PROHIBIDO - Lógica de Negocio en ViewModels:** El `RouteViewModel` no debe abrir archivos, procesar flujos de exportación de texto (GPX/KML), ni calcular distancias complejas. Si el ViewModel excede las 400 líneas de código, es un síntoma de "God-Object" y la lógica debe delegarse en un `UseCase` especializado.
+
+*   **PROHIBIDO - Mutar Firmas Inactivas por Estética:** Si una firma de interfaz secundaria (`RouteAnalyticsScreen`) arrastra parámetros huérfanos que el árbol de navegación ya no consume, se eliminan por completo de la firma y del llamador, en lugar de dejarlos comentados o ignorados con anotaciones de supresión.
+
+---
+
+# SESIONES HISTÓRICAS ADICIONALES (Legacy)
+
+## [Sesión Actual - Parte 2] - Pulido de UI y Planificación
+- **Transparencia de Paneles**: Se reemplazaron los componentes `Card` opacos por `Surface` con canal alfa (60%) para los indicadores de KM y Tiempo. El panel de coordenadas ahora es 50% transparente. Esto mejora la visibilidad del mapa de fondo.
+- **Planificación de Funcionalidades**: Se definió la hoja de ruta para las próximas 3 grandes mejoras.
+
+## [Sesión Anterior] - Configuración y Nueva Funcionalidad
+- **Corrección de Errores de Compilación**: Ajuste de `Metaspace` en `gradle.properties`.
+- **Configuración del Agente**: Español como idioma oficial.
+- **Nueva Funcionalidad: Indicador de Situación**: Botón de información ("i") con geocodificación inversa.
+- **Ajustes de UI**: Resaltado amarillo para direcciones y reajuste de espacios para evitar solapamientos.
 
 
+
+
+# Historial de Cambios
+
+## [Sesión Actual - Parte 2] - Pulido de UI y Planificación
+- **Transparencia de Paneles**: Se reemplazaron los componentes `Card` opacos por `Surface` con canal alfa (60%) para los indicadores de KM y Tiempo. El panel de coordenadas ahora es 50% transparente. Esto mejora la visibilidad del mapa de fondo.
+- **Planificación de Funcionalidades**: Se definió la hoja de ruta para las próximas 3 grandes mejoras.
+
+## [Sesión Anterior] - Configuración y Nueva Funcionalidad
+- **Corrección de Errores de Compilación**: Ajuste de `Metaspace` en `gradle.properties`.
+- **Configuración del Agente**: Español como idioma oficial.
+- **Nueva Funcionalidad: Indicador de Situación**: Botón de información ("i") con geocodificación inversa.
+- **Ajustes de UI**: Resaltado amarillo para direcciones y reajuste de espacios para evitar solapamientos.
 

@@ -25,9 +25,7 @@ import com.aistudio.localizador.data.db.AppDatabase
 import com.aistudio.localizador.R
 import com.aistudio.localizador.ui.ContactUseCase
 import com.aistudio.localizador.ui.GeocoderUseCase
-import com.aistudio.localizador.util.AlertNotifier
 import com.aistudio.localizador.util.AppConstants
-import com.aistudio.localizador.util.ContactHashHelper
 import com.aistudio.localizador.data.model.LocationPoint
 import com.aistudio.localizador.data.model.Route
 import com.aistudio.localizador.data.repository.RouteRepository
@@ -39,6 +37,10 @@ import com.aistudio.localizador.location.manager.GpsFilterPipeline
 import com.aistudio.localizador.location.manager.ActivityRecognitionManager
 import com.aistudio.localizador.location.manager.ServiceNotificationManager
 import com.aistudio.localizador.location.manager.TrackingSessionManager
+import com.aistudio.localizador.location.manager.ActivityModeManager
+import com.aistudio.localizador.location.manager.AutoTrackingManager
+import com.aistudio.localizador.location.manager.ShortStopMarkManager
+import com.aistudio.localizador.location.manager.ProximityBleManager
 import com.google.android.gms.location.*
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
@@ -60,11 +62,18 @@ enum class ActivityMode { STOPPED, WALKING, BIKING, DRIVING, SIN_SENAL }
  * Diseñado con persistencia interna reactiva (Room) y variables estáticas observables en Compose.
  */
 @AndroidEntryPoint
-class LocationService : Service() {
+class LocationService : Service(), AutoTrackingManager.AutoTrackingListener, ProximityBleManager.ProximityListener {
 
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     @Inject lateinit var repository: RouteRepository
+    @Inject lateinit var activityModeManager: ActivityModeManager
 
+
+    @Inject
+    lateinit var autoTrackingManager: AutoTrackingManager
+    @Inject
+    lateinit var proximityBleManager: ProximityBleManager
+    @Inject lateinit var shortStopMarkManager: ShortStopMarkManager
     private lateinit var sharedPrefs: SharedPreferences
     private var locationHandlerThread: HandlerThread? = null
     private var wakeLock: PowerManager.WakeLock? = null
@@ -81,7 +90,6 @@ class LocationService : Service() {
 
     private var lastValidLocation: Location? = null
     private val notificationManager = ServiceNotificationManager(this)
-    private var lastStopLocation: Location? = null
 
     private var timerJob: Job? = null
     private var startTimeMillis: Long = 0L
@@ -96,17 +104,8 @@ class LocationService : Service() {
     private var activeRouteName: String = "Ruta"
 
 
-    // Variables para refinamiento de Modo Automático
-    private var lastAutoStartTimeMillis: Long = 0L // Para evitar reinicios infinitos rápidos
-
-    // Velocidad sostenida para auto-arranque (Módulo 3C)
-    @Volatile private var movementSustainedStartTime = 0L
-    @Volatile private var lastSpeedCheckTime = 0L
     @Volatile private var lastRealMovementTime = System.currentTimeMillis()
 
-    // Activity Mode con inercia (histeresis)
-    private var currentMode = ActivityMode.STOPPED
-    private var lastModeChangeTime = 0L
     private var lastComputedSpeedMps = 0f
 
     // Lógica "Cerca de mí"
@@ -115,19 +114,7 @@ class LocationService : Service() {
     private val PROXIMITY_THRESHOLD_METERS = 100f
     private val NOTIFICATION_COOLDOWN_MS = 10 * 60 * 1000L // 10 minutos para repetir aviso
 
-    // Short Stop Marker (Paradas Cortas)
-    private var timeStartedStopping: Long = 0L
-    private var isShortStopDetected = false
-    private var shortStopLat = 0.0
-    private var shortStopLon = 0.0
-    private var shortStopAddress = ""
-
-    // BLE Proximity (Módulo 3B)
-    private var alertNotifier: AlertNotifier? = null
-    private var proximityManager: ProximityManager? = null
     private var activityRecognitionManager: ActivityRecognitionManager? = null
-    private var isBleActive = false
-    private var lastBleNotificationTime: Long = 0L
     @Inject lateinit var contactUseCase: ContactUseCase
     @Inject lateinit var geocoderUseCase: GeocoderUseCase
     @Inject lateinit var sessionManager: TrackingSessionManager
@@ -246,13 +233,7 @@ class LocationService : Service() {
             }
         }
 
-        // Inicializar BLE Proximity (Módulo 3B)
-        alertNotifier = AlertNotifier(this)
-        ProximityManager(this) { contactName, _, distance ->
-            onBleContactDetected(contactName, distance)
-        }.let { pm ->
-            if (pm.init()) proximityManager = pm
-        }
+        proximityBleManager.init(this, sharedPrefs, contactUseCase)
 
         createNotificationChannel()
 
@@ -271,6 +252,8 @@ class LocationService : Service() {
         if (sharedPrefs.getBoolean("auto_mode", false)) {
             activityRecognitionManager?.startTrackingTransitions()
         }
+
+        autoTrackingManager.setListener(this)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -470,55 +453,24 @@ class LocationService : Service() {
             lastRealMovementTime = System.currentTimeMillis()
         }
 
-        // Actualizar Activity Mode con la velocidad computada
-        updateActivityMode(lastComputedSpeedMps * 3.6f)
+        // Actualizar Activity Mode con la velocidad computada (delegado a ActivityModeManager)
+        val newMode = activityModeManager.evaluate(
+            speedKmh = lastComputedSpeedMps * 3.6f,
+            timestamp = System.currentTimeMillis(),
+            upgradeMs = TIME_TO_UPGRADE,
+            downgradeMs = TIME_TO_DOWNGRADE
+        )
+        if (newMode != null) { _currentActivityMode.value = newMode }
 
         // --- MARCADOR DE PARADAS CORTAS ---
         if (_isTracking.value) {
-            val speedKmh = lastComputedSpeedMps * 3.6f
-            if (speedKmh < AppConstants.Location.STOP_SPEED_THRESHOLD_KMH) {
-                if (timeStartedStopping == 0L) {
-                    timeStartedStopping = System.currentTimeMillis()
-                }
-                if (!isShortStopDetected &&
-                    System.currentTimeMillis() - timeStartedStopping >= SHORT_STOP_DELAY_MS
-                ) {
-                    isShortStopDetected = true
-                    shortStopLat = location.latitude
-                    shortStopLon = location.longitude
-                    serviceScope.launch {
-                        val details = geocoderUseCase.fetchLocationDetails(shortStopLat, shortStopLon)
-                        shortStopAddress = details.first
-                    }
-                }
-            } else {
-                if (isShortStopDetected) {
-                    val stopDurationMs = System.currentTimeMillis() -
-                        timeStartedStopping + STOP_TOLERANCE_MS
-                    val totalSec = stopDurationMs / 1000L
-                    val minutes = totalSec / 60
-                    val seconds = totalSec % 60
-                    val comment = "⏱️ Parada automática de ${minutes} min ${seconds} seg"
-                    val finalAddress = shortStopAddress.ifBlank {
-                        "GPS: ${String.format(Locale.US, "%.5f, %.5f", shortStopLat, shortStopLon)}"
-                    }
-                    serviceScope.launch {
-                        repository.addSavedLocation(
-                            name = finalAddress,
-                            address = finalAddress,
-                            latitude = shortStopLat,
-                            longitude = shortStopLon,
-                            comment = comment,
-                            author = "Automático",
-                        )
-                    }
-                }
-                timeStartedStopping = 0L
-                isShortStopDetected = false
-                shortStopLat = 0.0
-                shortStopLon = 0.0
-                shortStopAddress = ""
-            }
+            shortStopMarkManager.processCinematicInput(
+                location = location,
+                speedKmh = lastComputedSpeedMps * 3.6f,
+                timestamp = System.currentTimeMillis(),
+                shortStopDelayMs = SHORT_STOP_DELAY_MS,
+                stopToleranceMs = STOP_TOLERANCE_MS
+            )
         }
 
         // --- LÓGICA "CERCA DE MÍ" ---
@@ -526,92 +478,17 @@ class LocationService : Service() {
             checkProximityToFavorites(location)
         }
 
-        // --- BLE PROXIMITY (Módulo 3B) ---
-        ensureBleProximity()
-
-        // Lógica de detección de movimiento para auto-reinicio por VELOCIDAD SOSTENIDA (Módulo 3C)
+        // --- BLE PROXIMITY (delegado a ProximityBleManager) ---
+        proximityBleManager.ensureBleProximity(isServiceTracking = _isTracking.value)
+        // LOGICA DE MOVIMIENTO SOSTENIDO (delegada a AutoTrackingManager)
         if (isAutoModeActive && !_isTracking.value) {
-            val now = System.currentTimeMillis()
-
-            // Guardar punto estabilizado en el buffer elástico de pre-grabación (Fase 3A)
-            if (anchoredLocation.accuracy < MAX_GPS_ACCURACY) {
-                val bp = TrackingSessionManager.BufferPoint(
-                    latitude = anchoredLocation.latitude,
-                    longitude = anchoredLocation.longitude,
-                    accuracy = anchoredLocation.accuracy,
-                    speed = anchoredLocation.speed,
-                    altitude = anchoredLocation.altitude,
-                    timestamp = anchoredLocation.time
-                )
-                sessionManager.handlePreRecording(bp)
-            }
-
-            // Evitar reinicios demasiado frecuentes (mínimo 30 segundos entre intentos)
-            if (now - lastAutoStartTimeMillis < 30000) return
-
-            if (lastStopLocation == null) {
-                if (location.accuracy < 20f) {
-                    lastStopLocation = location
-                    movementSustainedStartTime = 0L
-                    lastSpeedCheckTime = now
-                    Log.d(TAG, "Anclaje inicial establecido para velocidad sostenida: Acc=${location.accuracy}")
-                }
-            } else {
-                val speedKmh = lastComputedSpeedMps * 3.6f
-
-                if (speedKmh > AppConstants.Location.AUTO_START_MIN_SPEED_KMH && location.accuracy < 30f) {
-                    if (movementSustainedStartTime == 0L) {
-                        movementSustainedStartTime = now
-                        lastSpeedCheckTime = now
-                        Log.d(TAG, "Inicio de ventana de velocidad sostenida: ${speedKmh} km/h")
-                    } else {
-                        val sustained = now - movementSustainedStartTime
-                        if (sustained >= AppConstants.Location.AUTO_START_SUSTAINED_MS) {
-                            Log.d(TAG, "Movimiento sostenido ${sustained}ms. Iniciando pipeline de arranque pasivo...")
-                            lastStopLocation = null
-                            movementSustainedStartTime = 0L
-                            lastAutoStartTimeMillis = now
-                            val snapshot = sessionManager.getPreRecordingBufferSnapshot()
-
-                            triggerAutomaticTracking(snapshot) { filteredBpList ->
-
-                                val pointsToBackfill = filteredBpList.map { bp ->
-
-                                    LocationPoint(
-
-                                        id = 0,
-
-                                        routeId = 0,
-
-                                        latitude = bp.latitude,
-
-                                        longitude = bp.longitude,
-
-
-
-                                        speed = bp.speed,
-
-                                        altitude = bp.altitude,
-
-                                        timestamp = bp.timestamp
-
-                                    )
-
-                                }
-
-                                startAutoNewRoute(pointsToBackfill)
-
-                            }
-                            return
-                        }
-                    }
-                } else {
-                    if (movementSustainedStartTime != 0L) {
-                        Log.d(TAG, "Velocidad insuficiente (${speedKmh} km/h). Reiniciando ventana.")
-                    }
-                    movementSustainedStartTime = 0L
-                }
-            }
+            autoTrackingManager.processMovementSustained(
+                location = anchoredLocation,
+                computedSpeedMps = lastComputedSpeedMps,
+                isAutoModeActive = isAutoModeActive,
+                isTracking = _isTracking.value,
+                sessionManager = sessionManager
+            )
         }
 
         serviceScope.launch {
@@ -659,31 +536,6 @@ class LocationService : Service() {
         }
     }
 
-    private fun updateActivityMode(speedKmh: Float) {
-        val newMode = when {
-            speedKmh < 1.0f -> ActivityMode.STOPPED
-            speedKmh <= 7.0f -> ActivityMode.WALKING
-            speedKmh <= 13.0f -> ActivityMode.BIKING
-            else -> ActivityMode.DRIVING
-        }
-
-        if (newMode != currentMode) {
-            val currentTime = System.currentTimeMillis()
-            val isUpgrade = newMode.ordinal > currentMode.ordinal
-            val requiredTime = if (isUpgrade) TIME_TO_UPGRADE else TIME_TO_DOWNGRADE
-
-            if (lastModeChangeTime == 0L) {
-                lastModeChangeTime = currentTime
-            } else if (currentTime - lastModeChangeTime >= requiredTime) {
-                currentMode = newMode
-                lastModeChangeTime = 0L
-                _currentActivityMode.value = newMode
-                Log.d(TAG, "Modo actividad: $currentMode (${speedKmh} km/h)")
-            }
-        } else {
-            lastModeChangeTime = 0L
-        }
-    }
 
     private fun checkProximityToFavorites(currentLocation: Location) {
         val now = System.currentTimeMillis()
@@ -733,59 +585,9 @@ class LocationService : Service() {
 
     // ─── BLE Proximity (Módulo 3B) ─────────────────────────────────
 
-    private fun ensureBleProximity() {
-        val isNearMe = sharedPrefs.getBoolean("near_me_enabled", false)
-        val isBleEnabled = sharedPrefs.getBoolean("ble_enabled", false)
-        val pm = proximityManager ?: return
-
-        if (isNearMe && isBleEnabled && pm.isBluetoothEnabled()) {
-            if (!isBleActive) {
-                isBleActive = true
-                val myPhone = sharedPrefs.getString("my_phone", "").orEmpty()
-                if (myPhone.isNotBlank()) {
-                    pm.startAdvertising(ContactHashHelper.hashPhoneNumber(myPhone))
-                }
-                serviceScope.launch(Dispatchers.IO) {
-                    val contacts = contactUseCase.getAllContactPhones().orEmpty()
-                    val contactHashes = contacts.map { (_, phone) ->
-                        ContactHashHelper.hashPhoneNumber(phone)
-                    }.toSet()
-                    pm.updateScanHashes(contactHashes)
-                    pm.startScanning()
-                }
-            }
-        } else {
-            if (isBleActive) {
-                isBleActive = false
-                pm.stop()
-            }
-        }
+    override fun onBleContactDetected(contactName: String, distanceMeters: Double) {
+        Log.d("Bitaru_Core", "Contacto BLE detectado: $contactName a ${distanceMeters.toInt()}m")
     }
-
-    private fun onBleContactDetected(contactName: String, distance: Double) {
-        val now = System.currentTimeMillis()
-        if (now - lastBleNotificationTime < AppConstants.Ble.NOTIFICATION_COOLDOWN_MILLIS) return
-        lastBleNotificationTime = now
-
-        alertNotifier?.triggerProximityAlert()
-
-        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel("proximity_alerts", "Alertas de Proximidad", NotificationManager.IMPORTANCE_HIGH)
-            nm.createNotificationChannel(channel)
-        }
-
-        val notification = NotificationCompat.Builder(this, "proximity_alerts")
-            .setContentTitle("👤 Contacto cercano")
-            .setContentText("$contactName está a ~${distance.toInt()}m")
-            .setSmallIcon(android.R.drawable.ic_dialog_map)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setAutoCancel(true)
-            .build()
-
-        nm.notify(3001, notification)
-    }
-
     private fun updateServiceNotification(routeId: Int) {
         serviceScope.launch {
             val route = repository.getRouteById(routeId) ?: return@launch
@@ -859,17 +661,32 @@ class LocationService : Service() {
         }
     }
     private fun stopTrackingWithAutoRestart() {
-        lastStopLocation = _latestLocation.value
+        autoTrackingManager.setAutoRestartAnchor(_latestLocation.value)
         isWaitingForMovement = true
         lastUserActivityTimeMillis = System.currentTimeMillis()
         stopTracking()
+    }
+
+
+    override fun onMovementSustainedTriggered(snapshot: List<TrackingSessionManager.BufferPoint>) {
+        Log.i(TAG, "AutoTrackingManager: Movimiento sostenido detectado. Iniciando pipeline...")
+        triggerAutomaticTracking(snapshot) { filteredBpList ->
+            val pointsToBackfill = filteredBpList.map { bp ->
+                LocationPoint(id = 0, routeId = 0,
+                    latitude = bp.latitude, longitude = bp.longitude,
+                    speed = bp.speed, altitude = bp.altitude,
+                    timestamp = bp.timestamp
+                )
+            }
+            startAutoNewRoute(pointsToBackfill)
+        }
     }
 
     private fun rotateDailyRoute() {
         serviceScope.launch {
             // Guardar la actual
             if (sessionManager.getActiveRouteId() != null) {
-                repository.stopActiveRoute(sessionManager.getActiveRouteId()!!.toInt(), sessionManager.getTotalDistance(), currentMode.name)
+                repository.stopActiveRoute(sessionManager.getActiveRouteId()!!.toInt(), sessionManager.getTotalDistance(), activityModeManager.getCurrentMode().name)
             }
             // Iniciar una nueva inmediatamente
             startAutoNewRoute()
@@ -950,14 +767,10 @@ class LocationService : Service() {
         watchdogJob?.cancel()
         isSignalLost = false
         _isTracking.value = false
-        timeStartedStopping = 0L
-        isShortStopDetected = false
-        shortStopLat = 0.0
-        shortStopLon = 0.0
-        shortStopAddress = ""
+        shortStopMarkManager.resetEvaluation()
         // 🛡️ DOBLE CANDADO ATÓMICO: Reinicio inmediato y síncrono de velocidad y estado
         _currentActivityMode.value = ActivityMode.STOPPED
-        currentMode = ActivityMode.STOPPED
+        activityModeManager.reset()
         _latestLocation.value = _latestLocation.value?.let { loc ->
             Location(loc).apply { speed = 0f }
         }
@@ -975,7 +788,7 @@ class LocationService : Service() {
 
         serviceScope.launch {
             if (sessionManager.getActiveRouteId() != null) {
-                repository.stopActiveRoute(sessionManager.getActiveRouteId()!!.toInt(), sessionManager.getTotalDistance(), currentMode.name)
+                repository.stopActiveRoute(sessionManager.getActiveRouteId()!!.toInt(), sessionManager.getTotalDistance(), activityModeManager.getCurrentMode().name)
             }
 
             // Reiniciar estados una vez confirmado el guardado
@@ -987,11 +800,6 @@ class LocationService : Service() {
                 _latestLocation.value = _latestLocation.value?.let { loc ->
                     Location(loc).apply { speed = 0f }
                 }
-                timeStartedStopping = 0L
-                isShortStopDetected = false
-                shortStopLat = 0.0
-                shortStopLon = 0.0
-                shortStopAddress = ""
                 filterPipeline.reset()
                 _elapsedTimeSeconds = 0L
                 _currentDistanceMeters = 0.0
@@ -999,7 +807,7 @@ class LocationService : Service() {
                 // Purgar alertas y restablecer el modo síncronamente
                 isSignalLost = false
                 _currentActivityMode.value = ActivityMode.STOPPED
-                currentMode = ActivityMode.STOPPED
+                activityModeManager.reset()
 
                 // No llamamos a stopSelf(). El servicio se mantiene en modo pasivo.
                 startPassiveTracking()
@@ -1027,7 +835,7 @@ class LocationService : Service() {
 
         serviceScope.launch {
             if (sessionManager.getActiveRouteId() != null) {
-                repository.stopActiveRoute(sessionManager.getActiveRouteId()!!.toInt(), sessionManager.getTotalDistance(), currentMode.name)
+                repository.stopActiveRoute(sessionManager.getActiveRouteId()!!.toInt(), sessionManager.getTotalDistance(), activityModeManager.getCurrentMode().name)
             }
             withContext(Dispatchers.Main) {
                 _isTracking.value = false
@@ -1111,6 +919,7 @@ class LocationService : Service() {
     }
 
     override fun onDestroy() {
+        activityModeManager.reset()
         fusedLocationClient.removeLocationUpdates(locationCallback)
         timerJob?.cancel()
         watchdogJob?.cancel()
@@ -1125,15 +934,19 @@ class LocationService : Service() {
         locationHandlerThread?.quitSafely()
         locationHandlerThread = null
 
-        // Liberar BLE Proximity (Módulo 3B)
-        proximityManager?.stop()
-        alertNotifier?.release()
+        // Liberar BLE Proximity (delegado a ProximityBleManager)
+        proximityBleManager.clearAll()
 
         // Desregistrar receiver de pantalla
         try { unregisterReceiver(screenStateReceiver) } catch (_: Exception) { }
 
+        shortStopMarkManager.clearAll()
+        autoTrackingManager.clearAll()
+
         super.onDestroy()
     }
 }
+
+
 
 

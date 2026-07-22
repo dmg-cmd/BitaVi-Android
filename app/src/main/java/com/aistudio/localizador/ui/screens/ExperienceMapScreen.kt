@@ -2,7 +2,7 @@ package com.aistudio.localizador.ui.screens
 
 import com.aistudio.localizador.ui.theme.IconCompartir
 import com.aistudio.localizador.ui.theme.IconExportar
-import com.aistudio.localizador.ui.toRouteSegments
+import com.aistudio.localizador.ui.toGradientRouteSegments
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.drawable.Drawable
@@ -13,6 +13,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -119,9 +120,17 @@ fun ExperienceMapScreen(
     val context = LocalContext.current
     val points by viewModel.experiencePoints.collectAsState()
     val waypoints by viewModel.selectedDetailWaypoints.collectAsState()
+    val currentPhotoPaths by viewModel.photoPathsForCurrentRoute.collectAsState()
     val linkedFavorites by viewModel.getFavoritesForRouteFlow(routeId).collectAsState(initial = emptyList())
     val gpsPrecisionState by viewModel.gpsAccuracy.collectAsStateWithLifecycle()
     var hasInitiallyCenteredRoute by remember { mutableStateOf(false) }
+
+    // Carga orquestada de waypoints e imágenes de la experiencia (Uso de prepareExperience)
+    LaunchedEffect(routeId) {
+        viewModel.prepareExperience(routeId)
+    }
+
+    BackHandler(onBack = onBack)
 
     val mapView = remember { MapView(context) }
     val rotationGestureOverlay = remember { RotationGestureOverlay(mapView) }.apply {
@@ -256,7 +265,7 @@ fun ExperienceMapScreen(
                 overlays.removeIf { it is Marker || it is GuideLinesOverlay || it is Polyline }
 
                 if (sortedPoints.isNotEmpty()) {
-                    sortedPoints.toRouteSegments().forEach { seg ->
+                    sortedPoints.toGradientRouteSegments(viewModel.routeColorUseCase).forEach { seg ->
                         overlays.add(Polyline().apply {
                             setPoints(seg.points)
                             outlinePaint.color = seg.color
@@ -392,33 +401,7 @@ fun ExperienceMapScreen(
         // ====================================================================
         // CAPA 1.5: INDICADOR GPS (TOP END)
         // ====================================================================
-        Surface(
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(top = 8.dp, start = 8.dp)
-                .padding(end = 16.dp, top = 8.dp),
-            shape = MaterialTheme.shapes.small,
-            color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.70f),
-            shadowElevation = 2.dp
-        ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    imageVector = Icons.Default.GpsFixed,
-                    contentDescription = "Precisión de señal GPS",
-                    tint = MaterialTheme.colorScheme.secondary,
-                    modifier = Modifier.size(12.dp)
-                )
-                Spacer(modifier = Modifier.width(4.dp))
-                Text(
-                    text = gpsPrecisionState,
-                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
+
 
         // CAPA 2: CONTROLES FLOTANTES DE NAVEGACIÓN (LATERAL DERECHO)
         // ====================================================================
@@ -469,65 +452,79 @@ fun ExperienceMapScreen(
                 }
             }
         }
-
         // ====================================================================
-        // CAPA 3: DOCK FLOTANTE INFERIOR (50% TRANSPARENCIA)
+        // ÚNICA SUB-BARRA INFERIOR DE ACCIONES 5.2 (Unificada y Desduplicada)
         // ====================================================================
         Surface(
             modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .navigationBarsPadding()
                 .fillMaxWidth()
-                .padding(horizontal = 24.dp, vertical = 16.dp),
-            shape = MaterialTheme.shapes.large,
-            color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.50f),
-            shadowElevation = 4.dp
+                .align(Alignment.BottomCenter),
+            color = MaterialTheme.colorScheme.surfaceContainer,
+            tonalElevation = 3.dp
         ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(onClick = onBack) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "Volver atrás",
-                        tint = MaterialTheme.colorScheme.primary
-                    )
+                // Grupo de Botones Operativos Unificados
+                Row(verticalAlignment = Alignment.CenterVertically) {
+
+                    // 5.2.0 [← Volver]
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Volver a la pantalla anterior",
+                            tint = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(4.dp))
+
+                    // 5.2.1 [📤 Share Experiencia + Fotos] (Cian IconCompartir: 0xFF4DD0E1)
+                    IconButton(
+                        onClick = {
+                            viewModel.shareExperience(
+                                context = context,
+                                routeId = routeId,
+                                photoPaths = currentPhotoPaths
+                            )
+                        }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Share,
+                            contentDescription = "Compartir Experiencia con Fotos",
+                            tint = Color(0xFF4DD0E1) // Cian oficial Bitaru
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(4.dp))
+
+                    // 5.2.2 [💾 Exportar Ruta ZIP/GPX] (Amber IconExportar: 0xFFFFB74D) - UNIFICADO
+                    IconButton(
+                        onClick = {
+                            viewModel.exportRoute(routeId)
+                        }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Save,
+                            contentDescription = "Exportar Ruta Completa (ZIP/GPX)",
+                            tint = Color(0xFFFFB74D) // Amber oficial Bitaru
+                        )
+                    }
                 }
 
-                Spacer(modifier = Modifier.width(12.dp))
-
+                // 5.2.3 Indicador de Estado GPS Satelital - ÚNICO
                 Text(
-                    text = "Experiencias",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                    color = MaterialTheme.colorScheme.onSurface
+                    text = gpsPrecisionState,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-
-                Spacer(modifier = Modifier.weight(1f))
-
-                IconButton(onClick = { viewModel.exportRoute(routeId) }) {
-                    Icon(
-                        imageVector = Icons.Default.Share,
-                        contentDescription = "Compartir recorrido",
-                        tint = IconCompartir
-                    )
-                }
-
-                Spacer(modifier = Modifier.width(8.dp))
-
-                IconButton(onClick = { viewModel.exportarRutaZip(routeId) }) {
-                    Icon(
-                        imageVector = Icons.Default.Save,
-                        contentDescription = "Guardar recorrido",
-                        tint = IconExportar
-                    )
-                }
             }
         }
     }
-
     FullScreenPhotoDialog(
         photoUri = photoToZoom,
         onDismiss = { photoToZoom = null }
@@ -570,3 +567,7 @@ class GuideLinesOverlay(
         }
     }
 }
+
+
+
+

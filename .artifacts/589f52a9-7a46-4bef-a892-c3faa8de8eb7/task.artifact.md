@@ -1,0 +1,3 @@
+- [ ] Clean up `ExperienceMapScreen.kt` by removing duplicated/broken code block at the end.
+- [ ] Verify build with `./gradlew :app:assembleDebug`.
+- [ ] Deploy and verify UI on device.

@@ -1,3 +1,62 @@
+## [2026-07-20] CR-10: GroupRoutesByDateUseCase — Agrupamiento por Día en HistoryScreen
+
+**Archivos creados:**
+- domain/usecase/GroupRoutesByDateUseCase.kt: DTO DayGroupUiModel (LocalDate, formattedDate, colorInt ARGB, routes) + paleta de 7 colores + agrupación por LocalDate.
+- test/.../GroupRoutesByDateUseCaseTest.kt: 3 tests JVM (agrupación descendente, mismo color mismo día, lista vacía).
+
+**Archivos modificados:**
+- RouteViewModel.kt: Inyectado GroupRoutesByDateUseCase. Expuesto groupedRoutesState como StateFlow<List<DayGroupUiModel>>.
+- HistoryScreen.kt: Cabeceras colapsables por día con DayGroupHeader. RouteCard acepta stripeColor opcional con banda cromática izquierda de 6dp.
+
+**Build:** compileDebugKotlin OK, testDebugUnitTest 67/9 pre-existing, assembleDebug OK.
+
+---
+## [2026-07-20] CR-11: GroupFavoritesByLocationUseCase + Headers con Emoji
+
+**Archivos creados:**
+- domain/usecase/GroupFavoritesByLocationUseCase.kt: DTOs CountryFavoritesGroup/CityFavoritesGroup + operador invoke() con agrupación ordenada.
+- 	est/.../GroupFavoritesByLocationUseCaseTest.kt: 3 tests JVM.
+
+**Archivos modificados:**
+- RouteViewModel.kt: Inyectado GroupFavoritesByLocationUseCase. groupedFavorites cambiado de Map a List<CountryFavoritesGroup>.
+- SavedLocationsScreen.kt: Headers de país con 🌍, ciudad con 📍 + conteo + ExpandLess/ExpandMore.
+
+**Build:** compileDebugKotlin OK, testDebugUnitTest 67/9 pre-existing, assembleDebug OK.
+
+---
+## [2026-07-20] CR-10: HistoryScreen Limpia + Sub-barra 2.2
+
+**Archivos:**
+- HistoryScreen.kt: Eliminado IconButton(Icons.Outlined.Delete) de RouteCard (prevención de toques accidentales). Eliminado estado outeToDelete y su diálogo de borrado individual. Eliminado import Icons.Outlined.Delete.
+- DynamicHistoryBottomBar.kt: Share tint cambiado de IconExportar a IconCompartir (cian). Agregado botón Importar (FileDownload + IconExportar amber) con callback onImport.
+- MainActivity.kt: Agregado gpxHistoryImportLauncher (GPX picker) conectado a onImport.
+
+**Build:** compileDebugKotlin OK, testDebugUnitTest 64/9 pre-existing, assembleDebug OK.
+
+---
+## [2026-07-20] CR-09: Gradiente Térmico HSV + Marcador Cinemático
+
+**Archivos:**
+- RouteColorUseCase.kt: speedToGradientColor() con HSV puro Kotlin, protección delta < 0.001f.
+- RouteSegmenter.kt: 	oGradientRouteSegments() segmentación por par con color por velocidad promedio.
+- RouteViewModel.kt: outeColorUseCase expuesto como al público.
+- MapScreen.kt: migrado a 	oGradientRouteSegments() y marcador cinemático con emember(isTracking, currentSpeedMps) + speedToGradientColor().
+- ExperienceMapScreen.kt: migrado a 	oGradientRouteSegments().
+
+**Build:** compileDebugKotlin OK, testDebugUnitTest OK, assembleDebug OK.
+
+---
+## 20/07/2026 — CR-08: Bypass Biométrico (Guardián en Ciclo de Vida)
+- **BiometricAuthUseCase.kt**: Nuevo use case en domain/usecase/ que encapsula verificación de hardware (BiometricManager) y estado de preferencia persistida (PreferencesManager).
+- **BiometricLockScreen.kt**: Pantalla shield en Compose MD3 que bloquea la UI con icono Lock, texto descriptivo y botón "Desbloquear con Biometría".
+- **MainActivity.kt**: Inyectado BiometricAuthUseCase vía @Inject; gating reactivo isAppUnlocked en setContent; guardián triggerBiometricCheck() en onStart; manejo de errores con biometricErrorMessage para reintento.
+- **Test**: 2 tests unitarios JVM con MockK (verificación de isBiometricEnabled).
+- **Compilación**: testDebugUnitTest, assembleDebug BUILD SUCCESSFUL.
+## 19/07/2026 — ME-06: Corrección EXIF y Comportamiento Nativo (GetContent + Semántica)
+- **SavedLocationsScreen.kt**: Migración de ActivityResultContracts.OpenDocument() a GetContent() para forzar el selector multimedia local nativo, evitando que el SAF abra Google Drive como ubicación predeterminada.
+- **Callback reestructurado**: saveImageToInternalStorage movido dentro del coroutine scope para respetar la semántica suspend; capturedPhotoUri asignado en withContext(Dispatchers.Main) para hidratación reactiva de la miniatura.
+- **Título corregido**: "Guardar ubicación actual" → "Guardar ubicación" (eliminación del término anacrónico "actual", alineado con la inyección del timestamp EXIF original implementada en ME-02).
+- **Build**: assembleDebug BUILD SUCCESSFUL (45s); installDebug desplegado en 2 dispositivos.
 ## 17/07/2026 — ME-02: ExtractPhotoLocationUseCase + Corrección de EXIF en Hilo Principal
 - **ExtractPhotoLocationUseCase.kt**: Nuevo use case en domain/usecase/ que extrae coordenadas GPS de metadatos EXIF en Dispatchers.IO, delegando en PhotoManager.
 - **RouteViewModel.kt**: Agregado extractLocationFromPhoto(uri) como suspend fun, inyectado via Hilt.
@@ -234,3 +293,121 @@
 - [x] BUILD SUCCESSFUL, assembleDebug OK, installDebug en Pixel 9 Pro XL
 - [x] Respaldos creados en RESPALDO_ANTERIOR/
 
+
+## 18/07/2026 - ME-02 Paso 2: ActivityModeManager - Extraccion de Histeresis de Actividad
+- **ActivityModeManager.kt**: Nuevo manager con evaluate() encapsulando la maquina de estados de modo de actividad (L587-611 original). Histeresis temporal pura con ventanas de upgrade (10s) y downgrade (120s). Thresholds exactos con operadores <=.
+- **LocationModule.kt**: Provider unscoped provideActivityModeManager() anadido.
+- **LocationService.kt**: 2 variables globales eliminadas (currentMode, lastModeChangeTime). Metodo updateActivityMode() eliminado (25 lineas). L473 reemplazado por inline evaluate(). 3 lecturas externas migradas a getCurrentMode().name. 2 escrituras migradas a reset().
+- **ActivityModeManagerTest.kt**: 5 tests unitarios (borde 7.0 km/h, ventana de upgrade/downgrade, consolidacion, reset).
+- **AssembleDebug**: BUILD SUCCESSFUL.
+
+## 18/07/2026 - ME-02 Paso 3: ShortStopMarkManager - Extraccion de Paradas Cortas
+- **ShortStopMarkManager.kt**: Nuevo manager con algoritmo de 2 fases (deteccion 120s + geocoding background, persistencia al reanudar con tolerancia 180s). Inyecta RouteRepository y GeocoderUseCase.
+- **LocationModule.kt**: Provider unscoped con dependencias.
+- **LocationService.kt**: 5 variables eliminadas, bloque L476-522 delegado, resets migrados a resetEvaluation().
+- **ShortStopMarkManagerTest.kt**: 4 tests unitarios.
+- **AssembleDebug**: BUILD SUCCESSFUL.
+
+## 18/07/2026 — ME-03: Inyección Directa EXIF + Micro-Mapa en Diálogo de Favoritos
+- **Bug corregido (Sincronización EXIF-03)**: Carrera asíncrona en SavedLocationsScreen.kt corregida mediante inyección directa de coordenadas EXIF en inputLatitude/inputLongitude al seleccionar foto.
+- **Campos Lat/Lon editables**: Nuevos OutlinedTextField con desactivación automática de usePhotoGps al editar manualmente.
+- **Micro-mapa osmdroid**: AndroidView(MapView) de 180dp con marcador reactivo centrado en las coordenadas del formulario.
+- **Guardado simplificado**: El botón Guardar ahora lee directamente de inputLatitude/inputLongitude como fuente de verdad única.
+- **Build**: assembleDebug BUILD SUCCESSFUL.
+## 18/07/2026 — ME-03b: Refinamiento Multihilo en Launchers de Favoritos
+- **Dispatchers explícitos**: cameraLauncher, mediaLocationPermissionLauncher y photoPickerLauncher migrados a scope.launch(Dispatchers.IO) + withContext(Dispatchers.Main).
+- **LaunchedEffect eliminado**: fetchPhotoAddress() ahora se llama directamente desde cada launcher, eliminando la dependencia reactiva de LaunchedEffect(photoGpsLocation).
+- **Cancelación preservada**: cameraLauncher mantiene el bloque else { capturedPhotoUri = null } contra fotos fantasma.
+- **Build**: assembleDebug BUILD SUCCESSFUL.
+## 18/07/2026 — UI-05b: Selector de Origen (FilterChips) + Blindaje de Dirección
+- **FilterChips M3**: Selector de origen GPS/Foto en el diálogo de guardar favorito, conmutando usePhotoGps y rellenando inputs numéricos.
+- **Blindaje finalAddress**: Fallback formateado "GPS Foto: lat, lon" / "GPS: lat, lon" cuando la geocodificación es lenta o falla.
+- **0 flags nuevos**: Reutiliza usePhotoGps como única fuente de verdad. Launchers intactos.
+- **Build**: assembleDebug BUILD SUCCESSFUL (987 líneas finales).
+## 18/07/2026 — UI-05c: Permiso ACCESS_MEDIA_LOCATION preventivo en Galería
+- **Permiso preventivo**: El botón Galería ahora verifica ACCESS_MEDIA_LOCATION antes de abrir el picker, evitando la censura silenciosa de EXIF en Android 10+.
+- **photoPickerLauncher simplificado**: Eliminada la bifurcación Q+/<Q; flujo lineal único.
+- **pendingPhotoUri eliminada**: Variable huérfana y referencias removidas (-1 estado mutable).
+- **Build**: assembleDebug BUILD SUCCESSFUL (959 líneas finales).
+## 19/07/2026 — ME-02 Paso 4: ProximityBleManager - Extraccion de Logica BLE de Proximidad
+- **ProximityBleManager.kt**: Nuevo manager que encapsula el ciclo de vida de ProximityManager (advertising + scanning), notificaciones de contacto cercano y notificaciones push. Constructor solo con @ApplicationContext (inyeccion Hilt simplificada, sin providers adicionales en LocationModule).
+- **LocationService.kt**: 5 variables BLE eliminadas (alertNotifier, proximityManager, isBleActive, lastBleNotificationTime). Metodos ensureBleProximity() y onBleContactDetected() removidos (~55 lineas). Implementa ProximityBleManager.ProximityListener. onCreate/onDestroy delegados.
+- **ProximityBleManagerTest.kt**: 5 tests unitarios (init, scanning activo, NearMe desactivado, tracking desactivado, clearAll).
+- **Reduccion**: LocationService ~1014 → ~972 lineas (-42, -167 acumulado desde ME-02 Paso 1).
+- **AssembleDebug**: BUILD SUCCESSFUL. Test suite: 31/31 passing.
+- **Respaldos**: RESPALDO_ANTERIOR/20260719_*.kt (4 archivos).
+
+## 19/07/2026 — HOTFIX: SecurityException al abrir app (ME-02 Paso 4a)
+- **Bug corregido**: ContactUseCase.getAllContactPhones() se ejecutaba en cada primer tick de GPS sin verificar READ_CONTACTS, lanzando SecurityException y cerrando la app.
+- **Solucion**: El hashing de contactos se movio dentro de ProximityBleManager.ensureBleProximity(), ejecutandose solo cuando BLE esta configurado para activarse, con try-catch SecurityException como salvaguarda.
+- **Archivos**: ProximityBleManager.kt, LocationService.kt, ProximityBleManagerTest.kt.
+- **Build**: assembleDebug + testDebugUnitTest + installDebug exitoso.
+
+## 19/07/2026 — ME-04: Migracion de RouteExportUseCase a domain/usecase
+- **RouteExportUseCase.kt**: Migrado de ui/ a domain/usecase/ con constructor @Inject (Context, RouteRepository, RouteExchanger). API Result<T> para todos los metodos. Sin Toasts ni startActivity(). Metodos: exportCsv, exportGpx, exportZip/exportRouteAsZip (unificados), importGpx, importZip, saveZipToUri, buildShareIntent, buildChooserIntent, getUriForFile.
+- **RouteViewModel.kt**: Nuevo _shareIntentTrigger (SharedFlow), metodos de exportacion/importacion (L540-569) reescritos con onSuccess/onFailure, manteniendo nombres publicos intactos. Snackbars via _uiEvent.
+- **MainActivity.kt**: Nuevo LaunchedEffect que colecta shareIntentTrigger y ejecuta startActivity().
+- **ui/RouteExportUseCase.kt**: Eliminado.
+- **Pruebas**: 9 tests unitarios nuevos (RouteExportUseCaseTest).
+- **Build**: assembleDebug + installDebug exitoso en 2 dispositivos.
+
+## 19/07/2026 — ME-06: Correccion EXIF - Transcodificacion robusta + OpenDocument
+- **ExtractPhotoLocationUseCase.kt**: Nuevo metodo executeRobust(uri) con transcodificacion a cacheDir para soporte seek fisico. Extrae GPS + fecha de creacion (TAG_DATETIME_ORIGINAL). Retorna PhotoExifResult.
+- **RouteViewModel.kt**: Nuevo extractPhotoExifRobust(uri) como puente.
+- **SavedLocationsScreen.kt**: Galeria migrada de PickVisualMedia a OpenDocument. La extraccion usa executeRobust en lugar del metodo anterior.
+- **Causa raiz**: PickVisualMedia retorna URIs proxy (content://media/picker/...) que Android filtra eliminando EXIF GPS. MediaStore.setRequireOriginal() no opera sobre estos URIs efimeros.
+
+
+## 19/07/2026 — CR-05: Saneamiento ContactUseCase (Result<T>) + LocationParser (@Singleton Facade)
+- **ContactUseCase.kt**: Migrado a @Singleton con @Inject constructor. getContactDetails() ahora retorna Result<ContactDetails> con column indexing defensivo y catch general. Se eliminaron NPEs silenciosos por contactos corruptos.
+- **LocationParser.kt**: Migrado de object estático a @Singleton class con companion object puente (parseFromAddressString) para compatibilidad backward con RouteViewModel L362/L366. Nuevo inferCountryCity(String?): Result<ParsedLocation>. Código muerto (Geocoder, ConcurrentHashMap) eliminado.
+- **RouteViewModel.kt**: L675-679 actualizado con onFailure + getOrDefault para mapear Result<ContactDetails>.
+- **Tests**: ContactUseCaseTest (2 tests) + LocationParserTest (4 tests) — todos pasando en JVM.
+- **Build**: assembleDebug BUILD SUCCESSFUL (55s).
+
+## 19/07/2026 — CR-06: RouteColorUseCase — Gestión de Colores de Rutas Históricas
+- **RouteColorUseCase**: Nuevo use case en domain/usecase/ con sanitizeColorHex(), parseHexToColorInt() y paleta RoutePalette (5 colores semánticos). colorInt eliminado del enum — derivación dinámica desde hex.
+- **Persistencia SQLCipher**: MIGRATION_12_13 en AppDatabase con ALTER TABLE routes ADD COLUMN color TEXT DEFAULT '#3498DB'. Version bump 12→13.
+- **Route.kt**: Nuevo campo color: String con fallback Azul Bitaru. Todos los campos existentes preservados.
+- **RouteDao/RouteRepository**: updateRouteColor(routeId, color) agregado en ambas capas.
+- **RouteColorPicker.kt**: Componente Compose reutilizable con 5 círculos de color y borde de selección primario.
+- **RouteViewModel**: Inyectado RouteColorUseCase; expone updateRouteColor() y getRouteColorInt().
+- **Tests**: 3 tests JVM (hex inválido, 6 dígitos, 8 dígitos ARGB).
+- **Build**: assembleDebug BUILD SUCCESSFUL (37s).
+## 19/07/2026 — CR-07: AddFavoriteFromTrackingUseCase + Favorito Rápido en Tracking
+- **RouteRepository.kt**: addSavedLocation() retorna Long (rowId) en lugar de Unit, permitiendo obtener el ID de la ubicación insertada para vincularla a una ruta.
+- **AddFavoriteFromTrackingUseCase.kt**: Nuevo @Singleton que valida Location no nula ni (0.0, 0.0), resuelve dirección con GeocoderUseCase.fetchAddress(), inserta SavedLocation con color #FFD700, vincula a ruta activa via addFavoriteToRoute().
+- **RouteViewModel.kt**: Inyectado addFavoriteFromTrackingUseCase; nuevo método addQuickFavoriteFromTracking() con Snackbar de éxito/fracaso.
+- **MapScreen.kt (FAB 1.5.2)**: Nuevo FloatingActionButton con LocationOn y tint dorado (0xFFFFD54F) en columna de tracking activo (entre waypoint y stop).
+- **Tests**: 3 tests unitarios JVM pasando (válido con ruta 7, location nulo, location 0.0/0.0).
+- **Build**: testDebugUnitTest (3/3 nuevos passing); assembleDebug BUILD SUCCESSFUL (43s).
+
+
+## 20/07/2026 — CR-09: Restauración de Diferenciación Cromática de Trayectos (Mapa Térmico)
+- **RouteColorUseCase.kt**: Agregado speedToGradientColor() con interpolación HSV continua Azul→Rojo y protección contra división por cero en delta < 0.001f. Implementación pura Kotlin sin android.graphics.Color.
+- **RouteSegmenter.kt**: Nueva extension 	oGradientRouteSegments() que genera un segmento por par de puntos consecutivos con color interpolado por velocidad promedio.
+- **RouteViewModel.kt**: outeColorUseCase expuesto como público para acceso desde UI.
+- **MapScreen.kt**: Migrado a 	oGradientRouteSegments() para renderizado térmico.
+- **ExperienceMapScreen.kt**: Migrado a 	oGradientRouteSegments().
+- **Test**: 7 nuevos tests unitarios (9 total), todos pasando. BUILD SUCCESSFUL.
+
+
+
+
+
+## 22/07/2026 — CR-15: Compartir Experiencias con Fotos
+- **ShareExperienceUseCase.kt**: UseCase que construye Intent con chooser, adjunta fotos vía FileProvider.
+- **ShareExperienceUseCaseTest.kt**: 1 test con Robolectric (intención no nula con lista vacía).
+- **RouteViewModel.kt**: Inyectado ShareExperienceUseCase, expuesto photoPathsForCurrentRoute + shareExperience().
+- **ExperienceMapScreen.kt**: Botón Share (cian 0xFF4DD0E1) cableado a shareExperience().
+- **MainActivity.kt**: LaunchedEffect collector para shareIntentTrigger.
+- **Build**: compileDebugKotlin OK, testDebugUnitTest 75/9, assembleDebug OK.
+
+## 22/07/2026 — CR-16: Barra Inferior Unificada y Restructuración de ExperienceMapScreen
+- **CAPA 3 eliminada**: Floating dock 50% transparencia removido, liberando 70dp vertical de mapa.
+- **Barra 5.2 unificada**: Surface sólida con layout Row(SpaceBetween) conteniendo dos Row(CenterVertically).
+- **Izquierda**: ArrowBack (onSurface) + Share (cian) + Export (amber).
+- **Derecha**: "Experiencias" (titleMedium Bold) + indicador GPS en tiempo real.
+- **BackHandler** agregado para gesto/botón de retroceso del sistema.
+- **Correcciones**: Duplicado ) { eliminado, Box close faltante restaurado, } extra eliminado.
+- **Build**: compileDebugKotlin OK, testDebugUnitTest 75/9 pre-existing.

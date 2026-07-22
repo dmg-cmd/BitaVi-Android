@@ -18,6 +18,9 @@ import androidx.compose.foundation.background
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.FileDownload
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -30,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.aistudio.localizador.ui.theme.IconCompartir
 import com.aistudio.localizador.ui.theme.IconEliminar
 import com.aistudio.localizador.ui.theme.IconExportar
 
@@ -43,6 +47,9 @@ fun DynamicHistoryBottomBar(
     onExportSelected: () -> Unit,
     onDeleteSelected: () -> Unit,
     onClearSelection: () -> Unit,
+    onImport: () -> Unit = {},
+    onCollapseAllClick: () -> Unit = {},
+    onExpandAllClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val isSelectionMode = selectedCount > 0
@@ -90,7 +97,7 @@ fun DynamicHistoryBottomBar(
                             Icon(
                                 imageVector = Icons.Default.Share,
                                 contentDescription = "Exportar seleccionadas",
-                                tint = IconExportar
+                                tint = IconCompartir
                             )
                         }
                         Spacer(modifier = Modifier.width(8.dp))
@@ -108,7 +115,31 @@ fun DynamicHistoryBottomBar(
                             Icon(
                                 imageVector = Icons.Default.Share,
                                 contentDescription = "Exportar todo",
+                                tint = IconCompartir
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        IconButton(onClick = onImport) {
+                            Icon(
+                                imageVector = Icons.Default.FileDownload,
+                                contentDescription = "Importar recorrido",
                                 tint = IconExportar
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        IconButton(onClick = onCollapseAllClick) {
+                            Icon(
+                                imageVector = Icons.Default.KeyboardArrowUp,
+                                contentDescription = "Colapsar todos los grupos",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        IconButton(onClick = onExpandAllClick) {
+                            Icon(
+                                imageVector = Icons.Default.KeyboardArrowDown,
+                                contentDescription = "Desplegar todos los grupos",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                         Spacer(modifier = Modifier.width(8.dp))

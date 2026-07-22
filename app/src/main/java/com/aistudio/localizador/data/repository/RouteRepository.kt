@@ -11,24 +11,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import android.util.Log
+import javax.inject.Inject
 
-/**
- * Repositorio que unifica el acceso a datos para las rutas, puntos GPS y waypoints.
- * Implementa el patrón Repository para desacoplar el ViewModel y el Servicio del DAO de Room.
- */
-class RouteRepository(private val routeDao: RouteDao) {
+class RouteRepository @Inject constructor(private val routeDao: RouteDao) {
 
-    // Flujo de todas las rutas guardadas u ordenadas de más reciente a más antigua
     val allRoutes: Flow<List<Route>> = routeDao.getAllRoutesFlow()
 
-    // Flujo de la ruta activa actualmente
-
-    /**
-     * Inicia una nueva ruta guardando su registro inicial y finalizando de forma preventiva
-     * cualquier otra ruta que hubiera quedado en estado activo.
-     */
     suspend fun startNewRoute(name: String): Int {
-        // Desactivar cualquier ruta activa previamente para evitar estados inconsistentes
         val currentActive = routeDao.getActiveRoute()
         if (currentActive != null) {
             routeDao.updateRoute(
@@ -48,14 +37,9 @@ class RouteRepository(private val routeDao: RouteDao) {
         return routeDao.insertRoute(newRoute).toInt()
     }
 
-    /**
-     * Inserta una ruta directamente sin desactivar rutas activas.
-     * Usado durante la restauración de backups.
-     */
     suspend fun insertRouteDirectly(route: Route): Int {
         return routeDao.insertRoute(route).toInt()
     }
-
 
     suspend fun getRouteById(id: Int): Route? {
         return routeDao.getRouteById(id)
@@ -69,23 +53,23 @@ class RouteRepository(private val routeDao: RouteDao) {
         routeDao.updateRoute(route)
     }
 
-    /**
-     * Cierra la ruta activa calculando estadísticas finales de forma atómica.
-     * 🛡️ Usa NonCancellable para sobrevivir a la destrucción del servicio emisor.
-     */
+    suspend fun updateRouteColor(routeId: Int, color: String) {
+        routeDao.updateRouteColor(routeId, color)
+    }
+
     suspend fun stopActiveRoute(
-        routeId: Int, 
-        distanceMeters: Double, 
+        routeId: Int,
+        distanceMeters: Double,
         activityMode: String = "WALKING"
     ): Boolean = withContext(NonCancellable + Dispatchers.IO) {
         try {
             val route = routeDao.getRouteById(routeId)
             val points = routeDao.getLocationPointsForRoute(routeId)
-            
+
             if (route != null) {
                 val maxSpeed = if (points.isNotEmpty()) points.maxOf { it.speed } else 0f
                 val avgSpeed = if (points.isNotEmpty()) points.map { it.speed }.average().toFloat() else 0f
-                
+
                 routeDao.updateRoute(
                     route.copy(
                         isActive = false,
@@ -98,11 +82,11 @@ class RouteRepository(private val routeDao: RouteDao) {
                 )
                 true
             } else {
-                Log.w("RouteRepository", "⚠️ Se intentó cerrar una ruta inexistente: ID $routeId")
+                Log.w("RouteRepository", "Se intento cerrar una ruta inexistente: ID $routeId")
                 false
             }
         } catch (e: Exception) {
-            Log.e("RouteRepository", "🚨 Error catastrófico en la persistencia final de ruta $routeId", e)
+            Log.e("RouteRepository", "Error catastrofico en la persistencia final de ruta $routeId", e)
             false
         }
     }
@@ -115,9 +99,6 @@ class RouteRepository(private val routeDao: RouteDao) {
         routeDao.deleteRoutes(routeIds)
     }
 
-    /**
-     * Guarda una coordenada de rastreo vinculada a una ruta.
-     */
     suspend fun addLocationPoint(
         routeId: Int,
         latitude: Double,
@@ -148,9 +129,6 @@ class RouteRepository(private val routeDao: RouteDao) {
         return routeDao.getLocationPointsForRoute(routeId)
     }
 
-    /**
-     * Guarda un Punto de Interés (Waypoint) en el mapa vinculado a una ruta.
-     */
     suspend fun addWaypoint(
         routeId: Int,
         name: String,
@@ -183,14 +161,9 @@ class RouteRepository(private val routeDao: RouteDao) {
         return routeDao.getWaypointsForRoute(routeId)
     }
 
-
-
-    // --- Operaciones de Lugares Guardados (Favoritos) ---
-
     val allSavedLocations: Flow<List<SavedLocation>> = routeDao.getAllSavedLocationsFlow()
 
     suspend fun getAllSavedLocationsSync(): List<SavedLocation> = routeDao.getAllSavedLocations()
-
 
     suspend fun addSavedLocation(
         name: String, 
@@ -207,7 +180,7 @@ class RouteRepository(private val routeDao: RouteDao) {
         city: String = "Desconocida",
         color: String = "#FFD700",
         timestamp: Long = System.currentTimeMillis(),
-    ) {
+    ): Long {
         val location = SavedLocation(
             name = name,
             address = address,
@@ -224,7 +197,7 @@ class RouteRepository(private val routeDao: RouteDao) {
             city = city,
             color = color
         )
-        routeDao.insertSavedLocation(location)
+        return routeDao.insertSavedLocation(location)
     }
 
     suspend fun updateSavedLocation(location: SavedLocation) {
@@ -260,9 +233,6 @@ class RouteRepository(private val routeDao: RouteDao) {
         routeDao.deleteAllSavedLocations()
     }
 
-
-    // --- Operaciones de relación muchos-a-muchos (Ruta ↔ Favorito) ---
-
     suspend fun addFavoriteToRoute(routeId: Int, favoriteId: Int) {
         routeDao.addRouteFavoriteCrossRef(RouteFavoriteCrossRef(routeId = routeId, favoriteId = favoriteId))
     }
@@ -279,9 +249,6 @@ class RouteRepository(private val routeDao: RouteDao) {
         return routeDao.getFavoritesForRoute(routeId)
     }
 
-
     fun getSavedLocationByIdFlow(id: Int): Flow<SavedLocation?> = routeDao.getSavedLocationByIdFlow(id)
 
 }
-
-

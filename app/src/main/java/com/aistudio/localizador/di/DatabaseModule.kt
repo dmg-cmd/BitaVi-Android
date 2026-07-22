@@ -51,9 +51,4 @@ object DatabaseModule {
     @Singleton
     fun provideRouteDao(database: AppDatabase) = database.routeDao()
 
-    @Provides
-    @Singleton
-    fun provideRouteRepository(routeDao: com.aistudio.localizador.data.db.RouteDao): com.aistudio.localizador.data.repository.RouteRepository {
-        return com.aistudio.localizador.data.repository.RouteRepository(routeDao)
-    }
 }

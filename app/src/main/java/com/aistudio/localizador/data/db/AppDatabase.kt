@@ -15,7 +15,7 @@ import com.aistudio.localizador.data.model.SavedLocation
 
 @Database(
     entities = [Route::class, LocationPoint::class, Waypoint::class, SavedLocation::class, RouteFavoriteCrossRef::class],
-    version = 12,
+    version = 13,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -66,6 +66,13 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_12_13 = object : Migration(12, 13) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE routes ADD COLUMN color TEXT NOT NULL DEFAULT '#3498DB'")
+                android.util.Log.i("ROOM_MIGRATION", "Columna color inyectada en routes version 13.")
+            }
+        }
+
         fun getInstance(context: Context, passphrase: ByteArray? = null): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 var instance = INSTANCE
@@ -97,7 +104,7 @@ abstract class AppDatabase : RoomDatabase() {
                 }
 
                 return databaseBuilder
-                    .addMigrations(MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12)
+                    .addMigrations(MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13)
                     .build()
             } catch (ex: Exception) {
                 handleDatabaseCorruption(context, ex)

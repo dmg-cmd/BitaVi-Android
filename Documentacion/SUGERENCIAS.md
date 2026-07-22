@@ -1,11 +1,15 @@
 ## Completadas (Julio 2026)
 
+- [x] **CR-07 AddFavoriteFromTrackingUseCase**: Guardar favorito rápido durante tracking activo con geocodificación inversa, validación GPS (0.0, 0.0) y vinculación a ruta
+
 - [x] **ME-01 Foundation**: Migrar a Hilt con KSP en lugar de kapt para compatibilidad AGP 9
 - [x] **ME-01 MainActivity**: Agregar @AndroidEntryPoint y migrar ViewModel a y viewModels()
 - [x] **ME-01 AppModule**: Crear módulo con providers para todos los use cases
+- [x] **ME-06**: Migrar OpenDocument() → GetContent() para forzar selector local de imágenes; corregir título diálogo 9.3
 - [x] **ME-01 LocationService**: Migrar a @AndroidEntryPoint con field injection
 - [x] **ME-01 Tests**: Configurar HiltTestRunner + dependencias de testing
 - [x] **AL-01 Bugfix**: StationaryAnchorManager.processStationaryState() no congelaba anclaje (causaba fallo en test de drift)
+- [x] **ME-04**: Migrar RouteExportUseCase de ui/ a domain/usecase/ con API Result<T> y SharedFlow para Intents
 # Lista de Sugerencias y Mejoras Pendientes
 
 ## Prioridad 1: IA y Multimedia Avanzada (Fase 4)
@@ -24,3 +28,9 @@
 - [ ] **Watermark definitivo**: Una vez confirmado el layout, decidir estilo final del texto "agenviaje" en la card (verde neón debug vs elegante alpha=0.4).
 
 
+
+
+
+
+- [x] **CR-15 Compartir Experiencias**: ShareExperienceUseCase + shareExperience() + botón Share cian en barra 5.2
+- [x] **CR-16 Barra Inferior Unificada**: CAPA 3 eliminada, barra 5.2 con layout de dos Row + BackHandler

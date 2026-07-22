@@ -5,6 +5,8 @@ import javax.inject.Inject
 
 import android.location.Location
 import android.net.Uri
+import android.content.Context
+import android.content.Intent
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -16,6 +18,15 @@ import com.aistudio.localizador.data.model.SavedLocation
 import com.aistudio.localizador.data.model.Waypoint
 import com.aistudio.localizador.data.repository.RouteRepository
 import com.aistudio.localizador.domain.usecase.ExtractPhotoLocationUseCase
+import com.aistudio.localizador.util.AppConstants
+import com.aistudio.localizador.domain.usecase.RouteExportUseCase
+import com.aistudio.localizador.domain.usecase.RouteColorUseCase
+import com.aistudio.localizador.domain.usecase.AddFavoriteFromTrackingUseCase
+import com.aistudio.localizador.domain.usecase.GroupFavoritesByLocationUseCase
+import com.aistudio.localizador.domain.usecase.GroupRoutesByDateUseCase
+import com.aistudio.localizador.domain.usecase.ShareExperienceUseCase
+import com.aistudio.localizador.domain.usecase.DayGroupUiModel
+import com.aistudio.localizador.domain.usecase.CountryFavoritesGroup
 import com.aistudio.localizador.location.ActivityMode
 import com.aistudio.localizador.location.LocationService
 import kotlinx.coroutines.Dispatchers
@@ -27,6 +38,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -41,6 +53,7 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.time.LocalDate
 
 import android.location.Geocoder
 import android.util.Log
@@ -78,12 +91,20 @@ class RouteViewModel @Inject constructor(
     private val routeExportUseCase: RouteExportUseCase,
     private val backupUseCase: BackupUseCase,
     private val contactUseCase: ContactUseCase,
+    val routeColorUseCase: RouteColorUseCase,
+    private val addFavoriteFromTrackingUseCase: AddFavoriteFromTrackingUseCase,
     private val shareUseCase: ShareUseCase,
-    private val locationServiceManager: LocationServiceManager
+    private val groupFavoritesByLocationUseCase: GroupFavoritesByLocationUseCase,
+    private val groupRoutesByDateUseCase: GroupRoutesByDateUseCase,
+    private val locationServiceManager: LocationServiceManager,
+    private val shareExperienceUseCase: ShareExperienceUseCase
 ) : ViewModel() {
 
     private val _uiEvent = Channel<UiEvent>(Channel.BUFFERED)
     val uiEvent = _uiEvent.receiveAsFlow()
+
+    private val _shareIntentTrigger = MutableSharedFlow<Intent>()
+    val shareIntentTrigger = _shareIntentTrigger.asSharedFlow()
 
     // ─── UI State ─────────────────────────────────────────────────
 
@@ -103,6 +124,27 @@ class RouteViewModel @Inject constructor(
     fun clearSelection() {
         _selectedRouteIds.value = emptySet()
     }
+
+    // --- Collapsed Dates State (History date groups) ---
+    private val _collapsedDates = MutableStateFlow<Set<LocalDate>>(emptySet())
+    val collapsedDates: StateFlow<Set<LocalDate>> = _collapsedDates.asStateFlow()
+
+    fun toggleDateCollapse(date: LocalDate) {
+        _collapsedDates.value = if (_collapsedDates.value.contains(date))
+            _collapsedDates.value - date
+        else
+            _collapsedDates.value + date
+    }
+
+    fun collapseAllGroups() {
+        val allDates = groupedRoutesState.value.map { it.date }.toSet()
+        _collapsedDates.value = allDates
+    }
+
+    fun expandAllGroups() {
+        _collapsedDates.value = emptySet()
+    }
+
     var mapTargetLocation by mutableStateOf<GeoPoint?>(null)
         private set
     var isOfflineMode by mutableStateOf(false)
@@ -120,6 +162,8 @@ class RouteViewModel @Inject constructor(
     var isImporting by mutableStateOf(false)
         private set
     var currentAddress by mutableStateOf<String?>(null)
+        private set
+    var photoExtractedAddress by mutableStateOf<String?>(null)
         private set
     var selectedPointAddress by mutableStateOf<String?>(null)
         private set
@@ -331,6 +375,16 @@ class RouteViewModel @Inject constructor(
         if (id != null) repository.getWaypointsFlow(id) else flowOf(emptyList())
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val photoPathsForCurrentRoute: StateFlow<List<String>> = selectedDetailWaypoints
+        .map { waypoints ->
+            waypoints.mapNotNull { it.photoPath?.takeIf(String::isNotBlank) }
+        }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = emptyList()
+        )
 
     // ─── ExperienceMap: snapshot, no live feed ──────────────────────
     private val _experiencePoints = MutableStateFlow<List<LocationPoint>>(emptyList())
@@ -347,17 +401,16 @@ class RouteViewModel @Inject constructor(
 
     val allSavedLocations: StateFlow<List<SavedLocation>> = repository.allSavedLocations.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val allFavorites: StateFlow<List<SavedLocation>> = allSavedLocations
-    val groupedFavorites: StateFlow<Map<String, Map<String, List<SavedLocation>>>> = allSavedLocations.map { list ->
-        list.groupBy { loc ->
-            if (loc.country != "Desconocido") loc.country
-            else LocationParser.parseFromAddressString(loc.address).first
-        }.mapValues { entry ->
-            entry.value.groupBy { loc ->
-                if (loc.city != "Desconocida") loc.city
-                else LocationParser.parseFromAddressString(loc.address).second
-            }
-        }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
+    val groupedFavorites: StateFlow<List<CountryFavoritesGroup>> = allSavedLocations.map { list ->
+        groupFavoritesByLocationUseCase(list)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val allRoutesForGrouping: StateFlow<List<com.aistudio.localizador.data.model.Route>> = repository.allRoutes
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val groupedRoutesState: StateFlow<List<DayGroupUiModel>> = allRoutesForGrouping.map { routes ->
+        groupRoutesByDateUseCase(routes)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
 
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -372,7 +425,7 @@ class RouteViewModel @Inject constructor(
     fun removeFavoriteFromRoute(routeId: Int, favoriteId: Int) { viewModelScope.launch { repository.removeFavoriteFromRoute(routeId, favoriteId) } }
 
 
-    fun saveSpecificLocation(name: String, address: String, latitude: Double, longitude: Double, comment: String = "", author: String = "", photoPath: String? = null, phoneNumber: String = "", email: String = "", isContact: Boolean = false, color: String = "#FFD700") {
+    fun saveSpecificLocation(name: String, address: String, latitude: Double, longitude: Double, comment: String = "", author: String = "", photoPath: String? = null, phoneNumber: String = "", email: String = "", isContact: Boolean = false, color: String = "#FFD700", photoTimestamp: Long? = null) {
         viewModelScope.launch(Dispatchers.IO) {
             val finalComment = if (photoPath != null) {
                 val datePart = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(Date())
@@ -382,7 +435,7 @@ class RouteViewModel @Inject constructor(
             val details = geocoderUseCase.fetchLocationDetails(latitude, longitude)
             val country = details.second.ifBlank { "Desconocido" }
             val city = details.third.ifBlank { "Desconocida" }
-            repository.addSavedLocation(name, address, latitude, longitude, comment = finalComment, author, photoPath, phoneNumber, email, isContact, country, city, color)
+            repository.addSavedLocation(name, address, latitude, longitude, comment = finalComment, author, photoPath, phoneNumber, email, isContact, country, city, color, timestamp = photoTimestamp ?: System.currentTimeMillis())
         }
     }
     fun updateSavedLocation(location: SavedLocation) { viewModelScope.launch(Dispatchers.IO) { repository.updateSavedLocation(location) } }
@@ -420,13 +473,27 @@ class RouteViewModel @Inject constructor(
         }
     }
 
-    fun clearCurrentAddress() { currentAddress = null }
+    fun clearCurrentAddress() { currentAddress = null; photoExtractedAddress = null }
 
     fun fetchAddressForCoordinates(lat: Double, lon: Double) {
         viewModelScope.launch(Dispatchers.IO) {
             val details = geocoderUseCase.fetchLocationDetails(lat, lon)
             currentAddress = details.first
             selectedPointAddress = details.first
+        }
+    }
+
+    fun fetchPhotoAddress(latitude: Double, longitude: Double) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val details = geocoderUseCase.fetchLocationDetails(latitude, longitude)
+                withContext(Dispatchers.Main) {
+                    photoExtractedAddress = details.first
+                    Log.d("Bitaru_EXIF", "Dirección extraída de la foto: ${details.first}")
+                }
+            } catch (e: Exception) {
+                Log.e("Bitaru_EXIF", "Error al geocodificar coordenadas EXIF", e)
+            }
         }
     }
 
@@ -443,8 +510,9 @@ class RouteViewModel @Inject constructor(
 
     fun getPhotoLocation(uri: Uri): Pair<Double, Double>? = photoManager.getPhotoLocation(uri)
 
-    suspend fun extractLocationFromPhoto(uri: Uri): Pair<Double, Double>? =
-        extractPhotoLocationUseCase.execute(uri)
+    suspend fun extractLocationFromPhoto(uri: Uri): ExtractPhotoLocationUseCase.PhotoMetadata? {
+        return extractPhotoLocationUseCase.execute(uri)
+    }
 
     fun createImageFile(): Uri? = photoManager.createImageFile()
 
@@ -519,37 +587,117 @@ class RouteViewModel @Inject constructor(
 
     // ─── Export / Import ──────────────────────────────────────────
 
-    fun exportRoutesAsCSV(routeId: Int) { viewModelScope.launch { routeExportUseCase.exportCsv(routeId) } }
-    fun exportRoutesAsGPX(routeIds: Set<Int>) { viewModelScope.launch { routeExportUseCase.exportGpx(routeIds) } }
+    fun exportRoutesAsCSV(routeId: Int) {
+        viewModelScope.launch(Dispatchers.IO) {
+            routeExportUseCase.exportCsv(routeId)
+                .onSuccess { file ->
+                    val uri = routeExportUseCase.getUriForFile(file)
+                    val intent = routeExportUseCase.buildChooserIntent(
+                        routeExportUseCase.buildShareIntent(uri, "text/csv"),
+                        "Exportar CSV"
+                    )
+                    _shareIntentTrigger.emit(intent)
+                }
+                .onFailure { e ->
+                    _uiEvent.send(UiEvent.ShowSnackbar("Error al exportar CSV: " + e.message))
+                }
+        }
+    }
+
+    fun exportRoutesAsGPX(routeIds: Set<Int>) {
+        viewModelScope.launch(Dispatchers.IO) {
+            routeExportUseCase.exportGpx(routeIds)
+                .onSuccess { file ->
+                    val uri = routeExportUseCase.getUriForFile(file)
+                    val intent = routeExportUseCase.buildChooserIntent(
+                        routeExportUseCase.buildShareIntent(uri, "application/gpx+xml"),
+                        "Exportar GPX"
+                    )
+                    _shareIntentTrigger.emit(intent)
+                }
+                .onFailure { e ->
+                    _uiEvent.send(UiEvent.ShowSnackbar("Error al exportar GPX: " + e.message))
+                }
+        }
+    }
 
     fun importGpxFile(uri: Uri) {
         viewModelScope.launch(Dispatchers.IO) {
             isImporting = true
-            try {
-                routeExportUseCase.importGpx(uri)
-            } catch (e: Exception) {
-                Log.e("RouteViewModel", "Error al importar GPX: ", e)
-                _uiEvent.send(UiEvent.ShowSnackbar("Error al importar el archivo GPX"))
-            } finally { isImporting = false }
+            routeExportUseCase.importGpx(uri)
+                .onSuccess { _uiEvent.send(UiEvent.ShowSnackbar("GPX importado correctamente")) }
+                .onFailure { e ->
+                    Log.e("RouteViewModel", "Error al importar GPX: ", e)
+                    _uiEvent.send(UiEvent.ShowSnackbar("Error al importar el archivo GPX"))
+                }
+                .also { isImporting = false }
         }
     }
 
-    fun exportarRutaZip(routeId: Int) { viewModelScope.launch(Dispatchers.IO) { routeExportUseCase.exportZip(routeId) } }
-    fun exportRoute(routeId: Int) { viewModelScope.launch(Dispatchers.IO) { routeExportUseCase.exportRouteAsZip(routeId) } }
-    fun saveRouteZipToUri(routeId: Int, uri: Uri) { viewModelScope.launch(Dispatchers.IO) { routeExportUseCase.saveZipToUri(routeId, uri) } }
+    fun exportarRutaZip(routeId: Int) {
+        viewModelScope.launch(Dispatchers.IO) {
+            routeExportUseCase.exportZip(routeId)
+                .onSuccess { file ->
+                    val uri = routeExportUseCase.getUriForFile(file)
+                    val intent = routeExportUseCase.buildChooserIntent(
+                        routeExportUseCase.buildShareIntent(uri, "application/zip"),
+                        "Exportar ruta"
+                    )
+                    _shareIntentTrigger.emit(intent)
+                }
+                .onFailure { e ->
+                    _uiEvent.send(UiEvent.ShowSnackbar("Error al exportar: " + e.message))
+                }
+        }
+    }
+
+    fun exportRoute(routeId: Int) {
+        viewModelScope.launch(Dispatchers.IO) {
+            routeExportUseCase.exportRouteAsZip(routeId)
+                .onSuccess { file ->
+                    val uri = routeExportUseCase.getUriForFile(file)
+                    val intent = routeExportUseCase.buildChooserIntent(
+                        routeExportUseCase.buildShareIntent(uri, AppConstants.Backup.MIME_TYPE),
+                        "Compartir ruta en..."
+                    )
+                    _shareIntentTrigger.emit(intent)
+                }
+                .onFailure { e ->
+                    _uiEvent.send(UiEvent.ShowSnackbar("Error al exportar: " + e.message))
+                }
+        }
+    }
+
+    fun shareExperience(context: Context, routeId: Int, photoPaths: List<String>) {
+        viewModelScope.launch {
+            val route = repository.getRouteById(routeId)
+            val chooserIntent = shareExperienceUseCase(context, route, photoPaths)
+            _shareIntentTrigger.emit(chooserIntent)
+        }
+    }
+
+    fun saveRouteZipToUri(routeId: Int, uri: Uri) {
+        viewModelScope.launch(Dispatchers.IO) {
+            routeExportUseCase.saveZipToUri(routeId, uri)
+                .onSuccess { _uiEvent.send(UiEvent.ShowSnackbar("ZIP guardado correctamente")) }
+                .onFailure { e ->
+                    _uiEvent.send(UiEvent.ShowSnackbar("Error al guardar ZIP: " + e.message))
+                }
+        }
+    }
 
     fun importarRutaZip(uri: Uri) {
         viewModelScope.launch(Dispatchers.IO) {
             isImporting = true
-            try {
-                routeExportUseCase.importZip(uri)
-            } catch (e: Exception) {
-                Log.e("RouteViewModel", "Error al importar ZIP: ", e)
-                _uiEvent.send(UiEvent.ShowSnackbar("El archivo ZIP es invalido o esta corrupto"))
-            } finally { isImporting = false }
+            routeExportUseCase.importZip(uri)
+                .onSuccess { _uiEvent.send(UiEvent.ShowSnackbar("Ruta importada correctamente")) }
+                .onFailure { e ->
+                    Log.e("RouteViewModel", "Error al importar ZIP: ", e)
+                    _uiEvent.send(UiEvent.ShowSnackbar("El archivo ZIP es invalido o esta corrupto"))
+                }
+                .also { isImporting = false }
         }
     }
-
     // ─── Backup ───────────────────────────────────────────────────
 
     suspend fun prepareBackupFile(): File? = backupUseCase.prepareBackup()
@@ -579,12 +727,39 @@ class RouteViewModel @Inject constructor(
     fun getContactDetails(contactUri: Uri, onResult: (name: String, phone: String, email: String, address: String) -> Unit) {
         viewModelScope.launch(Dispatchers.IO) {
             val details = contactUseCase.getContactDetails(contactUri)
+                .onFailure { Log.e("Bitaru", "Fallo obteniendo contacto", it) }
+                .getOrDefault(ContactUseCase.ContactDetails("", "", "", ""))
             withContext(Dispatchers.Main) { onResult(details.name, details.phone, details.email, details.address) }
         }
     }
 
-    // ─── Sharing ──────────────────────────────────────────────────
 
     fun shareLocation(location: SavedLocation) = shareUseCase.shareLocation(location)
 
+
+    // --- Quick Favorite from Tracking ---
+
+    fun addQuickFavoriteFromTracking(customName: String? = null) {
+        viewModelScope.launch {
+            val currentLocation = latestLocationLive.value
+            val activeRouteId = activeRouteIdLive.value
+
+            addFavoriteFromTrackingUseCase.execute(
+                currentLocation = currentLocation,
+                activeRouteId = activeRouteId,
+                customName = customName
+            ).onSuccess {
+                _uiEvent.send(UiEvent.ShowSnackbar("Punto de interes guardado en la ruta"))
+            }.onFailure { error ->
+                _uiEvent.send(UiEvent.ShowSnackbar("No se pudo guardar: ${error.message}"))
+            }
+        }
+    }
 }
+
+
+
+
+
+
+

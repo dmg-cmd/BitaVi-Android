@@ -3,9 +3,6 @@ package com.aistudio.localizador.data.model
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 
-/**
- * Entidad de Room que representa una ruta realizada por el usuario.
- */
 @Entity(tableName = "routes")
 data class Route(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
@@ -16,5 +13,6 @@ data class Route(
     val isActive: Boolean = false,
     val maxSpeed: Float = 0f,
     val avgSpeed: Float = 0f,
-    val activityMode: String = "WALKING"
+    val activityMode: String = "WALKING",
+    val color: String = "#3498DB"
 )
