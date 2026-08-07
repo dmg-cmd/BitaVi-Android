@@ -1,3 +1,73 @@
+## 2026-08-07 — CR-29: CalculateRouteMetricsUseCase (analitica de tramos en segundo plano)
+- **RouteMetricsResult.kt** (nuevo, com.aistudio.localizador.model): modelo inmutable de dominio.
+- **CalculateRouteMetricsUseCase.kt** (nuevo): Haversine pura + histeresis altimetrica d=2.5m + velocidad/ritmo; pure-JVM, @Inject constructor().
+- **RouteViewModel.kt**: _tramoRange -> tramoMetrics con flatMapLatest + flowOn(Dispatchers.Default); updateTramoRange(); reset al cambiar de ruta.
+- **RouteAnalyticsScreen.kt**: snapshotFlow+debounce del slider; remember(points) para series; LineDataSet memoizado; tarjeta 7.4 con Vel. Prom, Subida +X m, Bajada -Y m, Ritmo, Distancia, Modo.
+- **AppModule.kt**: provider del use case.
+- **Resultado**: suite 100 tests, 0 failures, 0 errors, 0 skipped. assembleDebug OK. Deploy OK.
+## 2026-08-07 — CR-30: PurgeOrphanPhotosUseCase (purgado de fotos huerfanas)
+- **PurgeOrphanPhotosUseCase.kt** (nuevo): escanea filesDir/images/, compara por nombre de archivo contra las referencias de la BD (waypoints + saved_locations) y elimina JPG/JPEG/PNG huerfanos; Result<PurgeResult(scanned, purged)>; seguro ante errores de BD.
+- **RouteDao.kt**: query getAllReferencedPhotoPaths() (UNION ALL de waypoints y saved_locations).
+- **RouteRepository.kt**: metodo getAllReferencedPhotoPaths().
+- **AppModule.kt**: provider Hilt.
+- **PurgeOrphanPhotosUseCaseTest.kt** (nuevo): 7 tests deterministas con directorio temporal real + repository mockeado.
+- **Resultado**: suite completa 93 tests, 0 failures, 0 errors, 0 skipped. assembleDebug OK. Deploy OK.
+## 2026-08-06 — CR-28: Estabilización de la Suite de Pruebas Unitarias (100% verde)
+- **gradle.properties**: daemon JVM a -Xmx4096m -XX:MaxMetaspaceSize=1024m -XX:+UseG1GC.
+- **app/build.gradle.kts**: forkEvery=50 (reciclado de worker, libera ClassLoaders Robolectric/ByteBuddy) + HeapDumpOnOutOfMemoryError + MaxMetaspaceSize worker 512m; se mantiene maxParallelForks=1.
+- **ActivityModeManagerTest**: aserciones BIKING→DRIVING (20 km/h > 13.0) + tests de límites (STOPPED<1.0, WALKING≤7.0, BIKING≤13.0, DRIVING>13.0) + fix de ventana de downgrade (t=150000).
+- **RouteExportUseCaseTest**: Robolectric (Intent/Uri reales), Uri.parse real, mockkStatic(FileProvider) — elimina el bucle infinito que OOM-eaba el worker y corrompía clases siguientes.
+- **ShortStopMarkManagerTest**: timestamp=any() en coVerify + runTest determinista con scheduler controlado + mock de android.util.Log.
+- **ShortStopMarkManager.kt**: único cambio de producción — `managerScope` de `private val` a `internal var` (visibilidad, sin cambio de comportamiento).
+- **Resultado**: 86 tests, 0 failures, 0 errors, 0 skipped; 3 corridas consecutivas idénticas (determinismo confirmado).
+## 2026-08-06 — CR-27: Modo Vuelo Automático (Detección Cinemática FLIGHT)
+- **CinematicFilterManager.kt**: enum KineticProfile + histéresis (FLIGHT v>41.67 m/s y alt>100m; TERRESTRIAL v<33.33 m/s y alt<100m); límite 333.33 m/s en FLIGHT; auto-stop de 3 min suprimido en vuelo; API y constructor preservados.
+- **LocationService.kt**: Fase 1 (50→80m), shouldForceStop solo TERRESTRIAL, odómetro (50→80m), persistencia DB (20→80m); StateFlow kineticProfile.
+- **RouteViewModel.kt**: puente kineticProfile; eliminado isAirplaneMode/toggleAirplaneMode.
+- **MainActivity.kt / PreferencesManager.kt**: retirado item 8.3 y la preferencia airplane_mode.
+- **MapScreen.kt**: badge "✈️ Vuelo" en TopBar 1.3.1; HelpDialog actualizado.
+- **AppConstants.kt**: constantes FLIGHT_* + alias terrestres.
+- **Build**: CinematicFilterManagerTest (4 escenarios nuevos) + GpsFilterPipelineTest PASS; suite completa 81 tests con OOM preexistentes (MockK/Robolectric); assembleDebug OK; Deploy OK.
+## 2026-07-31 — CR-26: Compartir Captura PNG de la Experiencia
+- **ExperienceMapScreen.kt**: botón Compartir (5.2.1) captura el Box interno (mapa + panel fotos + controles) vía rememberGraphicsLayer; PNG en cacheDir/shared_experiences, FileProvider + ACTION_SEND image/png; la barra inferior queda fuera de la captura. Se eliminó currentPhotoPaths.
+- **Build**: testDebugUnitTest 68/9 pre-existing, assembleDebug OK. Deploy OK.
+## 2026-07-31 — CR-25: Fix Botón "Actualizar País/Ciudad" — Reversión y Feedback en Tiempo Real
+- **RouteViewModel.kt**: refreshLocationDetails con onResult (Main-thread) y base fresca de la DB (evita pisar campos editados).
+- **SavedLocationsScreen.kt**: spinner "Geocodificando...", fila M3 de feedback (Icons.Default.Place + país • ciudad), confirmButton con entidad fresca por id.
+- **Build**: testDebugUnitTest 68/9 pre-existing, assembleDebug OK. Deploy OK.
+## 2026-07-31 — CR-24: Cobertura Mundial WGS84 para Geocodificación
+- **AppConstants.kt**: Geofencing ampliado a rangos mundiales (-90..90, -180..180), excluyendo punto nulo (0.0, 0.0).
+- **GeocoderUseCase.kt**: isValidCoordinate delega en isWithinBounds; mensaje "GPS: Sin señal".
+- **Diagnóstico**: fallaba en Perú (lat ~-13) porque la cobertura regional lat -55..-20 bloqueaba antes de Nominatim.
+- **Build**: testDebugUnitTest 68/9 pre-existing, assembleDebug OK. Deploy OK.
+## 2026-07-31 — CR-23: Fallback de Geocodificación Nominatim (OSM)
+- **NominatimApi.kt** (nuevo): DTOs Moshi + interfaz Retrofit reverseGeocode con User-Agent OSM.
+- **RetrofitClient.kt**: nominatimOkHttpClient aislado (5s) + nominatimApi.
+- **GeocoderUseCase.kt**: flujo híbrido Geocoder nativo → Nominatim, firma Triple(address, country, city) preservada.
+- **Build**: testDebugUnitTest 68/9 pre-existing, assembleDebug OK. Deploy OK.
+## 2026-07-31 — CR-22: Consolidación de Fecha EXIF en Favoritos
+- **RouteViewModel.kt**: saveSpecificLocation repara el formateo del comentario con fecha EXIF (when anti-duplicado) y preserva finalTimestamp.
+- **MapScreen.kt**: Nuevo estado photoTimestamp; captura metadata.timestamp en cámara/galería/reintento de permiso; paso a saveSpecificLocation y limpieza en diálogo.
+- **SavedLocationsScreen.kt**: Fila de fecha (Icons.Default.Schedule + dd/MM/yyyy HH:mm) en LocationCard.
+- **Build**: testDebugUnitTest 68/9 pre-existing, assembleDebug OK. Deploy OK.
+## 2026-07-31 — CR-21: Fix EXIF GPS API 29+ — Posición de la Foto en Favoritos
+- **ExtractPhotoLocationUseCase.kt**: setRequireOriginal(uri) en API 29+ + fallback de lectura EXIF directa desde stream.
+- **SavedLocationsScreen.kt**: applyPhotoMetadata() unificado, permiso ACCESS_MEDIA_LOCATION en galería con reintento, typo de limpieza corregido.
+- **MapScreen.kt**: cameraLauncher activa usePhotoGps cuando la foto de cámara contiene GPS.
+- **Build**: assembleDebug OK. Deploy OK en dispositivo.
+## 2026-07-22 — CR-20: AnalyzeRouteAiUseCase — Extraccion del Analisis por IA a Capa de Dominio
+- **AnalyzeRouteAiUseCase.kt**: UseCase de dominio inyectable que construye prompt y llama a Groq API.
+- **AnalyzeRouteAiUseCaseTest.kt**: 2 tests JVM (ruta nula, failure de red).
+- **RouteViewModel.kt**: Reemplazado GroqAiUseCase, migrado aiAnalysisState a StateFlow.
+- **DetailScreen.kt**: Consume StateFlow via collectAsStateWithLifecycle().
+- **AppModule.kt**: Eliminado provider GroqAiUseCase.
+- **ui/GroqAiUseCase.kt**: Eliminado.
+- **Build**: compileDebugKotlin OK, AnalyzeRouteAiUseCaseTest OK (2/2), assembleDebug OK.
+## 2026-07-22 — CR-19: Restablecimiento de Interfaz — Eliminación de Duplicación Contextual en MainActivity
+- **MainActivity.kt**: Bloque EXPERIENCE_MAP contextual eliminado de sub-capa BETA. Cápsula GPS condicionada a currentRoute != NavRoutes.EXPERIENCE_MAP.
+- **ExperienceMapScreen.kt**: Colores estandarizados a IconCompartir/IconExportar.
+- **ShareExperienceUseCase.kt**: Sin cambios (confirmado correcto).
+- **Build**: compileDebugKotlin OK, assembleDebug OK.
 ## [2026-07-20] CR-10: GroupRoutesByDateUseCase — Agrupamiento por Día en HistoryScreen
 
 **Archivos creados:**
@@ -411,3 +481,9 @@
 - **BackHandler** agregado para gesto/botón de retroceso del sistema.
 - **Correcciones**: Duplicado ) { eliminado, Box close faltante restaurado, } extra eliminado.
 - **Build**: compileDebugKotlin OK, testDebugUnitTest 75/9 pre-existing.
+
+## 2026-07-22 — CR-21: Fix de Compartir Fotos — Mapeo Híbrido de URIs y Sincronización Directa
+- **ShareExperienceUseCase.kt**: Mapeo híbrido content:// / ile:// / rutas locales. URIs nativas se parsean con Uri.parse() + unCatching; rutas físicas mantienen FileProvider.getUriForFile.
+- **RouteViewModel.kt**: Reemplazada guardia withTimeoutOrNull por consulta directa epository.getWaypointsSync(routeId).
+- **Causa raíz eliminada**: File("content://...").exists() siempre retornaba false; las fotos se filtraban y solo se enviaba texto plano.
+- **Build**: compileDebugKotlin OK, assembleDebug OK, installDebug OK (2 dispositivos Pixel 9 Pro XL).

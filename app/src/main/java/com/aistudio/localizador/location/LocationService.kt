@@ -33,6 +33,7 @@ import androidx.preference.PreferenceManager
 import com.aistudio.localizador.data.model.SavedLocation
 import com.aistudio.localizador.location.manager.StationaryAnchorManager
 import com.aistudio.localizador.location.manager.CinematicFilterManager
+import com.aistudio.localizador.location.manager.KineticProfile
 import com.aistudio.localizador.location.manager.GpsFilterPipeline
 import com.aistudio.localizador.location.manager.ActivityRecognitionManager
 import com.aistudio.localizador.location.manager.ServiceNotificationManager
@@ -180,6 +181,9 @@ class LocationService : Service(), AutoTrackingManager.AutoTrackingListener, Pro
 
         private val _currentActivityMode = MutableStateFlow(ActivityMode.STOPPED)
         val currentActivityMode = _currentActivityMode.asStateFlow()
+
+        private val _kineticProfile = MutableStateFlow(KineticProfile.TERRESTRIAL)
+        val kineticProfile = _kineticProfile.asStateFlow()
     }
 
     override fun onCreate() {
@@ -420,9 +424,16 @@ class LocationService : Service(), AutoTrackingManager.AutoTrackingListener, Pro
         }
         lastUserActivityTimeMillis = System.currentTimeMillis()
 
-        // Fase 1: Precisión mínima - descartar puntos con accuracy > 50m
-        if (location.accuracy > 50f) {
-            Log.d(TAG, "Fase 1: Punto descartado por baja precisión: ${location.accuracy}m")
+        // Fase 1: Precisión mínima - umbral dinámico según perfil cinemático (Vuelo: 80m)
+        val kineticProfile = filterPipeline.getCurrentProfile()
+        _kineticProfile.value = kineticProfile
+        val maxInitialAccuracy = if (kineticProfile == KineticProfile.FLIGHT) {
+            AppConstants.Location.FLIGHT_MAX_ACCURACY_METERS
+        } else {
+            AppConstants.Location.MAX_POCKET_ACCURACY_METERS
+        }
+        if (location.accuracy > maxInitialAccuracy) {
+            Log.d(TAG, "Fase 1: Punto descartado por baja precisión: ${location.accuracy}m (perfil: $kineticProfile)")
             return
         }
 
@@ -431,8 +442,9 @@ class LocationService : Service(), AutoTrackingManager.AutoTrackingListener, Pro
         val processedBp = filterPipeline.processLocation(rawBp) ?: return
         val anchoredLocation = location.apply { latitude = processedBp.latitude; longitude = processedBp.longitude }
 
-        // Guarda de contingencia: forzar parada si 3 min de precision degradada (>25m)
-        if (filterPipeline.shouldForceStop(location)) {
+        // Guarda de contingencia: forzar parada si 3 min de precision degradada (>25m).
+        // Suprimida en perfil FLIGHT para no cortar rutas aéreas por atenuación de la fuselaje.
+        if (kineticProfile != KineticProfile.FLIGHT && filterPipeline.shouldForceStop(location)) {
             Log.w(TAG, "Guarda de 3min activada. Forzando parada automatica por degradacion de senhal en interiores.")
             stopTrackingWithAutoRestart()
             return
@@ -498,8 +510,13 @@ class LocationService : Service(), AutoTrackingManager.AutoTrackingListener, Pro
 
                 val accuracy = anchoredLocation.accuracy
 
-                // Capa A: Odómetro tolerante (hasta 50m para el bolsillo)
-                if (accuracy <= TOLERANT_ACCURACY) {
+                // Capa A: Odómetro tolerante (hasta 50m bolsillo / 80m vuelo)
+                val odometerAccuracyLimit = if (kineticProfile == KineticProfile.FLIGHT) {
+                    AppConstants.Location.FLIGHT_MAX_ACCURACY_METERS
+                } else {
+                    TOLERANT_ACCURACY
+                }
+                if (accuracy <= odometerAccuracyLimit) {
                     val distanceStep = lastValidLocation?.distanceTo(anchoredLocation) ?: 0f
                     lastValidLocation = anchoredLocation
                     lastMovementTimeMillis = System.currentTimeMillis()
@@ -518,8 +535,13 @@ class LocationService : Service(), AutoTrackingManager.AutoTrackingListener, Pro
                     return@launch
                 }
 
-                // Capa B: Guardado en DB solo con alta precisión (<=20m)
-                if (accuracy <= MAX_GPS_ACCURACY) {
+                // Capa B: Guardado en DB con precisión dinámica (<=20m terrestre / <=80m vuelo)
+                val dbAccuracyLimit = if (kineticProfile == KineticProfile.FLIGHT) {
+                    AppConstants.Location.FLIGHT_MAX_ACCURACY_METERS
+                } else {
+                    MAX_GPS_ACCURACY
+                }
+                if (accuracy <= dbAccuracyLimit) {
                     repository.addLocationPoint(
                         routeId = routeId,
                         latitude = anchoredLocation.latitude,

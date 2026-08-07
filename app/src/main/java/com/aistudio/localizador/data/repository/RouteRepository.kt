@@ -228,6 +228,10 @@ class RouteRepository @Inject constructor(private val routeDao: RouteDao) {
         routeDao.cleanOrphanedRelations()
     }
 
+    suspend fun getAllReferencedPhotoPaths(): List<String> {
+        return routeDao.getAllReferencedPhotoPaths()
+    }
+
     suspend fun deleteAllData() {
         routeDao.deleteAllRoutes()
         routeDao.deleteAllSavedLocations()

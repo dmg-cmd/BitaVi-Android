@@ -61,19 +61,28 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlin.time.Duration.Companion.seconds
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.layer.drawLayer
+import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.FileProvider
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.toColorInt
@@ -118,9 +127,10 @@ fun ExperienceMapScreen(
     android.util.Log.d("EXPERIENCE_MAP", "Screen composed, routeId=$routeId")
 
     val context = LocalContext.current
+    val currentRoute by viewModel.selectedDetailRoute.collectAsState()
     val points by viewModel.experiencePoints.collectAsState()
     val waypoints by viewModel.selectedDetailWaypoints.collectAsState()
-    val currentPhotoPaths by viewModel.photoPathsForCurrentRoute.collectAsState()
+
     val linkedFavorites by viewModel.getFavoritesForRouteFlow(routeId).collectAsState(initial = emptyList())
     val gpsPrecisionState by viewModel.gpsAccuracy.collectAsStateWithLifecycle()
     var hasInitiallyCenteredRoute by remember { mutableStateOf(false) }
@@ -137,6 +147,8 @@ fun ExperienceMapScreen(
         isEnabled = true
     }
     var photoToZoom by remember { mutableStateOf<String?>(null) }
+    val composeGraphicsLayer = rememberGraphicsLayer()
+    val coroutineScope = rememberCoroutineScope()
     val scrollState = rememberScrollState()
     var overlayScrollOffset by remember { mutableIntStateOf(0) }
     LaunchedEffect(Unit) {
@@ -233,6 +245,15 @@ fun ExperienceMapScreen(
     }
 
     Box(modifier = modifier.fillMaxSize()) {
+
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .drawWithContent {
+                    composeGraphicsLayer.record { this@drawWithContent.drawContent() }
+                    drawLayer(composeGraphicsLayer)
+                }
+        ) {
 
         // ====================================================================
         // CAPA 0: MAPA EN FULLSCREEN
@@ -452,15 +473,17 @@ fun ExperienceMapScreen(
                 }
             }
         }
+        }
+
         // ====================================================================
-        // ÚNICA SUB-BARRA INFERIOR DE ACCIONES 5.2 (Unificada y Desduplicada)
+        // ÚNICA SUB-BARRA INFERIOR UNIFICADA 5.2 (CR-19)
         // ====================================================================
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
                 .align(Alignment.BottomCenter),
-            color = MaterialTheme.colorScheme.surfaceContainer,
-            tonalElevation = 3.dp
+            color = Color(0xFF121212),
+            tonalElevation = 6.dp
         ) {
             Row(
                 modifier = Modifier
@@ -469,40 +492,68 @@ fun ExperienceMapScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Grupo de Botones Operativos Unificados
-                Row(verticalAlignment = Alignment.CenterVertically) {
-
-                    // 5.2.0 [← Volver]
+                // Sección Izquierda: Botón Volver + Nombre de la Experiencia
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     IconButton(onClick = onBack) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Volver a la pantalla anterior",
-                            tint = MaterialTheme.colorScheme.onSurface
+                            contentDescription = "Volver",
+                            tint = Color.White
                         )
                     }
 
-                    Spacer(modifier = Modifier.width(4.dp))
+                    Column(modifier = Modifier.padding(start = 4.dp)) {
+                        Text(
+                            text = currentRoute?.name?.takeIf { it.isNotBlank() } ?: "Experiencia",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            color = Color.White
+                        )
+                    }
+                }
 
-                    // 5.2.1 [📤 Share Experiencia + Fotos] (Cian IconCompartir: 0xFF4DD0E1)
+                // Sección Central: Acciones de Compartir y Exportar
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    // 5.2.1 [📤 Share Experiencia] (Cian 0xFF4DD0E1)
                     IconButton(
                         onClick = {
-                            viewModel.shareExperience(
-                                context = context,
-                                routeId = routeId,
-                                photoPaths = currentPhotoPaths
-                            )
+                            coroutineScope.launch(Dispatchers.IO) {
+                                runCatching {
+                                    val imageBitmap = composeGraphicsLayer.toImageBitmap()
+                                    val bitmap = imageBitmap.asAndroidBitmap()
+                                    val cacheDir = File(context.cacheDir, "shared_experiences").apply { mkdirs() }
+                                    val file = File(cacheDir, "experiencia_${routeId}.png")
+                                    FileOutputStream(file).use { out ->
+                                        bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+                                    }
+                                    val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+                                    val routeName = currentRoute?.name?.takeIf { it.isNotBlank() } ?: "Experiencia"
+                                    val intent = Intent(Intent.ACTION_SEND).apply {
+                                        type = "image/png"
+                                        putExtra(Intent.EXTRA_STREAM, uri)
+                                        putExtra(Intent.EXTRA_TEXT, "📍 Experiencia Bitaru: $routeName")
+                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                    }
+                                    context.startActivity(Intent.createChooser(intent, "Compartir Experiencia..."))
+                                }
+                            }
                         }
                     ) {
                         Icon(
                             imageVector = Icons.Default.Share,
-                            contentDescription = "Compartir Experiencia con Fotos",
-                            tint = Color(0xFF4DD0E1) // Cian oficial Bitaru
+                            contentDescription = "Compartir Experiencia",
+                            tint = IconCompartir
                         )
                     }
 
-                    Spacer(modifier = Modifier.width(4.dp))
+                    Spacer(modifier = Modifier.width(2.dp))
 
-                    // 5.2.2 [💾 Exportar Ruta ZIP/GPX] (Amber IconExportar: 0xFFFFB74D) - UNIFICADO
+                    // 5.2.2 [💾 Exportar ZIP/GPX] (Amber 0xFFFFB74D)
                     IconButton(
                         onClick = {
                             viewModel.exportRoute(routeId)
@@ -510,17 +561,19 @@ fun ExperienceMapScreen(
                     ) {
                         Icon(
                             imageVector = Icons.Default.Save,
-                            contentDescription = "Exportar Ruta Completa (ZIP/GPX)",
-                            tint = Color(0xFFFFB74D) // Amber oficial Bitaru
+                            contentDescription = "Exportar Ruta",
+                            tint = IconExportar
                         )
                     }
                 }
 
-                // 5.2.3 Indicador de Estado GPS Satelital - ÚNICO
+                Spacer(modifier = Modifier.width(8.dp))
+
+                // Sección Derecha: Telemetría GPS Satelital
                 Text(
                     text = gpsPrecisionState,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color(0xFFB0BEC5)
                 )
             }
         }

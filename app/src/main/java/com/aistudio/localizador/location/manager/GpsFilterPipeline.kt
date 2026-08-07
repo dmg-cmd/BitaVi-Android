@@ -15,7 +15,8 @@ class GpsFilterPipeline(
             lon = rawPoint.longitude,
             accuracy = rawPoint.accuracy,
             timestamp = rawPoint.timestamp,
-            speed = rawPoint.speed
+            speed = rawPoint.speed,
+            altitudeMeters = rawPoint.altitude
         )
 
         if (!isPointValid) return null
@@ -38,6 +39,8 @@ class GpsFilterPipeline(
     }
 
     fun shouldTriggerAutoStop(): Boolean = cinematicFilter.isAutoStopActive()
+
+    fun getCurrentProfile(): KineticProfile = cinematicFilter.getCurrentProfile()
 
     fun reset() {
         cinematicFilter.reset()

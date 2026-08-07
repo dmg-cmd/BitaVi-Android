@@ -44,6 +44,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import kotlin.time.Duration.Companion.seconds
 import com.aistudio.localizador.location.ActivityMode
+import com.aistudio.localizador.location.manager.KineticProfile
 import com.aistudio.localizador.location.LocationService
 import com.aistudio.localizador.ui.components.FullScreenPhotoDialog
 import com.aistudio.localizador.ui.components.TourOverlay
@@ -78,6 +79,7 @@ fun MapScreen(
     val isTracking by viewModel.isTrackingLive.collectAsState()
     val latestLocation by viewModel.latestLocationLive.collectAsState()
     val activityMode by viewModel.currentActivityMode.collectAsState()
+    val kineticProfile by viewModel.kineticProfile.collectAsState()
     val routePoints by viewModel.activeRoutePoints.collectAsState()
     val waypoints by viewModel.activeRouteWaypoints.collectAsState()
     val savedLocations by viewModel.allSavedLocations.collectAsState()
@@ -101,6 +103,7 @@ fun MapScreen(
     var usePhotoGps by remember { mutableStateOf(false) }
     var photoToZoom by remember { mutableStateOf<String?>(null) }
     var pendingPhotoUri by remember { mutableStateOf<android.net.Uri?>(null) }
+    var photoTimestamp by remember { mutableStateOf<Long?>(null) }
     var showTourMapa by remember { mutableStateOf(!viewModel.esTourVisto("actividad")) }
 
     val cameraLauncher = rememberLauncherForActivityResult(
@@ -111,7 +114,10 @@ fun MapScreen(
         } else {
             capturedPhotoUri?.let { uri ->
                 scope.launch {
-                    photoGpsLocation = viewModel.extractLocationFromPhoto(uri)?.let { Pair(it.latitude, it.longitude) }
+                    val metadata = viewModel.extractLocationFromPhoto(uri)
+                    photoGpsLocation = metadata?.let { Pair(it.latitude, it.longitude) }
+                    photoTimestamp = metadata?.timestamp
+                    usePhotoGps = photoGpsLocation != null
                 }
             }
         }
@@ -123,7 +129,9 @@ fun MapScreen(
             scope.launch {
                 val internalUri = viewModel.saveImageToInternalStorage(pendingPhotoUri!!)
                 capturedPhotoUri = internalUri
-                photoGpsLocation = viewModel.extractLocationFromPhoto(pendingPhotoUri!!)?.let { Pair(it.latitude, it.longitude) }
+                val metadata = viewModel.extractLocationFromPhoto(pendingPhotoUri!!)
+                photoGpsLocation = metadata?.let { Pair(it.latitude, it.longitude) }
+                photoTimestamp = metadata?.timestamp
                 usePhotoGps = photoGpsLocation != null
             }
             pendingPhotoUri = null
@@ -142,7 +150,9 @@ fun MapScreen(
                 scope.launch {
                     val internalUri = viewModel.saveImageToInternalStorage(it)
                     capturedPhotoUri = internalUri
-                    photoGpsLocation = viewModel.extractLocationFromPhoto(it)?.let { Pair(it.latitude, it.longitude) }
+                    val metadata = viewModel.extractLocationFromPhoto(it)
+                    photoGpsLocation = metadata?.let { Pair(it.latitude, it.longitude) }
+                    photoTimestamp = metadata?.timestamp
                     usePhotoGps = photoGpsLocation != null
                 }
             } else {
@@ -523,12 +533,16 @@ fun MapScreen(
                 .zIndex(1f) // Se mantiene por debajo del botón flotante del menú
         ) {
             // 1. Barra de identidad e interactividad táctica superior
-            val modoTraficoText = when (activityMode) {
-                ActivityMode.STOPPED -> "🛑 Detenido"
-                ActivityMode.WALKING -> "🚶 Caminata"
-                ActivityMode.BIKING -> "🚴 Bicicleta"
-                ActivityMode.DRIVING -> "🚗 Vehículo"
-                ActivityMode.SIN_SENAL -> "⚠️ SIN SEÑAL"
+            val modoTraficoText = if (kineticProfile == KineticProfile.FLIGHT) {
+                "✈️ Vuelo"
+            } else {
+                when (activityMode) {
+                    ActivityMode.STOPPED -> "🛑 Detenido"
+                    ActivityMode.WALKING -> "🚶 Caminata"
+                    ActivityMode.BIKING -> "🚴 Bicicleta"
+                    ActivityMode.DRIVING -> "🚗 Vehículo"
+                    ActivityMode.SIN_SENAL -> "⚠️ SIN SEÑAL"
+                }
             }
 
             TopBarLocalizador(
@@ -1057,7 +1071,8 @@ fun MapScreen(
                         phoneNumber = phone,
                         email = email,
                         isContact = isContact,
-                        color = selectedColor
+                        color = selectedColor,
+                        photoTimestamp = photoTimestamp
                     )
                     showSaveLocationDialog = false 
                     viewModel.clearSelectedPointAddress()
@@ -1070,6 +1085,7 @@ fun MapScreen(
                     capturedPhotoUri = null
                     photoGpsLocation = null
                     usePhotoGps = false
+                    photoTimestamp = null
                 }) { Text("Guardar") }
             },
             dismissButton = {
@@ -1077,6 +1093,7 @@ fun MapScreen(
                     showSaveLocationDialog = false
                     viewModel.clearSelectedPointAddress()
                     capturedPhotoUri = null
+                    photoTimestamp = null
                 }) { Text("Cancelar") }
             }
         )

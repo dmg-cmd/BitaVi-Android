@@ -263,9 +263,9 @@ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _|
 |                                                                                 |
 |  ┌─────────────────────────────────────────────────────────────────────────┐   |
 |  │  📊 Analisis del tramo (15:30 - 32:00)                                 │   |
-|  │  7.4.1  🏃 Velocidad: 7.2 km/h                                        │   |
-|  │  7.4.2  ⛰️ Desnivel: +45m / -12m                                       │   |
-|  │  7.4.3  ⏱ Ritmo: 8:20 /km                                              │   |
+|  │  7.4.1  🏃 Vel. Prom: 7.2 km/h · Dist: 3.40 km                                        │   |
+|  │  7.4.2  ⛰️ Subida: +45 m · Bajada: -12 m (δ=2.5m)                                       │   |
+|  │  7.4.3  ⏱ Ritmo: 8:20 min/km                                              │   |
 |  │  7.4.4  🚶 Modo: Caminata                                              │   |
 |  └─────────────────────────────────────────────────────────────────────────┘   |
 |_________________________________________________________________________________|
@@ -289,16 +289,15 @@ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _|
 ║                                                                ║
 ║   8.1   [🔑] Configuracion IA (Groq)                           ║
 ║   8.2   [🏠] Ubicacion de inicio                                ║
-║   8.3   [✈️] Modo Avion                    [🔘]                 ║
-║   8.4   [⚡] Modo Automatico               [🔘]                 ║
-║   8.5   [🔔] Avisos "Cerca de mi"         [🔘]                 ║
-║   8.6   [☁️] Mapas Offline                [🔘]                  ║
-║   8.7   [🔐] Proteccion Biometrica        [🔘]                 ║
-║   8.8   [📏] Grosor del trazado: 8px      [═══●════]          ║
-║   8.9   [☁️] Respaldo en Drive / Carpeta                        ║
-║   8.10  [♻️] Restaurar Respaldo (ZIP)                           ║
-║   8.11  [❓] Ayuda y Funcionamiento                              ║
-║   8.12  [🗑️] Limpiar Todo el Historial                          ║
+║   8.3   [⚡] Modo Automatico               [🔘]                 ║
+║   8.4   [🔔] Avisos "Cerca de mi"         [🔘]                 ║
+║   8.5   [☁️] Mapas Offline                [🔘]                  ║
+║   8.6   [🔐] Proteccion Biometrica        [🔘]                 ║
+║   8.7   [📏] Grosor del trazado: 8px      [═══●════]          ║
+║   8.8   [☁️] Respaldo en Drive / Carpeta                        ║
+║   8.9  [♻️] Restaurar Respaldo (ZIP)                           ║
+║   8.10  [❓] Ayuda y Funcionamiento                              ║
+║   8.11  [🗑️] Limpiar Todo el Historial                          ║
 ╚══════════════════════════════════════════════════════════════════╝
 ```
 
@@ -355,6 +354,7 @@ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _|
 
 | Fecha | Cambio |
 |-------|--------|
+| 2026-08-06 | Retirado item 8.3 Modo Avion manual (toggle fantasma); deteccion de vuelo automatica (CR-27); drawer reenumerado 8.3-8.11 |
 | 2026-07-21 | Agregada Sección 10 — diagrama de BiometricLockScreen con banner BitaruBrandHeader (CR-13)
 | 2026-07-13 | Creacion inicial del esquema completo con diagramas ASCII |
 

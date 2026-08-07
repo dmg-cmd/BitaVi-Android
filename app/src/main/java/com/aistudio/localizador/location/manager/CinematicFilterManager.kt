@@ -3,8 +3,13 @@ package com.aistudio.localizador.location.manager
 import com.aistudio.localizador.util.AppConstants
 import kotlin.math.*
 
+enum class KineticProfile {
+    TERRESTRIAL,
+    FLIGHT
+}
+
 class CinematicFilterManager(
-    private val maxAllowedSpeedMps: Double = AppConstants.Location.MAX_SPEED_METERS_PER_SECOND.toDouble(),
+    private val maxAllowedSpeedMps: Double = AppConstants.Location.MAX_SPEED_THRESHOLD_MPS.toDouble(),
     private val autoStopSpeedMps: Double = AppConstants.Location.AUTO_STOP_SPEED_MPS.toDouble()
 ) {
 
@@ -12,6 +17,7 @@ class CinematicFilterManager(
         private const val AUTO_STOP_TIME_THRESHOLD_MS = 180000L
     }
 
+    private var currentProfile = KineticProfile.TERRESTRIAL
     private var refLatitude: Double? = null
     private var refLongitude: Double? = null
     private var refTimestamp: Long? = null
@@ -20,6 +26,7 @@ class CinematicFilterManager(
     private var isAutoStopTriggered: Boolean = false
 
     fun reset() {
+        currentProfile = KineticProfile.TERRESTRIAL
         refLatitude = null
         refLongitude = null
         refTimestamp = null
@@ -40,7 +47,8 @@ class CinematicFilterManager(
         lon: Double,
         accuracy: Float,
         timestamp: Long,
-        speed: Float
+        speed: Float,
+        altitudeMeters: Double = 0.0
     ): Boolean {
         val lastLat = refLatitude ?: return run {
             seedReferencePoint(lat, lon, timestamp)
@@ -55,18 +63,36 @@ class CinematicFilterManager(
         val distanceMeters = haversineDistance(lastLat, lastLon, lat, lon)
         val calculatedSpeed = distanceMeters / timeDeltaSeconds
 
-        if (calculatedSpeed > maxAllowedSpeedMps) return false
+        // Transición de perfil cinemático con histéresis (Modo Vuelo Automático)
+        if (calculatedSpeed > AppConstants.Location.FLIGHT_TRIGGER_SPEED_MPS &&
+            altitudeMeters > AppConstants.Location.FLIGHT_MIN_ALTITUDE_METERS) {
+            currentProfile = KineticProfile.FLIGHT
+        } else if (calculatedSpeed < AppConstants.Location.FLIGHT_HYSTERESIS_SPEED_MPS &&
+                   altitudeMeters < AppConstants.Location.FLIGHT_MIN_ALTITUDE_METERS) {
+            currentProfile = KineticProfile.TERRESTRIAL
+        }
 
-        if (speed < autoStopSpeedMps) {
-            val startTime = lowSpeedStartTimestamp
-            if (startTime == null) {
-                lowSpeedStartTimestamp = timestamp
-            } else if (timestamp - startTime >= AUTO_STOP_TIME_THRESHOLD_MS) {
-                isAutoStopTriggered = true
-            }
+        val limitSpeed = if (currentProfile == KineticProfile.FLIGHT) {
+            AppConstants.Location.FLIGHT_MAX_SPEED_MPS.toDouble()
         } else {
-            lowSpeedStartTimestamp = null
-            isAutoStopTriggered = false
+            maxAllowedSpeedMps
+        }
+
+        if (calculatedSpeed > limitSpeed) return false
+
+        // Auto-stop terrestre (3 min): se suprime por completo en perfil FLIGHT
+        if (currentProfile == KineticProfile.TERRESTRIAL) {
+            if (speed < autoStopSpeedMps) {
+                val startTime = lowSpeedStartTimestamp
+                if (startTime == null) {
+                    lowSpeedStartTimestamp = timestamp
+                } else if (timestamp - startTime >= AUTO_STOP_TIME_THRESHOLD_MS) {
+                    isAutoStopTriggered = true
+                }
+            } else {
+                lowSpeedStartTimestamp = null
+                isAutoStopTriggered = false
+            }
         }
 
         refLatitude = lat
@@ -77,6 +103,8 @@ class CinematicFilterManager(
     }
 
     fun isAutoStopActive(): Boolean = isAutoStopTriggered
+
+    fun getCurrentProfile(): KineticProfile = currentProfile
 
     private fun haversineDistance(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
         val r = 6371000.0

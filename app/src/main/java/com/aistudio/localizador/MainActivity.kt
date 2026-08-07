@@ -34,7 +34,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.automirrored.filled.HelpOutline
-import androidx.compose.material.icons.filled.AirplanemodeActive
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.CloudQueue
@@ -595,17 +594,6 @@ fun MainContainer(viewModel: RouteViewModel, encryptedPrefs: SharedPreferences) 
                     }
                 )
 
-                NavigationDrawerItem(
-                    label = { 
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                            Text("Modo Avión")
-                            Switch(checked = viewModel.isAirplaneMode, onCheckedChange = { viewModel.toggleAirplaneMode() })
-                        }
-                    },
-                    selected = false,
-                    icon = { Icon(Icons.Default.AirplanemodeActive, null) },
-                    onClick = { viewModel.toggleAirplaneMode() }
-                )
 
                 NavigationDrawerItem(
                     label = { 
@@ -855,31 +843,7 @@ fun MainContainer(viewModel: RouteViewModel, encryptedPrefs: SharedPreferences) 
                 ) {
                     // Zona Izquierda: Botones contextuales de DETAIL / EXPERIENCE_MAP
                     Box(modifier = Modifier.weight(1f)) {
-                        if (currentRoute == NavRoutes.EXPERIENCE_MAP) {
-                            IconButton(onClick = {
-                                val a = context as? Activity ?: return@IconButton
-                                Handler(a.mainLooper).post {
-                                    try {
-                                        val bitmap = a.window.decorView.drawToBitmap()
-                                        val cacheFile = File(context.cacheDir, "screenshot_exp.png")
-                                        FileOutputStream(cacheFile).use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
-                                        val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", cacheFile)
-                                        val intent = Intent(Intent.ACTION_SEND).apply {
-                                            type = "image/png"; putExtra(Intent.EXTRA_STREAM, uri)
-                                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                        }
-                                        Intent.createChooser(intent, "Compartir pantalla").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).let(context::startActivity)
-                                    } catch (e: Exception) { Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show() }
-                                }
-                            }) { Icon(Icons.Default.Share, "Compartir pantalla", tint = IconCompartir) }
-                            IconButton(onClick = {
-                                val ts = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
-                                val routeName = viewModel.selectedDetailRoute.value?.name ?: "ruta"
-                                val sanitized = routeName.trim().replace(Regex("[\\s/\\\\?%*:|\"<>]"), "_")
-                                val exportName = "ROUTE_${currentExperienceRouteId ?: 0}_${sanitized}_$ts"
-                                experienceSaveZipLauncher.launch("$exportName.zip")
-                            }) { Icon(Icons.Default.Save, "Guardar como ZIP", tint = IconExportar) }
-                        }
+                        // EXPERIENCE_MAP: controles delegados a barra 5.2
                     }
 
                     if (currentRoute == NavRoutes.HISTORY) {
@@ -903,7 +867,7 @@ fun MainContainer(viewModel: RouteViewModel, encryptedPrefs: SharedPreferences) 
                             onExpandAllClick = { viewModel.expandAllGroups() },
                             onImport = { gpxHistoryImportLauncher.launch(arrayOf("*/*")) }
                         )
-                    } else {
+                    } else if (currentRoute != NavRoutes.EXPERIENCE_MAP) {
                         // Zona Derecha: Cápsula GPS dinámica
                         Surface(
                             color = Color.White.copy(alpha = 0.08f),

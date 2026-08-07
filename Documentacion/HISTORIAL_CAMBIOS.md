@@ -1,3 +1,341 @@
+## [2026-08-07] CR-29: CalculateRouteMetricsUseCase — Analitica de Tramos Fuera del UI Thread
+
+### Logro
+Se elimina el cuello de botella de la Pantalla 7 (RouteAnalyticsScreen): las metricas del tramo se calculaban inline en la composicion al arrastrar el slider (7.3.1), degradando la tasa de refresco. Ahora el calculo vive en CalculateRouteMetricsUseCase (pure-JVM, inyectable), se ejecuta en Dispatchers.Default con cancelacion via flatMapLatest, y las series de los graficos se memoizan con remember(points).
+
+### Detalles Tecnicos
+- **RouteMetricsResult** (nuevo, `com.aistudio.localizador.model`): modelo inmutable de dominio con totalDistanceKm, durationSeconds, averageSpeedKmh, maxSpeedKmh, averagePaceMinPerKm, elevationGainMeters, elevationLossMeters, pointCount.
+- **CalculateRouteMetricsUseCase** (nuevo): `@Inject constructor()` sin dependencias Android; distancia Haversine pura; altimetria acumulada con histeresis d=2.5m (ignora ruido barometrico/GPS < 2.5m); velocidad media derivada de distancia/tiempo; maxSpeed desde speed*3.6; pace "m:ss".
+- **RouteViewModel**: pipeline reactivo `_tramoRange` -> `tramoMetrics: StateFlow<RouteMetricsResult?>` con `flatMapLatest` + `flowOn(Dispatchers.Default)` (cancela recalculados obsoletos al arrastrar rapido); `updateTramoRange(start, end)`; reset del rango al cambiar de ruta.
+- **RouteAnalyticsScreen**: colecta tramoMetrics; `snapshotFlow`+`debounce(150)`+`collectLatest` del rango del slider; series de graficos memoizadas con `remember(points)`; `LineDataSet` memoizado en AnalyticsChart (solo cambian las LimitLine al mover el slider); tarjeta 7.4 rediseñada con Vel. Prom, Subida +X m, Bajada -Y m, Ritmo, Distancia y Modo.
+
+### Tests
+- **CalculateRouteMetricsUseCaseTest** (7 tests): lista vacia, 1 punto, ruido <2.5m filtrado, ganancia/perdida acumuladas, distancia Haversine + maxSpeed, formato de ritmo, velocidad media derivada.
+- Suite completa: **100 tests, 0 failures, 0 errors, 0 skipped** (24 clases).
+
+### Archivos Modificados
+- model/RouteMetricsResult.kt (nuevo), domain/usecase/CalculateRouteMetricsUseCase.kt (nuevo), test CalculateRouteMetricsUseCaseTest.kt (nuevo)
+- di/AppModule.kt, ui/RouteViewModel.kt, ui/screens/RouteAnalyticsScreen.kt
+
+### Archivos Respaldados
+- RESPALDO_ANTERIOR/20260807_0105_* (RouteAnalyticsScreen.kt, RouteViewModel.kt, AppModule.kt)
+
+### Build
+- testDebugUnitTest: BUILD SUCCESSFUL (100/100). assembleDebug: BUILD SUCCESSFUL. Deploy OK.
+## [2026-08-07] CR-30: PurgeOrphanPhotosUseCase — Purgado de Fotos Huerfanas
+
+### Logro
+Nuevo modulo inyectable `PurgeOrphanPhotosUseCase` que escanea el almacenamiento privado de la app (`filesDir/images/`) y elimina los archivos JPG/JPEG/PNG que ya no estan referenciados por la base de datos (waypoints y favoritos). Previene la acumulacion de imagenes muertas tras borrar rutas/favoritos. Es un modulo de dominio puro, sin UI acoplada, listo para conectar a un boton de mantenimiento.
+
+### Detalles Tecnicos
+- **RouteDao**: nueva query `getAllReferencedPhotoPaths()` (UNION ALL de `waypoints.photoPath` y `saved_locations.photoPath`, ambas no vacias).
+- **RouteRepository**: nuevo metodo `getAllReferencedPhotoPaths(): List<String>`.
+- **PurgeOrphanPhotosUseCase** (`domain/usecase/`): `@Inject constructor(@ApplicationContext Context, RouteRepository)`; `execute(): Result<PurgeResult>` con `PurgeResult(scanned, purged)`; compara por nombre de archivo (las referencias en BD son URIs `content://.../files/images/<nombre>`, por lo que `substringAfterLast('/')` extrae el nombre); solo considera `.jpg/.jpeg/.png` (case-insensitive); si el directorio no existe devuelve (0,0); cualquier error de BD produce `Result.failure` sin borrar nada.
+- **AppModule**: provider Hilt para el use case.
+
+### Tests
+- **PurgeOrphanPhotosUseCaseTest** (7 tests, 0 fallos): directorio temporal real + repository mockeado; cubre: purga de huerfanos conservando referenciados, borrado total sin referencias, directorio ausente, no-imagenes intactas, extension case-insensitive, referencias como ruta absoluta y error de BD -> isFailure.
+- Suite completa: **93 tests, 0 failures, 0 errors, 0 skipped** (23 clases).
+
+### Archivos Modificados
+- data/db/RouteDao.kt, data/repository/RouteRepository.kt, di/AppModule.kt
+- domain/usecase/PurgeOrphanPhotosUseCase.kt (nuevo), test domain/usecase/PurgeOrphanPhotosUseCaseTest.kt (nuevo)
+
+### Archivos Respaldados
+- RESPALDO_ANTERIOR/20260806_2330_* (RouteDao.kt, RouteRepository.kt, AppModule.kt)
+
+### Build
+- testDebugUnitTest: BUILD SUCCESSFUL (93/93). assembleDebug: BUILD SUCCESSFUL. Deploy OK.
+## [2026-08-06] CR-28: Estabilización de la Suite de Pruebas — 100% Verde y Determinista
+
+### Logro
+La suite completa de unit tests pasó de 81 tests con ~9 fallos (OOM de MockK/Robolectric + tests desactualizados) a **86 tests, 0 fallos, 0 errores**, con 3 corridas consecutivas idénticas. Se eliminaron los 4 "asesinos" de la infraestructura: OOM acumulativo de ClassLoaders (worker único), OOM por bucle infinito en FileProvider, test de ActivityModeManager desincronizado con el contrato real y carreras de coroutines en ShortStopMarkManagerTest.
+
+### Detalles Técnicos
+- **gradle.properties**: daemon JVM a `-Xmx4096m -XX:MaxMetaspaceSize=1024m -XX:+UseG1GC` (antes 2560m/768m).
+- **app/build.gradle.kts** (`testOptions.unitTests.all`): se añade `forkEvery = 50` (recicla el worker cada 50 tests, liberando ClassLoaders retenidos de Robolectric/ByteBuddy) y `jvmArgs("-XX:+HeapDumpOnOutOfMemoryError", "-XX:MaxMetaspaceSize=512m")`. Se mantiene `maxHeapSize="3072m"` y `maxParallelForks=1` (sin duplicar `-Xmx`). Encontré que `getUriForFile` del test RouteExport entraba en **bucle infinito dentro de FileProvider** (defaults relajados de MockK: `parser.next()=0≠END_DOCUMENT`) hasta agotar el heap y corromper el worker para las clases siguientes.
+- **RouteExportUseCaseTest**: migrado a `@RunWith(RobolectricTestRunner)` + `@Config(sdk=[34])` para implementaciones reales de `Intent`/`Uri`; `Uri.parse()` real en lugar de mocks; `mockkStatic(FileProvider)` en `getUriForFile` (evita el bucle infinito); `coEvery { repository.getRouteById(any()) } returns null` para el caso "ruta inexistente".
+- **ActivityModeManagerTest**: corregidas 3 aserciones `BIKING`→`DRIVING` (20 km/h > drivingLimit 13.0) y añadidos tests de límites del contrato real (STOPPED <1.0, WALKING ≤7.0, BIKING ≤13.0, DRIVING >13.0). Además se corrigió el test de downgrade: la ventana de 120 s arranca en el pending start, por lo que el timestamp de consolidación pasó de 140000 a 150000.
+- **ShortStopMarkManagerTest**: `coVerify` de `addSavedLocation` ahora matchea con `timestamp = any()` (el default `System.currentTimeMillis()` hacía que el matcher `eq(valor)` nunca coincidiera por 1 ms). El test quedó determinista: se migró a `runTest`, el manager expone su scope para control de scheduler y se mockean los métodos de `android.util.Log` (evita "Method not mocked").
+- **ShortStopMarkManager** (único cambio de producción): `private val managerScope` → `internal var managerScope`. Cambio SOLO de visibilidad/testabilidad, sin alterar lógica ni comportamiento; permite inyectar un test dispatcher en los tests.
+- 2 heap dumps de diagnóstico (`app/java_pid*.hprof`, ~8 GB en total) generados por los OOM; pendientes de eliminar con permiso.
+
+### Tests
+- Suite completa `:app:testDebugUnitTest`: **86 tests, 0 failures, 0 errors, 0 skipped** (22 clases). Verificada 3 veces de forma consecutiva (la 3ª con clean + re-ejecución) para confirmar determinismo.
+
+### Archivos Modificados
+- gradle.properties, app/build.gradle.kts, location/manager/ShortStopMarkManager.kt (visibilidad scope)
+- tests: location/manager/ActivityModeManagerTest.kt, location/manager/ShortStopMarkManagerTest.kt, domain/usecase/RouteExportUseCaseTest.kt
+
+### Archivos Respaldados
+- RESPALDO_ANTERIOR/20260806_1939_* (gradle.properties, build.gradle.kts, ActivityModeManagerTest.kt)
+- RESPALDO_ANTERIOR/20260806_2040_* (RouteExportUseCaseTest.kt, ShortStopMarkManagerTest.kt)
+- RESPALDO_ANTERIOR/20260806_2256_ShortStopMarkManager.kt
+
+### Build
+- testDebugUnitTest: BUILD SUCCESSFUL (86/86). No se despliega en dispositivo: cambio exclusivo de infraestructura de testing (el APK no varía).
+## [2026-08-06] CR-27: Modo Vuelo Automático — Detección Cinemática FLIGHT
+
+### Logro
+El interruptor manual 8.3 [✈️] Modo Avión era un "toggle fantasma": escribía en SharedPreferences (`airplane_mode`) pero el LocationService nunca lo leía, por lo que las rutas aéreas a >162 km/h se descartaban por completo. Se reemplazó por detección cinemática automática (KineticProfile.TERRESTRIAL/FLIGHT) con histéresis de velocidad/altitud, y se eliminó el switch del Drawer (Regla IV UX).
+
+### Detalles Técnicos
+- **CinematicFilterManager**: nuevo `enum KineticProfile` + transición con histéresis (FLIGHT si v>41.67 m/s y altitud>100m; TERRESTRIAL si v<33.33 m/s y altitud<100m). Umbral máximo 333.33 m/s (~1200 km/h) en FLIGHT. Auto-stop de 3 min suprimido en FLIGHT. API pública y constructor preservados (0 regresiones en GpsFilterPipelineTest/Hilt).
+- **LocationService**: umbrales dinámicos según perfil — Fase 1 (50m→80m), guarda `shouldForceStop` (solo TERRESTRIAL), odómetro (50m→80m) y persistencia SQLCipher (20m→80m). Nuevo `StateFlow<KineticProfile> kineticProfile` en companion.
+- **RouteViewModel**: puente reactivo `kineticProfile`; eliminados `isAirplaneMode` y `toggleAirplaneMode()`.
+- **UI**: item 8.3 retirado del Drawer; HelpDialog actualizado a "Vuelo Automático"; badge "✈️ Vuelo" en TopBar 1.3.1 (MapScreen) cuando el perfil es FLIGHT.
+- **AppConstants**: constantes FLIGHT_MAX_SPEED_MPS, FLIGHT_TRIGGER_SPEED_MPS, FLIGHT_HYSTERESIS_SPEED_MPS, FLIGHT_MIN_ALTITUDE_METERS, FLIGHT_MAX_ACCURACY_METERS + alias terrestres (MAX_SPEED_THRESHOLD_MPS, TERRESTRIAL_MAX_ACCURACY_METERS).
+
+### Tests
+- CinematicFilterManagerTest: +4 escenarios FLIGHT (transición a vuelo, no auto-stop en vuelo, degradación al aterrizar, rechazo terrestre de velocidad de jet). CinematicFilterManagerTest + GpsFilterPipelineTest: PASS.
+
+### Archivos Modificados
+- util/AppConstants.kt, location/manager/CinematicFilterManager.kt, location/manager/GpsFilterPipeline.kt, location/LocationService.kt, ui/RouteViewModel.kt, MainActivity.kt, ui/PreferencesManager.kt, ui/dialogs/HelpDialog.kt, ui/screens/MapScreen.kt, app/build.gradle.kts (heap worker tests), gradle.properties (daemon 2.5GB)
+
+### Archivos Respaldados
+- RESPALDO_ANTERIOR/20260806_1446_* (10 archivos)
+
+### Build
+- testDebugUnitTest: suite completa 81 tests con fallos OOM preexistentes en clases MockK/Robolectric no relacionadas (documentados como preexistentes desde CR-26).
+- assembleDebug: BUILD SUCCESSFUL.
+- Deploy: instalado y lanzado en dispositivo 48201FDAS001L5 (com.aistudio.localizador.vqtspk).
+## [2026-07-31] CR-26: Compartir Captura PNG de la Experiencia — Botón Compartir 5.2.1
+
+### Logro
+El botón Compartir de la barra 5.2 de la Pantalla 5 (ExperienceMapScreen) ya no envía fotos de waypoints sueltas: ahora genera una captura PNG de alta resolución del mapa de experiencia (mapa OSM + ruta + marcadores + panel de fotos) y la comparte por el selector nativo como imagen (ACTION_SEND image/png). La barra inferior de acciones queda excluida de la captura, logrando una "tarjeta postal" limpia.
+
+### Detalles Técnicos
+- Captura vía Compose 1.7 rememberGraphicsLayer + Modifier.drawWithContent { composeGraphicsLayer.record { drawContent() }; drawLayer(composeGraphicsLayer) } sobre un Box interno que envuelve únicamente el mapa (AndroidView osmdroid), el panel de fotos y los controles flotantes.
+- toImageBitmap().asAndroidBitmap() → compresión PNG (calidad 100) en Dispatchers.IO con FileOutputStream.
+- Archivo temporal en context.cacheDir/shared_experiences/experiencia_{routeId}.png (sin basura persistente).
+- Se comparte con FileProvider.getUriForFile (provider ${packageName}.fileprovider) + FLAG_GRANT_READ_URI_PERMISSION + chooser "Compartir Experiencia...".
+- Se eliminó la variable huérfana currentPhotoPaths (sin advertencias de compilación).
+- La corrutina de captura se ejecuta en Dispatchers.IO; errores capturados con runCatching (sin crasheos).
+
+### Archivos Modificados
+- ui/screens/ExperienceMapScreen.kt
+
+### Archivos Respaldados
+- RESPALDO_ANTERIOR/20260731_2341_ExperienceMapScreen.kt
+
+### Build
+- testDebugUnitTest: 77 tests, 9 fallidos (preexistentes).
+- assembleDebug: BUILD SUCCESSFUL.
+- Deploy: instalado y lanzado en dispositivo (com.aistudio.localizador.vqtspk).
+## [2026-07-31] CR-25: Fix Botón "Actualizar País/Ciudad" — Reversión y Feedback en Tiempo Real
+
+### Logro
+El botón "Actualizar País/Ciudad" del diálogo Editar Favorito (Pantalla 3) sí geocodificaba y persistía, pero el resultado se revertía al pulsar "Guardar Cambios". Se corrigió la reversión (snapshot desincronizado de locationToEdit) y se añadió feedback en tiempo real con el país/ciudad resuelto.
+
+### Causa Raíz
+- locationToEdit (estado local Compose) era un snapshot del objeto original; refreshLocationDetails actualizaba la DB pero no el estado del diálogo.
+- El confirmButton "Guardar Cambios" ejecutaba locationToEdit!!.copy(...) → reescribía los campos vetustos (country="Desconocido", city="Desconocida") sobre la geocodificación recién lograda.
+- El diálogo no mostraba el país/ciudad (cero feedback visual).
+
+### Archivos Modificados
+- **ui/RouteViewModel.kt** (refreshLocationDetails):
+  - Nuevo parámetro onResult: (SavedLocation) -> Unit = {} despachado en Dispatchers.Main tras persistir.
+  - Base fresca desde repository.allSavedLocations.first() (por id) para no pisar campos editados/guardados mientras corre la corutina (evita race condition).
+- **ui/screens/SavedLocationsScreen.kt** (diálogo Editar Favorito):
+  - Estado isRefreshingLocation + OutlinedButton con CircularProgressIndicator (16dp) y texto "Geocodificando..." mientras procesa.
+  - Fila M3 de feedback con Icons.Default.Place + "pais • ciudad" (bodySmall, onSurfaceVariant) que se actualiza en vivo al completar.
+  - Botón actualiza locationToEdit = updated vía callback.
+  - confirmButton usa como base el favorito fresco de locations (StateFlow) por id (locations.firstOrNull { it.id == id } ?: locationToEdit!!) para conservar el país/ciudad actualizado.
+
+### Archivos Respaldados
+- RESPALDO_ANTERIOR/20260731_2255_RouteViewModel.kt
+- RESPALDO_ANTERIOR/20260731_2255_SavedLocationsScreen.kt
+
+### Build
+- testDebugUnitTest: 77 tests, 9 fallidos (preexistentes).
+- assembleDebug: BUILD SUCCESSFUL.
+- Deploy: instalado y lanzado en dispositivo (com.aistudio.localizador.vqtspk).
+## [2026-07-31] CR-24: Cobertura Mundial WGS84 para Geocodificación — Fix País/Ciudad fuera del Cono Sur
+
+### Logro
+El fallback Nominatim del CR-23 no se activaba para favoritos fuera del rectángulo lat -55..-20 (Cono Sur): el gate AppConstants.Geofencing devolvía "GPS: Fuera de cobertura" antes de intentar el Geocoder nativo o Nominatim. El usuario reportó el fallo estando en Cusco (Perú, lat ~-13). Se amplió la cobertura a rangos WGS84 mundiales, excluyendo solo el punto nulo (0.0, 0.0).
+
+### Causa Raíz
+- Geofencing regional (MIN_LATITUDE=-55, MAX_LATITUDE=-20, MIN_LONGITUDE=-75, MAX_LONGITUDE=-53) en AppConstants.kt.
+- GeocoderUseCase.fetchLocationDetails retornaba temprano Triple("GPS: Fuera de cobertura", "Desconocido", "Desconocida") sin intentar geocodificación.
+- Diagnosticado: API Nominatim OK (HTTP 200), adapters Moshi generados, dispositivo con internet validado; el gate era el bloqueante.
+
+### Archivos Modificados
+- **util/AppConstants.kt** (object Geofencing):
+  - MIN_LATITUDE/MAX_LATITUDE = -90.0/90.0, MIN_LONGITUDE/MAX_LONGITUDE = -180.0/180.0 (WGS84 global).
+  - isWithinBounds excluye el punto nulo GPS (lat == 0.0 && lon == 0.0).
+- **ui/GeocoderUseCase.kt**:
+  - isValidCoordinate delega directo en AppConstants.Geofencing.isWithinBounds (se elimina el clamp lat/lon.toFloat()).
+  - Mensaje de coordenadas inválidas: "GPS: Sin señal" (reemplaza "GPS: Fuera de cobertura").
+  - Se mantiene la firma síncrona Triple(address, country, city) y fetchAddress String?.
+
+### Decisiones Técnicas
+- NO convertir a suspend (BackupUseCase usa fetchLocationDetails dentro de un mapNotNull no-suspend; todos los llamadores ya corren en Dispatchers.IO).
+- NO añadir @Inject constructor (AppModule:35 ya provee manualmente; se evita binding duplicado de Hilt).
+- formatAddress preservado para no alterar la presentación de las tarjetas (Pantalla 3).
+
+### Archivos Respaldados
+- RESPALDO_ANTERIOR/20260731_2240_AppConstants.kt
+- RESPALDO_ANTERIOR/20260731_2240_GeocoderUseCase.kt
+
+### Build
+- testDebugUnitTest: 77 tests, 9 fallidos (preexistentes).
+- assembleDebug: BUILD SUCCESSFUL.
+- Deploy: instalado y lanzado en dispositivo (com.aistudio.localizador.vqtspk). Verificado Nominatim para Cusco/Perú (country=Perú, city=Machupicchu).
+## [2026-07-31] CR-23: Fallback de Geocodificación Nominatim (OSM) — País/Ciudad/Lugar en Favoritos
+
+### Logro
+Corregida la pérdida de país, ciudad y dirección ("lugar cercano") al guardar favoritos. El Geocoder del sistema (android.location.Geocoder) es poco fiable (red, GMS, límite de consultas) y dejaba los campos en "Desconocido"/"Desconocida". Se incorporó un fallback de geocodificación inversa vía Nominatim (OpenStreetMap), coherente con osmdroid.
+
+### Causa Raíz
+- GeocoderUseCase.fetchLocationDetails dependía 100% del proveedor del sistema; al devolver lista vacía o excepción, se guardaban "Desconocido"/"Desconocida" sin avisar.
+- No existía ningún fallback de red.
+
+### Archivos Creados
+- **data/api/NominatimApi.kt**: DTOs Moshi (NominatimResponseDto, NominatimAddressDto con getBestCityName) e interfaz Retrofit reverseGeocode (format=json, addressdetails=1, accept-language=es).
+
+### Archivos Modificados
+- **data/api/RetrofitClient.kt**:
+  - NOMINATIM_BASE_URL.
+  - nominatimOkHttpClient dedicado (timeouts 5s + interceptor User-Agent "Agenviaje/1.0 (com.aistudio.localizador)" cumpliendo política OSM), aislado del client Groq/Gemini.
+  - nominatimApi (lazy).
+- **ui/GeocoderUseCase.kt**:
+  - fetchLocationDetails mantiene la firma Triple(address, country, city) para no romper los 7 llamadores.
+  - Intento A: Geocoder nativo (guarda Geocoder.isPresent() solo en SDK >= 33). Requiere país y ciudad válidos.
+  - Intento B: fallback Nominatim con execute() síncrono (todos los llamadores corren en Dispatchers.IO).
+  - fetchAddress también con fallback Nominatim (displayName).
+  - refreshLocationDetails ("Actualizar País/Ciudad") recalcula favoritos antiguos sin cambios de firma.
+
+### Archivos Respaldados
+- RESPALDO_ANTERIOR/20260731_2218_GeocoderUseCase.kt
+- RESPALDO_ANTERIOR/20260731_2218_RetrofitClient.kt
+
+### Build
+- testDebugUnitTest: 77 tests, 9 fallidos (preexistentes).
+- assembleDebug: BUILD SUCCESSFUL.
+- Deploy: instalado y lanzado en dispositivo (com.aistudio.localizador.vqtspk).
+## [2026-07-31] CR-22: Consolidación de Fecha EXIF en Favoritos — Comentario + Tarjeta
+
+### Logro
+Corregida la visibilidad de la fecha de captura de la foto en los favoritos. Ahora la fecha EXIF de la foto se preserva íntegramente al guardar (desde Favoritos y desde el Mapa), se incrusta en el comentario del favorito ("📸 Capturada el dd/MM/yyyy HH:mm") y se muestra como línea visible en la tarjeta de Favoritos (LocationCard).
+
+### Causa Raíz
+- RouteViewModel.saveSpecificLocation: el bloque que debía añadir la fecha al comentario calculaba SimpleDateFormat sobre Date() (hora del guardado) sin interpolarlo, y si el usuario escribía una nota lo reemplazaba por "\n\n".
+- MapScreen: al extraer EXIF usaba extractLocationFromPhoto(uri)?.let { Pair(...) }, descartando PhotoMetadata.timestamp, por lo que photoTimestamp llegaba null y se guardaba System.currentTimeMillis().
+- LocationCard (SavedLocationsScreen): no mostraba ninguna fecha.
+
+### Archivos Modificados
+- **ui/RouteViewModel.kt** (saveSpecificLocation):
+  - finalTimestamp = photoTimestamp ?: System.currentTimeMillis().
+  - finalComment con when: fecha de captura concatenada si hay comentario, o como comentario único si está vacío; guarda contra duplicación del prefijo "📸 Capturada el" en reediciones.
+  - repository.addSavedLocation usa timestamp = finalTimestamp.
+- **ui/screens/MapScreen.kt**:
+  - Nuevo estado photoTimestamp.
+  - Captura de metadata.timestamp en las 3 vías de entrada (cámara, galería, reintento de permiso).
+  - saveSpecificLocation del showSaveLocationDialog pasa photoTimestamp.
+  - Limpieza de photoTimestamp en Guardar y Cancelar.
+- **ui/screens/SavedLocationsScreen.kt** (LocationCard):
+  - Fila M3 con Icons.Default.Schedule (14dp) + fecha dd/MM/yyyy HH:mm en onSurfaceVariant.
+  - Imports java.text.SimpleDateFormat y java.util.Date.
+
+### Archivos Respaldados
+- RESPALDO_ANTERIOR/20260731_1905_RouteViewModel.kt
+- RESPALDO_ANTERIOR/20260731_1905_MapScreen.kt
+- RESPALDO_ANTERIOR/20260731_1905_SavedLocationsScreen.kt
+
+### Build
+- testDebugUnitTest: 77 tests, 9 fallidos (preexistentes, ajenos a este cambio).
+- assembleDebug: BUILD SUCCESSFUL.
+- Deploy: instalado y lanzado en dispositivo (com.aistudio.localizador.vqtspk).
+## [2026-07-31] CR-21: Fix EXIF GPS API 29+ — Posición de la Foto en Favoritos
+
+### Logro
+Corregida la extracción silenciosa de coordenadas GPS de fotos en Android 10+ (Scoped Storage). Al adjuntar una foto a un favorito/punto de interés, la app ahora usa la posición histórica grabada en los metadatos EXIF de la foto en lugar de la posición actual del dispositivo.
+
+### Causa Raíz
+- Android 10+ (API 29+) redacta las etiquetas GPS de MediaStore al abrir un InputStream sin MediaStore.setRequireOriginal(uri). ExifInterface retornaba null y la app caía silenciosamente en el fallback de la ubicación actual del GPS.
+- SavedLocationsScreen no solicitaba el permiso ACCESS_MEDIA_LOCATION en el flujo de galería (a diferencia de MapScreen), condenando la extracción a fallar desde el inicio.
+- MapScreen no activaba el estado reactivo usePhotoGps al retornar del flujo de cámara, por lo que el marcador usaba la posición del punto/teléfono aunque la foto tuviera GPS.
+
+### Archivos Modificados
+- **domain/usecase/ExtractPhotoLocationUseCase.kt**:
+  - resolveOriginalUri(): usa MediaStore.setRequireOriginal(uri) en API 29+ con fallback seguro ante SecurityException.
+  - readLatLongFromStream(): lectura EXIF directa desde InputStream como segundo intento.
+  - Coordenadas (0.0, 0.0) descartadas como inválidas.
+- **ui/screens/SavedLocationsScreen.kt**:
+  - applyPhotoMetadata(): unifica el seteo de coordenadas/estado/dirección/timestamp desde EXIF.
+  - photoPickerLauncher solicita ACCESS_MEDIA_LOCATION en API 29+ antes de extraer, con reintento automático al concederse (mediaLocationPermissionLauncher + pendingPhotoUri).
+  - Corregido typo de limpieza: inputLatitude = """ → "".
+- **ui/screens/MapScreen.kt**:
+  - cameraLauncher ahora activa usePhotoGps cuando la foto de cámara contiene GPS.
+
+### Archivos Respaldados
+- RESPALDO_ANTERIOR/20260731_ExtractPhotoLocationUseCase.kt
+- RESPALDO_ANTERIOR/20260731_SavedLocationsScreen.kt
+- RESPALDO_ANTERIOR/20260731_MapScreen.kt
+
+### Build
+- assembleDebug: BUILD SUCCESSFUL
+- Deploy: instalado y lanzado en dispositivo (com.aistudio.localizador.vqtspk)
+## [2026-07-22] CR-20: AnalyzeRouteAiUseCase — Extracción del Análisis por IA a Capa de Dominio
+
+### Logro
+Extraída la lógica de análisis inteligente de rutas (Groq/Llama 3) desde el RouteViewModel y el antiguo GroqAiUseCase (ui/) hacia un AnalyzeRouteAiUseCase dedicado en domain/usecase/, cumpliendo con la Regla I (Modularidad Estricta) y Regla II (Testeabilidad).
+
+### Archivos Creados
+- **domain/usecase/AnalyzeRouteAiUseCase.kt**: UseCase inyectable (@Singleton) que recibe RouteRepository, construye el prompt de telemetría, llama a la API de Groq vía RetrofitClient.groqApi y retorna Result<String>.
+- **test/.../domain/usecase/AnalyzeRouteAiUseCaseTest.kt**: 2 tests unitarios JVM (ruta nula → Failure, ruta existente → failure de red esperado).
+
+### Archivos Modificados
+- **RouteViewModel.kt**: 
+  - Reemplazado groqAiUseCase: GroqAiUseCase → nalyzeRouteAiUseCase: AnalyzeRouteAiUseCase.
+  - Migrado iAnalysisState de mutableStateOf a MutableStateFlow + StateFlow para reactividad M3.
+  - Simplificado nalyzeRouteWithAI() delegando completamente en el UseCase.
+- **DetailScreen.kt**: 
+  - Migrado consumo de iAnalysisState de acceso directo a collectAsStateWithLifecycle().
+  - Captura local iStateValue para habilitar smart-cast en when.
+- **AppModule.kt**: Eliminado provideGroqAiUseCase() (ya no existe en ui/).
+
+### Archivos Eliminados
+- **ui/GroqAiUseCase.kt**: Reemplazado por AnalyzeRouteAiUseCase en domain/usecase/.
+
+### Archivos Respaldados
+- RESPALDO_ANTERIOR/20260722_1810_RouteViewModel.kt
+- RESPALDO_ANTERIOR/20260722_1810_DetailScreen.kt
+- RESPALDO_ANTERIOR/20260722_1810_GroqAiUseCase.kt
+- RESPALDO_ANTERIOR/20260722_1810_AppModule.kt
+
+### Build
+- compileDebugKotlin: OK (warnings preexistentes)
+- testDebugUnitTest (AnalyzeRouteAiUseCaseTest): OK (2/2)
+- assembleDebug: BUILD SUCCESSFUL
+## [2026-07-22] CR-19: Restablecimiento de Interfaz — Eliminación de Duplicación Contextual en MainActivity
+
+### Logro
+Corregida la "doble barra" en Pantalla 5 (ExperienceMapScreen). La causa raíz era la sub-capa BETA del Scaffold en MainActivity.kt que inyectaba botones [Share]/[Save] y cápsula GPS redundantes cuando currentRoute == NavRoutes.EXPERIENCE_MAP, duplicando la barra inferior 5.2.
+
+### Archivos Modificados
+- **MainActivity.kt**:
+  - Eliminado bloque if (currentRoute == NavRoutes.EXPERIENCE_MAP) con IconButton(Share) e IconButton(Save) en la sub-capa BETA (líneas 858-882 eliminadas).
+  - Cápsula GPS condicionada a currentRoute != NavRoutes.EXPERIENCE_MAP (línea 882) para evitar duplicación con barra 5.2.
+- **ExperienceMapScreen.kt**:
+  - Estandarizados colores semánticos: Color(0xFF4DD0E1) → IconCompartir, Color(0xFFFFB74D) → IconExportar (constantes de Color.kt, Regla de Convención de Colores Bitaru).
+
+### Archivos No Modificados (Confirmado Correctos)
+- **ShareExperienceUseCase.kt**: Sin cambios. Ya implementa FileProvider, validación de archivos y ACTION_SEND_MULTIPLE correctamente.
+
+### Archivos Respaldados
+- RESPALDO_ANTERIOR/20260722_1745_MainActivity.kt
+- RESPALDO_ANTERIOR/20260722_1745_ExperienceMapScreen.kt
+
+### Principio de Diseño (Reglas de Oro I, IV, V)
+- Modularidad estricta (Regla I): La intervención se realizó en la causa raíz (MainActivity), no en la pantalla que ya estaba correcta.
+- Jerarquía de Información (Regla IV): La barra 5.2 es ahora el ÚNICO contenedor de controles en ExperienceMapScreen.
+- Estabilidad (Regla V): Se preservó intacta la funcionalidad completa de ExperienceMapScreen (~590 líneas) evitando una reescritura destructiva.
+
+### Build
+- compileDebugKotlin: OK (1 warning preexistente)
+- assembleDebug: BUILD SUCCESSFUL
 ## [2026-07-21] CR-14: Gestión de Sesión Biométrica Reactiva (Ventana de Gracia 30s + Drawer 8.7)
 
 ### Logro
@@ -26,8 +364,8 @@ Implementado BiometricSessionManager (@Singleton) que administra el estado de de
 - Control manual (Drawer 8.7): Bloqueo/desbloqueo inmediato con feedback táctil.
 
 ### Build
-- compileDebugKotlin: PENDIENTE
-- testDebugUnitTest: PENDIENTE
+- compileDebugKotlin: OK (1 warning preexistente)
+- assembleDebug: BUILD SUCCESSFUL
 - assembleDebug: PENDIENTE
 ## [2026-07-21] CR-13: Integración de Branding Corporativo Bitaru en BiometricLockScreen
 
@@ -52,8 +390,8 @@ Implementado el banner rectangular corporativo Bitaru (BiTaRu-recta-003-esp.png)
 - Asset real de marca (no placeholder): Se utilizó el banner definitivo BiTaRu-recta-003-esp.png.
 
 ### Build
-- compileDebugKotlin: PENDIENTE
-- testDebugUnitTest: PENDIENTE
+- compileDebugKotlin: OK (1 warning preexistente)
+- assembleDebug: BUILD SUCCESSFUL
 - assembleDebug: PENDIENTE
 ## [2026-07-17] ME-02: ExtractPhotoLocationUseCase + Corrección de EXIF en Hilo Principal
 
@@ -396,3 +734,31 @@ Eliminada la barra flotante intermedia 5.3 (CAPA 3) que duplicaba botones y redu
 - **Nueva Funcionalidad: Indicador de Situación**: Botón de información ("i") con geocodificación inversa.
 - **Ajustes de UI**: Resaltado amarillo para direcciones y reajuste de espacios para evitar solapamientos.
 
+
+## [2026-07-22] CR-21: Fix de Compartir Fotos — Mapeo Híbrido de URIs en ShareExperienceUseCase y Sincronización Directa en RouteViewModel
+
+### Logro
+Corregido el fallo por el cual el Intent de compartir en Pantalla 5 (ExperienceMapScreen) solo emitía texto sin adjuntar fotografías. Causa raíz: File(path).exists() fallaba porque photoPath almacena URIs content:// (retornadas por FileProvider.getUriForFile en PhotoManager.saveImageToInternalStorage), no rutas de sistema de archivos POSIX.
+
+### Archivos Modificados
+- **ShareExperienceUseCase.kt** — Mapeo híbrido de URIs:
+  - when discriminador: rutas que inician con content:// o ile:// se parsean directamente con Uri.parse() envuelto en unCatching.
+  - Rutas locales físicas (sin esquema) mantienen el flujo File(path).exists() + FileProvider.getUriForFile.
+  - Telemetría actualizada: "Ruta:" en lugar de "Nombre:".
+- **RouteViewModel.kt** — Sincronización directa desde Room:
+  - Eliminada guardia temporal withTimeoutOrNull + photoPathsForCurrentRoute.first {}.
+  - Reemplazada por consulta directa epository.getWaypointsSync(routeId) cuando photoPaths está vacío.
+  - Eliminados imports obsoletos: kotlinx.coroutines.flow.first, kotlinx.coroutines.withTimeoutOrNull.
+
+### Archivos No Modificados
+- **ExperienceMapScreen.kt**: Sin cambios (capa visual correcta de CR-21 previo).
+- **PhotoManager.kt**: Sin cambios (ya retorna URIs content:// válidas).
+
+### Archivos Respaldados
+- RESPALDO_ANTERIOR/20260722_2110_ShareExperienceUseCase.kt
+- RESPALDO_ANTERIOR/20260722_2110_RouteViewModel.kt
+
+### Build
+- compileDebugKotlin: OK (warnings preexistentes)
+- assembleDebug: BUILD SUCCESSFUL
+- installDebug: INSTALADO en 2 dispositivos (Pixel 9 Pro XL)

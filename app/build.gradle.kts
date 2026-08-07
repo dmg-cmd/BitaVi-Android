@@ -65,7 +65,23 @@ android {
     compose = true
     buildConfig = true
   }
-  testOptions { unitTests { isIncludeAndroidResources = true } }
+  testOptions {
+    unitTests {
+      isIncludeAndroidResources = true
+      // Worker de tests dedicado: heap controlado y ejecución secuencial
+      // para evitar OutOfMemoryError con Robolectric + MockK en equipos con poca RAM libre.
+      // forkEvery=50 recicla el worker y libera ClassLoaders acumulados (ByteBuddy/Robolectric).
+      all {
+        it.maxHeapSize = "3072m"
+        it.maxParallelForks = 1
+        it.forkEvery = 50
+        it.jvmArgs(
+          "-XX:+HeapDumpOnOutOfMemoryError",
+          "-XX:MaxMetaspaceSize=512m"
+        )
+      }
+    }
+  }
 
   packaging {
     jniLibs {

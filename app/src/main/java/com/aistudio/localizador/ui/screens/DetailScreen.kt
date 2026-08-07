@@ -146,8 +146,9 @@ fun DetailScreen(
 
                     Spacer(Modifier.height(8.dp))
 
-                    val aiState = viewModel.aiAnalysisState
-                    when (aiState) {
+                    val aiState by viewModel.aiAnalysisState.collectAsStateWithLifecycle()
+                    val aiStateValue = aiState
+                    when (aiStateValue) {
                         is AiAnalysisState.Idle -> {
                             Button(
                                 onClick = { viewModel.analyzeRouteWithAI(routeId) },
@@ -164,7 +165,7 @@ fun DetailScreen(
                             }
                         }
                         is AiAnalysisState.Success -> {
-                            Text(text = aiState.report, style = MaterialTheme.typography.bodyMedium)
+                            Text(text = aiStateValue.report, style = MaterialTheme.typography.bodyMedium)
                             TextButton(onClick = { viewModel.resetAiState() }, modifier = Modifier.align(Alignment.End)) {
                                 Text("Volver a analizar")
                             }
@@ -234,7 +235,7 @@ fun DetailScreen(
                         }
                         is AiAnalysisState.Error -> {
                             Text(
-                                text = aiState.message,
+                                text = aiStateValue.message,
                                 color = MaterialTheme.colorScheme.error,
                                 style = MaterialTheme.typography.bodyMedium
                             )

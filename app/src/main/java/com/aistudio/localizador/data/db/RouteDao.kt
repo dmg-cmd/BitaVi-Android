@@ -128,4 +128,8 @@ interface RouteDao {
 
     @Query("SELECT s.* FROM saved_locations s INNER JOIN route_favorite_cross_ref r ON s.id = r.favoriteId WHERE r.routeId = :routeId")
     suspend fun getFavoritesForRoute(routeId: Int): List<SavedLocation>
+
+    // ─── Photo References (for orphan purge) ─────────────
+    @Query("SELECT photoPath FROM waypoints WHERE photoPath IS NOT NULL AND photoPath <> '' UNION ALL SELECT photoPath FROM saved_locations WHERE photoPath IS NOT NULL AND photoPath <> ''")
+    suspend fun getAllReferencedPhotoPaths(): List<String>
 }

@@ -1,4 +1,22 @@
+- [x] **CR-29 CalculateRouteMetricsUseCase**: Analitica de tramos desacoplada del UI thread (Dispatchers.Default + flatMapLatest), desnivel acumulado Subida/Bajada con histeresis de 2.5m, charts memoizados con remember(points). 7 tests nuevos; suite 100/0.
+- [x] **CR-30 PurgeOrphanPhotosUseCase**: Nuevo modulo inyectable que escanea y purga imagenes JPG/PNG huerfanas (sin referencia en waypoints/favoritos) del almacenamiento privado de la app. 7 tests nuevos; suite 93/0.
 ## Completadas (Julio 2026)
+
+- [x] **CR-28 Suite de pruebas 100% verde y determinista**: resueltos OOM de MockK/Robolectric (forkEvery=50 + heap daemon 4g + fix del bucle infinito en FileProvider), corregidos ActivityModeManagerTest (contrato real, DRIVING a 20km/h + límites de umbral), ShortStopMarkManagerTest (timestamp=any + runTest determinista) y RouteExportUseCaseTest (Robolectric + mockkStatic FileProvider). Resultado: 86 tests, 0 fallos, 3 corridas consecutivas.
+
+- [x] **CR-27 Modo Vuelo Automatico**: Se elimino el interruptor 8.3 (era un toggle fantasma) y se implemento deteccion cinematica automatica FLIGHT (v>150 km/h y altitud>100m, hasta 1200 km/h) con umbrales de precision dinamicos en LocationService y badge "✈️ Vuelo" en la TopBar
+
+- [x] **CR-26 Compartir captura PNG de Experiencia**: El boton Compartir (cian, 5.2.1) de la Pantalla 5 ahora envia una captura PNG HD (mapa + ruta + fotos) via rememberGraphicsLayer, sin la barra inferior de botones
+
+- [x] **CR-25 Fix Boton Actualizar Pais/Ciudad**: El boton ya funciona: muestra feedback en tiempo real (pais • ciudad) y al guardar ya no se revierte a "Desconocido"
+
+- [x] **CR-24 Cobertura Mundial WGS84**: País/ciudad de favoritos ahora se determinan en cualquier país del mundo (se eliminó la restricción al Cono Sur que bloqueaba el fallback Nominatim)
+
+- [x] **CR-23 Fallback Nominatim (OSM)**: País/ciudad/lugar de los favoritos ya no quedan en "Desconocido" — fallback a OpenStreetMap cuando el geocoder del sistema falla
+
+- [x] **CR-22 Fecha EXIF en favoritos**: Fecha de captura de la foto visible en la tarjeta de favoritos y en el comentario (📸 Capturada el dd/MM/yyyy HH:mm), también al guardar desde el mapa
+
+- [x] **CR-21 Fix EXIF GPS API 29+**: Favoritos con foto ahora usan la posición GPS de la foto (Scoped Storage + ACCESS_MEDIA_LOCATION) en lugar de la posición actual del dispositivo
 
 - [x] **CR-07 AddFavoriteFromTrackingUseCase**: Guardar favorito rápido durante tracking activo con geocodificación inversa, validación GPS (0.0, 0.0) y vinculación a ruta
 

@@ -8,6 +8,13 @@ object AppConstants {
         const val MAX_GPS_ACCURACY_METERS = 20.0f
         const val MAX_POCKET_ACCURACY_METERS = 50f
         const val MAX_SPEED_METERS_PER_SECOND = 45.0f
+        const val MAX_SPEED_THRESHOLD_MPS = MAX_SPEED_METERS_PER_SECOND
+        const val TERRESTRIAL_MAX_ACCURACY_METERS = MAX_POCKET_ACCURACY_METERS
+        const val FLIGHT_MAX_SPEED_MPS = 333.33f
+        const val FLIGHT_TRIGGER_SPEED_MPS = 41.67f
+        const val FLIGHT_HYSTERESIS_SPEED_MPS = 33.33f
+        const val FLIGHT_MIN_ALTITUDE_METERS = 100.0
+        const val FLIGHT_MAX_ACCURACY_METERS = 80.0f
         const val MIN_TIME_DELTA_MILLIS = 3000L
         const val MIN_DISTANCE_THRESHOLD_METERS = 5.0f
         const val MOVEMENT_TRIGGER_THRESHOLD_METERS = 25.0f
@@ -57,13 +64,15 @@ object AppConstants {
     }
 
     object Geofencing {
-        const val MIN_LATITUDE = -55.0
-        const val MAX_LATITUDE = -20.0
-        const val MIN_LONGITUDE = -75.0
-        const val MAX_LONGITUDE = -53.0
+        const val MIN_LATITUDE = -90.0
+        const val MAX_LATITUDE = 90.0
+        const val MIN_LONGITUDE = -180.0
+        const val MAX_LONGITUDE = 180.0
 
         fun isWithinBounds(lat: Double, lon: Double): Boolean {
-            return lat in MIN_LATITUDE..MAX_LATITUDE && lon in MIN_LONGITUDE..MAX_LONGITUDE
+            return lat in MIN_LATITUDE..MAX_LATITUDE &&
+                    lon in MIN_LONGITUDE..MAX_LONGITUDE &&
+                    !(lat == 0.0 && lon == 0.0)
         }
     }
 }

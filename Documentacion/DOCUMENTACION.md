@@ -1,3 +1,173 @@
+## CR-29: Analitica de tramos sin tirones (2026-08-07)
+
+### Que cambio para el usuario?
+- La pantalla de Analitica (Pantalla 7) ahora responde fluido al arrastrar el selector de tramo (7.3.1): las metricas se calculan en segundo plano (fuera del hilo de dibujo) y los graficos de perfil de elevacion/ritmo dejan de reconstruirse en cada fotograma.
+- La tarjeta 7.4 muestra ahora el desnivel real del tramo en dos valores: Subida +X m y Bajada -Y m (antes era un solo "Desnivel" neto que podia ocultar subidas y bajadas en rutas circulares), ademas de la distancia del tramo.
+- El desnivel usa un filtro de histeresis de 2.5 m: pequenas fluctuaciones del GPS/barometro (<2.5 m) se ignoran, dando totales altimetricos honestos.
+
+### Donde esta el cambio?
+- **CalculateRouteMetricsUseCase.kt** (nuevo): toda la matematica de tramo (distancia Haversine, desniveles acumulados, velocidad, ritmo) en un modulo puro e inyectable.
+- **RouteMetricsResult.kt** (nuevo): modelo inmutable de resultados en `com.aistudio.localizador.model`.
+- **RouteViewModel.kt**: pipeline reactivo que calcula el tramo en Dispatchers.Default y cancela recalculados obsoletos.
+- **RouteAnalyticsScreen.kt**: memorizacion de series de graficos con remember(points) y nueva tarjeta 7.4.
+
+### Detalles Tecnicos
+- Altimetria: se suman solo variaciones |dH| >= 2.5 m; ganancia = suma de max(0,dH), perdida = suma de max(0,-dH).
+- Velocidad promedio = distancia/tiempo del tramo; ritmo = min/km formateado.
+- 7 tests nuevos; suite: 100 tests, 0 fallos.
+## CR-30: Limpieza de Fotos Huerfanas (2026-08-07)
+
+### Que cambio para el usuario?
+- **Nada visible todavia**: es un modulo interno (use case) que prepara la funcion de mantenimiento "purgar fotos sin usar". Cuando borras una ruta o un favorito que tenia fotos, los archivos de imagen podian quedar acumulandose en el almacenamiento interno. Este modulo detecta y elimina esos archivos huerfanos (JPG/PNG sin referencia en la base de datos).
+
+### Donde esta el cambio?
+- **PurgeOrphanPhotosUseCase.kt** (nuevo): escanea `filesDir/images/`, compara contra las referencias de la base de datos y elimina los archivos huerfanos.
+- **RouteDao.kt / RouteRepository.kt**: consulta de todas las rutas de foto referenciadas.
+- **AppModule.kt**: inyeccion del nuevo use case.
+
+### Detalles Tecnicos
+- API `execute(): Result<PurgeResult>` con contadores `scanned`/`purged`; seguro ante caida de BD (no borra nada si la consulta falla).
+- 7 tests deterministas (directorio temporal real + repository mockeado). Suite: 93 tests, 0 fallos.
+## CR-28: Suite de Pruebas 100% Verde y Determinista (2026-08-06)
+
+### ¿Qué cambió para el usuario?
+- **Nada visible**: este hito es de infraestructura interna (testing). La app funciona igual; no se requieren cambios de uso ni se despliega APK nuevo.
+
+### ¿Dónde está el cambio?
+- Configuración de memoria de Gradle (gradle.properties y app/build.gradle.kts): el worker de tests se recicla cada 50 tests (forkEvery=50) y el daemon subió a 4 GB.
+- Corrección de 3 suites de tests que estaban desincronizadas con el código real (ActivityModeManager, RouteExport, ShortStopMark) y un cambio de visibilidad mínimo en ShortStopMarkManager (el scope de corrutinas pasa de `private` a `internal var`) para poder controlarlo en tests.
+
+### Detalles Técnicos
+- La suite completa pasó de 81 tests con ~9 fallos (OOM y tests desactualizados) a **86 tests, 0 fallos**, verificado 3 veces consecutivas (determinismo).
+- La causa principal de los OOM era un bucle infinito dentro de `FileProvider.getUriForFile` al usar un Context mockeado, que agotaba el heap del worker de tests y hacía fallar en cascada a otras clases.
+## CR-27: Modo Vuelo Automático — ya no necesitas activar nada (2026-08-06)
+
+### ¿Qué cambió para el usuario?
+- **Antes**: el interruptor "Modo Avión" del menú lateral (8.3) era decorativo. En un vuelo comercial (>162 km/h) la app descartaba el 100% de los puntos GPS y no grababa la ruta, aunque activaras el interruptor.
+- **Ahora**: la app detecta sola que estás volando. Cuando superas 150 km/h y 100 m de altitud, entra en modo vuelo automático y graba sin cortes hasta 1200 km/h. Al aterrizar vuelve a modo normal sin que hagas nada.
+- El interruptor "Modo Avión" se eliminó del menú lateral (ya no es necesario). En la barra superior del mapa verás el indicador "✈️ Vuelo" mientras estés en el aire.
+- En vuelo, la app tolera la menor precisión del GPS dentro de la cabina (hasta 80 m) para no perder el trazado.
+
+### ¿Dónde está el cambio?
+- **CinematicFilterManager.kt**: perfiles cinemáticos TERRESTRIAL/FLIGHT con histéresis automática.
+- **LocationService.kt**: umbrales de precisión y persistencia dinámicos según el perfil; estado FLIGHT en vivo.
+- **RouteViewModel.kt / MainActivity.kt / MapScreen.kt / PreferencesManager.kt / HelpDialog.kt**: limpieza del toggle fantasma y badge "✈️ Vuelo".
+
+### Detalles Técnicos
+- Detección: FLIGHT si velocidad calculada >41.67 m/s y altitud >100 m MSL; retorno a TERRESTRIAL si <33.33 m/s y <100 m (histéresis anti-flap).
+- En FLIGHT: velocidad máx 333.33 m/s (~1200 km/h), precisión aceptada 80 m, auto-stop y guarda de 3 min desactivados.
+## CR-26: Compartir Experiencia como captura PNG (2026-07-31)
+
+### ¿Qué cambió para el usuario?
+- El botón Compartir (cian, 5.2.1) de la Pantalla 5 (Mapa de Experiencia) ya no envía solo las fotos de los waypoints: ahora abre el selector de compartir con una imagen PNG de alta calidad que muestra el mapa con tu ruta, marcadores y las fotos del recorrido, como una "tarjeta postal".
+- La barra inferior de botones no aparece en la imagen compartida.
+- Al compartir se incluye el nombre de la experiencia en el texto (ej. "📍 Experiencia Bitaru: Paseo del Río").
+
+### ¿Dónde está el cambio?
+- **ExperienceMapScreen.kt**: captura de pantalla con Compose GraphicsLayer y compartición vía FileProvider.
+
+### Detalles Técnicos
+- rememberGraphicsLayer + drawWithContent en un contenedor capturable; PNG a cacheDir y ACTION_SEND image/png con chooser.
+## CR-25: El botón "Actualizar País/Ciudad" ya funciona (2026-07-31)
+
+### ¿Qué cambió para el usuario?
+- **Corrección**: Antes, al pulsar "Actualizar País/Ciudad" dentro de Editar Favorito, el país y la ciudad se calculaban pero se volvían a "Desconocido" al pulsar "Guardar Cambios".
+- **Ahora**: Al pulsar "Actualizar País/Ciudad" verás un indicador "Geocodificando..." y luego la ubicación resuelta (ej. "Perú • Machupicchu") justo debajo del botón. Al guardar los cambios, esa ubicación se conserva.
+- **Útil para**: corregir favoritos antiguos que quedaron con "Desconocido" antes de las correcciones CR-23/CR-24.
+
+### ¿Dónde está el cambio?
+- **RouteViewModel.kt**: refreshLocationDetails notifica a la pantalla la entidad actualizada.
+- **SavedLocationsScreen.kt**: feedback en tiempo real + "Guardar Cambios" conserva el país/ciudad resuelto.
+
+### Detalles Técnicos
+- El diálogo usa la entidad fresca de la base de datos como base al guardar, evitando que datos antiguos sobrescriban la geocodificación.
+## CR-24: País/Ciudad ahora funciona en cualquier país del mundo (2026-07-31)
+
+### ¿Qué cambió para el usuario?
+- **Corrección importante**: El país y la ciudad de los favoritos solo se determinaban en Argentina, Chile, Uruguay y Paraguay (Cono Sur). Fuera de esa zona (ej. Perú, Ecuador, Colombia, México, Europa...) los favoritos quedaban como "Desconocido"/"Desconocida" aunque existiera el respaldo de OpenStreetMap del CR-23.
+- **Ahora**: Funciona en cualquier punto del planeta. Guardar un favorito nuevo (o usar el botón "Actualizar País/Ciudad" en Editar Favorito) determina el país y la ciudad correctos aunque estés fuera del Cono Sur.
+- El único caso que no se geocodifica es el de coordenadas nulas (0.0, 0.0), que indican que el GPS no tiene señal.
+
+### ¿Dónde está el cambio?
+- **AppConstants.kt**: el límite geográfico (geofencing) se amplió a todo el planeta (WGS84).
+- **GeocoderUseCase.kt**: validación de coordenadas mundial; texto de error "GPS: Sin señal".
+
+### Detalles Técnicos
+- Cobertura mundial lat -90..90, lon -180..180, excluyendo (0.0, 0.0).
+- Sin cambios en la interfaz; sigue usando Geocoder nativo → Nominatim (OSM) como respaldo.
+## CR-23: País, Ciudad y Lugar cercano de vuelta en los Favoritos (2026-07-31)
+
+### ¿Qué cambió para el usuario?
+- **Corrección**: Al guardar un favorito, ahora vuelve a determinarse el país, la ciudad y el lugar/dirección cercano. Antes quedaban como "Desconocido"/"Desconocida" cuando el servicio de mapas del sistema no respondía.
+- **Más fiable**: Si el geocodificador nativo del teléfono falla (falta de red en el servicio, límites del fabricante, etc.), la app consulta automáticamente OpenStreetMap (Nominatim) como respaldo para obtener país, ciudad y dirección.
+- **Favoritos antiguos**: Los que ya quedaron con "Desconocido" se corrigen con el botón "Actualizar País/Ciudad" dentro de Editar Favorito (Pantalla 3), sin necesidad de borrarlos.
+
+### ¿Dónde está el cambio?
+- **NominatimApi.kt** (nuevo): API REST de geocodificación inversa de OpenStreetMap.
+- **RetrofitClient.kt**: cliente HTTP dedicado con User-Agent "Agenviaje/1.0" (política OSM), sin tocar los clientes de IA.
+- **GeocoderUseCase.kt**: flujo híbrido (Geocoder nativo → Nominatim) que calcula país/ciudad/dirección.
+
+### Detalles Técnicos
+- El cambio es interno y transparente para la interfaz; no requiere acción del usuario.
+- Respeta la política de uso de Nominatim (máx. ~1 req/s): sin barridos masivos automáticos.
+## CR-22: Fecha de Captura de la Foto visible en Favoritos (2026-07-31)
+
+### ¿Qué cambió para el usuario?
+- **Fecha de captura en la tarjeta**: Cada favorito ahora muestra una línea con la fecha (dd/MM/yyyy HH:mm) bajo el nombre. Si el favorito se guardó adjuntando una foto con GPS/fecha EXIF, esa línea muestra la fecha en que se tomó la foto; si no, muestra la fecha en que se guardó el favorito.
+- **Comentario con la fecha**: Al guardar un favorito con foto, el comentario incluye automáticamente "📸 Capturada el dd/MM/yyyy HH:mm" (concatenado si ya escribiste una nota).
+- **Cobertura en ambos flujos**: Funciona tanto al guardar desde la pantalla Favoritos como al colocar el marcador directamente en el Mapa.
+
+### ¿Dónde está el cambio?
+- **RouteViewModel.kt**: Corrección del formateo de la fecha en el comentario y preservación del timestamp EXIF.
+- **MapScreen.kt**: Captura y transmisión del timestamp EXIF de la foto al guardar desde el mapa.
+- **SavedLocationsScreen.kt**: Nueva línea de fecha en la tarjeta de favoritos (LocationCard).
+
+### Detalles Técnicos
+- La fecha proviene de PhotoMetadata.timestamp (EXIF TAG_DATETIME_ORIGINAL) y se guarda en el campo timestamp de SavedLocation.
+- La protección contra duplicados evita que "📸 Capturada el" se repita al re-editar un favorito.
+## CR-21: Favoritos con Foto usan la Posición de la Foto (2026-07-31)
+
+### ¿Qué cambió para el usuario?
+- **Corrección de un bug importante**: Cuando agregabas una foto a un favorito (desde Favoritos o desde el mapa) y la foto tenía coordenadas GPS grabadas, el favorito se guardaba en la posición actual del teléfono en lugar de en la posición donde fue tomada la foto.
+- **Ahora**: Al adjuntar una foto con GPS, la app detecta automáticamente la posición de la foto y la sugiere para guardar el favorito allí (checkbox "Usar ubicación de la foto").
+- **En Android 10+**: Si la foto proviene de la galería y no se ha concedido aún el permiso de ubicación de medios (ACCESS_MEDIA_LOCATION), la app lo solicita de forma amigable y reintenta automáticamente al concederlo.
+- **Nota**: Si la foto no contiene GPS (por ejemplo, fotos de algunas apps de cámara con ubicación desactivada), se mantiene el comportamiento anterior de usar la posición actual.
+
+### ¿Dónde está el cambio?
+- **ExtractPhotoLocationUseCase.kt**: Extracción de EXIF ahora compatible con Scoped Storage (API 29+) usando MediaStore.setRequireOriginal.
+- **SavedLocationsScreen.kt**: Flujo de galería con permiso ACCESS_MEDIA_LOCATION y reintento automático.
+- **MapScreen.kt**: La foto tomada con la cámara activa automáticamente el uso de la ubicación de la foto.
+
+### Detalles Técnicos
+- Scoped Storage (Android 10+) redacta los metadatos GPS al leer fotos de la galería a menos que se use MediaStore.setRequireOriginal(uri) y se posea ACCESS_MEDIA_LOCATION.
+- El flujo de cámara en MapScreen ahora sincroniza el estado reactivo usePhotoGps = photoGpsLocation != null.
+## CR-20: Extraccion del Analisis por IA a Capa de Dominio (2026-07-22)
+
+### Que cambio para el usuario?
+- **Nada visible.** El boton 4.6.1 [ Analizar con IA ] en la Pantalla 4 (DetailScreen) funciona exactamente igual.
+- El cambio es puramente arquitectonico: la logica de analisis se movio a un UseCase dedicado, mejorando la testeabilidad y el desacoplamiento.
+
+### Que cambio internamente?
+- **AnalyzeRouteAiUseCase**: Nuevo caso de uso en domain/usecase/ que reemplaza al antiguo GroqAiUseCase en ui/.
+- **RouteViewModel**: Ahora expone aiAnalysisState como StateFlow (reactivo) en lugar de mutableStateOf.
+- **DetailScreen**: Actualizada para consumir el StateFlow con collectAsStateWithLifecycle().
+
+### Detalles Tecnicos
+- El UseCase construye el prompt de telemetria, llama a la API de Groq (Llama 3.3) y retorna Result<String>.
+- ApiKeyExpiredException se maneja internamente y se propaga como Result.failure.
+## CR-19: Eliminación de Barra Duplicada en Pantalla de Experiencia (2026-07-22)
+
+### ¿Qué cambió para el usuario?
+- **Una sola barra inferior**: Antes, la Pantalla 5 (ExperienceMapScreen) mostraba dos filas de botones: la barra inferior 5.2 y una fila contextual duplicada con los mismos controles (Compartir, Exportar, GPS). Ahora solo existe la barra 5.2 con todos los controles integrados.
+- **Sin cambios en funcionalidad**: Compartir, Exportar y el indicador GPS siguen funcionando exactamente igual, ahora desde la barra 5.2 unificada.
+
+### ¿Dónde está el cambio?
+- **MainActivity.kt**: Se eliminó la fila contextual que se superponía en ExperienceMapScreen.
+- **ExperienceMapScreen.kt**: Solo se actualizaron los colores de los botones para usar las constantes del sistema (sin cambio visual).
+
+### Detalles Técnicos
+- La causa raíz era la sub-capa BETA del Scaffold en MainActivity.kt, que inyectaba botones redundantes al detectar currentRoute == NavRoutes.EXPERIENCE_MAP.
+- ShareExperienceUseCase se mantiene intacto (ya maneja correctamente fotos adjuntas vía FileProvider).
 
 ## CR-10: Eliminación de Botón Directo de Borrado en HistoryScreen (Julio 2026)
 
@@ -375,3 +545,19 @@ La app copia temporalmente el archivo de la foto a su propia area de almacenamie
 - **Compartir 📤**: Abre el selector de apps con la ruta actual y sus fotos adjuntas.
 - **Exportar 💾**: Guarda la ruta completa como archivo ZIP/GPX en el almacenamiento local.
 - **GPS 🟢**: Muestra la precisión actual de la señal satelital en tiempo real.
+
+## CR-21: Pulido Visual de Barra 5.2 y Sincronización de Fotos al Compartir (2026-07-22)
+
+### ¿Qué cambió para el usuario?
+- **Barra inferior más elegante**: La sub-barra 5.2 ahora tiene fondo oscuro (0xFF121212) con íconos y texto en blanco, mejorando el contraste y la legibilidad sobre el mapa OpenStreetMap.
+- **Indicador GPS satelital**: Cambió a color gris claro (0xFFB0BEC5) para integrarse mejor con el nuevo fondo oscuro.
+- **Fotos siempre adjuntas al compartir**: Si la galería de fotos tarda en cargar, el sistema espera hasta 3 segundos para que las imágenes estén disponibles antes de lanzar el Intent de compartir.
+
+### ¿Dónde está el cambio?
+- **ExperienceMapScreen.kt**: Fondo oscuro de barra, íconos y textos blancos, GPS gris.
+- **RouteViewModel.kt**: Guardia temporal con withTimeoutOrNull(3000L) en shareExperience().
+
+### Detalles Técnicos
+- El fondo oscuro se aplica via color = Color(0xFF121212) y 	onalElevation = 6.dp en el Surface de la barra 5.2.
+- La guardia usa photoPathsForCurrentRoute.first { it.isNotEmpty() } dentro de withTimeoutOrNull(3000L) para garantizar la disponibilidad de fotos.
+- ShareExperienceUseCase no fue modificado; ya maneja correctamente los adjuntos vía FileProvider.

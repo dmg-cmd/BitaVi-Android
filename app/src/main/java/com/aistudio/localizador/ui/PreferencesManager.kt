@@ -13,8 +13,6 @@ class PreferencesManager(context: Context) {
     fun isBiometricEnabled(): Boolean = prefs.getBoolean("biometric_enabled", false)
     fun setBiometricEnabled(enabled: Boolean) { prefs.edit { putBoolean("biometric_enabled", enabled) } }
 
-    fun isAirplaneMode(): Boolean = prefs.getBoolean("airplane_mode", false)
-    fun setAirplaneMode(enabled: Boolean) { prefs.edit { putBoolean("airplane_mode", enabled) } }
 
     fun isAutoMode(): Boolean = prefs.getBoolean("auto_mode", false)
     fun setAutoMode(enabled: Boolean) { prefs.edit { putBoolean("auto_mode", enabled) } }

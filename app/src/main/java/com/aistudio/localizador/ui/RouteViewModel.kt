@@ -17,6 +17,9 @@ import com.aistudio.localizador.data.model.Route
 import com.aistudio.localizador.data.model.SavedLocation
 import com.aistudio.localizador.data.model.Waypoint
 import com.aistudio.localizador.data.repository.RouteRepository
+import com.aistudio.localizador.domain.usecase.AnalyzeRouteAiUseCase
+import com.aistudio.localizador.domain.usecase.ApiKeyExpiredException
+import com.aistudio.localizador.domain.usecase.CalculateRouteMetricsUseCase
 import com.aistudio.localizador.domain.usecase.ExtractPhotoLocationUseCase
 import com.aistudio.localizador.util.AppConstants
 import com.aistudio.localizador.domain.usecase.RouteExportUseCase
@@ -29,6 +32,8 @@ import com.aistudio.localizador.domain.usecase.DayGroupUiModel
 import com.aistudio.localizador.domain.usecase.CountryFavoritesGroup
 import com.aistudio.localizador.location.ActivityMode
 import com.aistudio.localizador.location.LocationService
+import com.aistudio.localizador.location.manager.KineticProfile
+import com.aistudio.localizador.model.RouteMetricsResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
@@ -42,9 +47,12 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -86,7 +94,7 @@ class RouteViewModel @Inject constructor(
     private val geocoderUseCase: GeocoderUseCase,
     private val photoManager: PhotoManager,
     private val extractPhotoLocationUseCase: ExtractPhotoLocationUseCase,
-    private val groqAiUseCase: GroqAiUseCase,
+    private val analyzeRouteAiUseCase: AnalyzeRouteAiUseCase,
     private val geminiAiUseCase: GeminiAiUseCase,
     private val routeExportUseCase: RouteExportUseCase,
     private val backupUseCase: BackupUseCase,
@@ -97,7 +105,8 @@ class RouteViewModel @Inject constructor(
     private val groupFavoritesByLocationUseCase: GroupFavoritesByLocationUseCase,
     private val groupRoutesByDateUseCase: GroupRoutesByDateUseCase,
     private val locationServiceManager: LocationServiceManager,
-    private val shareExperienceUseCase: ShareExperienceUseCase
+    private val shareExperienceUseCase: ShareExperienceUseCase,
+    private val calculateRouteMetricsUseCase: CalculateRouteMetricsUseCase
 ) : ViewModel() {
 
     private val _uiEvent = Channel<UiEvent>(Channel.BUFFERED)
@@ -155,8 +164,8 @@ class RouteViewModel @Inject constructor(
         private set
     var geminiApiKey by mutableStateOf<String?>(null)
         private set
-    var aiAnalysisState by mutableStateOf<AiAnalysisState>(AiAnalysisState.Idle)
-        private set
+    private val _aiAnalysisState = MutableStateFlow<AiAnalysisState>(AiAnalysisState.Idle)
+    val aiAnalysisState: StateFlow<AiAnalysisState> = _aiAnalysisState.asStateFlow()
     var favAnalysisState by mutableStateOf<AiAnalysisState>(AiAnalysisState.Idle)
         private set
     var isImporting by mutableStateOf(false)
@@ -173,8 +182,6 @@ class RouteViewModel @Inject constructor(
     var mapStrokeWidth by mutableStateOf(8f)
         private set
     var defaultLongitude by mutableStateOf(-58.3816)
-    var isAirplaneMode by mutableStateOf(false)
-        private set
     var isAutoMode by mutableStateOf(false)
         private set
 
@@ -190,7 +197,6 @@ class RouteViewModel @Inject constructor(
 
     init {
         isAutoMode = prefsManager.isAutoMode()
-        isAirplaneMode = prefsManager.isAirplaneMode()
         _isNearMeEnabled.value = prefsManager.isNearMeEnabled()
         isBiometricEnabled = prefsManager.isBiometricEnabled()
         defaultLatitude = prefsManager.getDefaultLatitude()
@@ -220,11 +226,6 @@ class RouteViewModel @Inject constructor(
     fun toggleBiometric(enabled: Boolean) {
         isBiometricEnabled = enabled
         prefsManager.setBiometricEnabled(enabled)
-    }
-
-    fun toggleAirplaneMode() {
-        isAirplaneMode = !isAirplaneMode
-        prefsManager.setAirplaneMode(isAirplaneMode)
     }
 
     fun toggleAutoMode() {
@@ -312,10 +313,12 @@ class RouteViewModel @Inject constructor(
 
     fun selectRouteForDetail(routeId: Int) {
         _selectedDetailRouteId.value = routeId
+        _tramoRange.value = null
     }
 
     fun prepareWaypointCreation(routeId: Int) {
         _selectedDetailRouteId.value = routeId
+        _tramoRange.value = null
     }
 
     fun selectFavoriteForFocus(id: Int) { _selectedFavoriteId.value = id }
@@ -328,6 +331,7 @@ class RouteViewModel @Inject constructor(
     val activeRouteIdLive: StateFlow<Int?> = LocationService.currentRouteId
     val latestLocationLive: StateFlow<Location?> = LocationService.latestLocation
     val currentActivityMode: StateFlow<ActivityMode> = LocationService.currentActivityMode
+    val kineticProfile: StateFlow<KineticProfile> = LocationService.kineticProfile
 
     // GPS accuracy derived from latest location
     val gpsAccuracy: StateFlow<String> = LocationService.latestLocation
@@ -386,11 +390,36 @@ class RouteViewModel @Inject constructor(
             initialValue = emptyList()
         )
 
+    // ─── Analytics: metrics for selected tramo (CR-29) ──────────────
+    private val _tramoRange = MutableStateFlow<Pair<Int, Int>?>(null)
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val tramoMetrics: StateFlow<RouteMetricsResult?> = _tramoRange
+        .flatMapLatest { range ->
+            val points = selectedDetailPoints.value
+            if (range == null || range.second - range.first < 1 || points.isEmpty() ||
+                range.first < 0 || range.second > points.lastIndex
+            ) {
+                flowOf(null)
+            } else {
+                flow {
+                    emit(calculateRouteMetricsUseCase.execute(points.slice(range.first..range.second)))
+                }.flowOn(Dispatchers.Default)
+            }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    fun updateTramoRange(start: Int, end: Int) {
+        if (start < 0 || end < start) return
+        _tramoRange.value = start to end
+    }
+
     // ─── ExperienceMap: snapshot, no live feed ──────────────────────
     private val _experiencePoints = MutableStateFlow<List<LocationPoint>>(emptyList())
     val experiencePoints: StateFlow<List<LocationPoint>> = _experiencePoints.asStateFlow()
 
     fun prepareExperience(routeId: Int) {
+        _selectedDetailRouteId.value = routeId
         viewModelScope.launch {
             val points = repository.getLocationPointsSync(routeId)
             _experiencePoints.value = points
@@ -427,15 +456,20 @@ class RouteViewModel @Inject constructor(
 
     fun saveSpecificLocation(name: String, address: String, latitude: Double, longitude: Double, comment: String = "", author: String = "", photoPath: String? = null, phoneNumber: String = "", email: String = "", isContact: Boolean = false, color: String = "#FFD700", photoTimestamp: Long? = null) {
         viewModelScope.launch(Dispatchers.IO) {
+            val finalTimestamp = photoTimestamp ?: System.currentTimeMillis()
             val finalComment = if (photoPath != null) {
-                val datePart = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(Date())
-                val meta = "📸 Capturada el "
-                if (comment.isBlank()) meta else "\n\n"
+                val dateText = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
+                    .format(Date(finalTimestamp))
+                when {
+                    comment.isBlank() -> "📸 Capturada el $dateText"
+                    comment.contains("📸 Capturada el") -> comment
+                    else -> "$comment\n\n📸 Capturada el $dateText"
+                }
             } else comment
             val details = geocoderUseCase.fetchLocationDetails(latitude, longitude)
             val country = details.second.ifBlank { "Desconocido" }
             val city = details.third.ifBlank { "Desconocida" }
-            repository.addSavedLocation(name, address, latitude, longitude, comment = finalComment, author, photoPath, phoneNumber, email, isContact, country, city, color, timestamp = photoTimestamp ?: System.currentTimeMillis())
+            repository.addSavedLocation(name, address, latitude, longitude, comment = finalComment, author, photoPath, phoneNumber, email, isContact, country, city, color, timestamp = finalTimestamp)
         }
     }
     fun updateSavedLocation(location: SavedLocation) { viewModelScope.launch(Dispatchers.IO) { repository.updateSavedLocation(location) } }
@@ -446,12 +480,17 @@ class RouteViewModel @Inject constructor(
         _savedLocationColorUpdateFlow.tryEmit(Pair(id, color))
     }
 
-    fun refreshLocationDetails(location: SavedLocation) {
+    fun refreshLocationDetails(location: SavedLocation, onResult: (SavedLocation) -> Unit = {}) {
         viewModelScope.launch(Dispatchers.IO) {
             val details = geocoderUseCase.fetchLocationDetails(location.latitude, location.longitude)
             val country = details.second.ifBlank { "Desconocido" }
             val city = details.third.ifBlank { "Desconocida" }
-            repository.updateSavedLocation(location.copy(address = details.first, country = country, city = city))
+            val freshBase = repository.allSavedLocations.first().firstOrNull { it.id == location.id } ?: location
+            val updated = freshBase.copy(address = details.first, country = country, city = city)
+            repository.updateSavedLocation(updated)
+            withContext(Dispatchers.Main) {
+                onResult(updated)
+            }
         }
     }
 
@@ -522,42 +561,30 @@ class RouteViewModel @Inject constructor(
 
     fun analyzeRouteWithAI(routeId: Int) {
         val key = groqApiKey
-        if (key.isNullOrBlank()) { aiAnalysisState = AiAnalysisState.MissingKey; return }
+        if (key.isNullOrBlank()) { _aiAnalysisState.value = AiAnalysisState.MissingKey; return }
         viewModelScope.launch(Dispatchers.IO) {
-            aiAnalysisState = AiAnalysisState.Loading
-            try {
-                val route = repository.getRouteById(routeId)
-                if (route == null) { aiAnalysisState = AiAnalysisState.Error("Sin datos."); return@launch }
-                val waypoints = repository.getWaypointsSync(routeId)
-                val durationMs = if (route.endTime > route.startTime) route.endTime - route.startTime else 0L
-                val result = groqAiUseCase.analyze(
-                    apiKey = key, routeName = route.name,
-                    distanceMeters = route.distanceMeters, maxSpeed = route.maxSpeed,
-                    avgSpeed = route.avgSpeed, durationMs = durationMs, waypointCount = waypoints.size
-                )
-                aiAnalysisState = AiAnalysisState.Success(result)
-            } catch (_: ApiKeyExpiredException) {
-                aiAnalysisState = AiAnalysisState.ExpiredKey
-            } catch (e: retrofit2.HttpException) {
-                if (e.code() == 401) {
-                    aiAnalysisState = AiAnalysisState.ExpiredKey
+            _aiAnalysisState.value = AiAnalysisState.Loading
+            val result = analyzeRouteAiUseCase(key, routeId)
+            if (result.isSuccess) {
+                _aiAnalysisState.value = AiAnalysisState.Success(result.getOrThrow())
+            } else {
+                val error = result.exceptionOrNull()
+                if (error is ApiKeyExpiredException) {
+                    _aiAnalysisState.value = AiAnalysisState.ExpiredKey
                 } else {
-                    aiAnalysisState = AiAnalysisState.Error("Error de servidor: ")
+                    _aiAnalysisState.value = AiAnalysisState.Error(error?.message ?: "Error de conexión.")
                 }
-            } catch (t: Throwable) {
-                t.printStackTrace()
-                aiAnalysisState = AiAnalysisState.Error(t.message ?: "Error de conexión.")
             }
         }
     }
 
     fun updateApiKey(newKey: String) {
         groqApiKey = newKey
-        aiAnalysisState = AiAnalysisState.Idle
+        _aiAnalysisState.value = AiAnalysisState.Idle
     }
 
     fun resetAiState() {
-        aiAnalysisState = AiAnalysisState.Idle
+        _aiAnalysisState.value = AiAnalysisState.Idle
     }
 
     fun analyzeFavoriteWithGemini(favoriteId: Int) {
@@ -669,9 +696,14 @@ class RouteViewModel @Inject constructor(
     }
 
     fun shareExperience(context: Context, routeId: Int, photoPaths: List<String>) {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             val route = repository.getRouteById(routeId)
-            val chooserIntent = shareExperienceUseCase(context, route, photoPaths)
+            var pathsToShare = photoPaths
+            if (pathsToShare.isEmpty()) {
+                val waypoints = repository.getWaypointsSync(routeId)
+                pathsToShare = waypoints.mapNotNull { it.photoPath?.takeIf(String::isNotBlank) }
+            }
+            val chooserIntent = shareExperienceUseCase(context, route, pathsToShare)
             _shareIntentTrigger.emit(chooserIntent)
         }
     }

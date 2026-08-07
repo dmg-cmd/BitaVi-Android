@@ -22,6 +22,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import com.aistudio.localizador.data.model.LocationPoint
 import com.aistudio.localizador.ui.RouteViewModel
 import com.github.mikephil.charting.charts.LineChart
 import com.github.mikephil.charting.components.LimitLine
@@ -33,8 +34,11 @@ import com.github.mikephil.charting.formatter.IndexAxisValueFormatter
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, kotlinx.coroutines.FlowPreview::class)
 @Composable
 fun RouteAnalyticsScreen(
     viewModel: RouteViewModel,
@@ -42,6 +46,7 @@ fun RouteAnalyticsScreen(
 ) {
     val route by viewModel.selectedDetailRoute.collectAsState()
     val points by viewModel.selectedDetailPoints.collectAsState()
+    val tramoMetrics by viewModel.tramoMetrics.collectAsState()
 
     val lineColor = when (route?.activityMode) {
         "WALKING" -> "#4CAF50".toColorInt()
@@ -56,21 +61,18 @@ fun RouteAnalyticsScreen(
     LaunchedEffect(points) {
         val idx = (points.size - 1).coerceAtLeast(0).toFloat()
         sliderRange = 0f..idx
+        snapshotFlow { sliderRange.start.toInt() to sliderRange.endInclusive.toInt() }
+            .distinctUntilChanged()
+            .debounce(150)
+            .collectLatest { (start, end) -> viewModel.updateTramoRange(start, end) }
     }
 
     val rStart = sliderRange.start.toInt().coerceIn(0, points.lastIndex.coerceAtLeast(0))
     val rEnd = sliderRange.endInclusive.toInt().coerceIn(0, points.lastIndex.coerceAtLeast(0))
-    val tramoPoints = if (points.isNotEmpty() && rStart <= rEnd) points.slice(rStart..rEnd) else emptyList()
 
-    val startTs = if (points.isNotEmpty()) points.minOf { it.timestamp } else 0L
-    val elapsedLabels = if (points.isNotEmpty()) {
-        points.map { pt ->
-            val sec = (pt.timestamp - startTs) / 1000
-            val m = sec / 60
-            val s = sec % 60
-            String.format(Locale.US, "%02d:%02d", m, s)
-        }
-    } else emptyList()
+    val elevationSeries = remember(points) { points.map { it.altitude.toFloat() } }
+    val speedSeries = remember(points) { points.map { it.speed * 3.6f } }
+    val timeLabels = remember(points) { buildElapsedLabels(points) }
 
     Column(modifier = modifier.fillMaxSize()) {
         if (points.size < 3) {
@@ -96,7 +98,7 @@ fun RouteAnalyticsScreen(
                         val inicio = if (route != null) sdf.format(Date(route!!.startTime)) else "--:--"
                         append(inicio)
                         append("  \u2022  ")
-                        append(elapsedLabels.lastOrNull() ?: "00:00")
+                        append(timeLabels.lastOrNull() ?: "00:00")
                         append("  \u2022  ")
                         append(points.size)
                         append(" pts")
@@ -130,8 +132,8 @@ fun RouteAnalyticsScreen(
                         Text("Altura (m) vs Tiempo transcurrido", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(Modifier.height(8.dp))
                         AnalyticsChart(
-                            data = points.map { it.altitude.toFloat() },
-                            labels = elapsedLabels,
+                            data = elevationSeries,
+                            labels = timeLabels,
                             color = lineColor,
                             rangeStart = sliderRange.start,
                             rangeEnd = sliderRange.endInclusive,
@@ -156,8 +158,8 @@ fun RouteAnalyticsScreen(
                         Text("Velocidad (km/h) vs Tiempo transcurrido", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(Modifier.height(8.dp))
                         AnalyticsChart(
-                            data = points.map { it.speed * 3.6f },
-                            labels = elapsedLabels,
+                            data = speedSeries,
+                            labels = timeLabels,
                             color = lineColor,
                             rangeStart = sliderRange.start,
                             rangeEnd = sliderRange.endInclusive,
@@ -180,12 +182,12 @@ fun RouteAnalyticsScreen(
                         Spacer(Modifier.height(8.dp))
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Text(
-                                text = elapsedLabels.getOrElse(rStart) { "00:00" },
+                                text = timeLabels.getOrElse(rStart) { "00:00" },
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.SemiBold
                             )
                             Text(
-                                text = elapsedLabels.getOrElse(rEnd) { "00:00" },
+                                text = timeLabels.getOrElse(rEnd) { "00:00" },
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.SemiBold
                             )
@@ -214,23 +216,18 @@ fun RouteAnalyticsScreen(
                         }
                         Spacer(Modifier.height(12.dp))
 
-                        if (tramoPoints.size < 2) {
+                        val metrics = tramoMetrics
+                        if (metrics == null || metrics.pointCount < 2) {
                             Text(
                                 "Selecciona un rango con al menos 2 puntos para ver el an\u00e1lisis.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         } else {
-                            val tramoAltDelta = tramoPoints.last().altitude - tramoPoints.first().altitude
-                            val tramoAvgSpeedMs = tramoPoints.filter { it.speed > 0.14f }.let { pts ->
-                                if (pts.isNotEmpty()) pts.map { it.speed }.average() else 0.0
-                            }
-                            val tramoAvgSpeedKmh = tramoAvgSpeedMs * 3.6
-                            val tramoPace = if (tramoAvgSpeedKmh > 0) 60.0 / tramoAvgSpeedKmh else 0.0
                             val tramoActivity = when {
-                                tramoAvgSpeedKmh < 0.5 -> "Detenido"
-                                tramoAvgSpeedKmh < 6.0 -> "Caminata"
-                                tramoAvgSpeedKmh < 20.0 -> "Ciclismo"
+                                metrics.averageSpeedKmh < 0.5 -> "Detenido"
+                                metrics.averageSpeedKmh < 6.0 -> "Caminata"
+                                metrics.averageSpeedKmh < 20.0 -> "Ciclismo"
                                 else -> "Autom\u00f3vil"
                             }
 
@@ -238,25 +235,35 @@ fun RouteAnalyticsScreen(
                                 DetailStatItem(
                                     Icons.Default.Speed,
                                     "Vel. Prom",
-                                    String.format(Locale.US, "%.1f km/h", tramoAvgSpeedKmh),
+                                    String.format(Locale.US, "%.1f km/h", metrics.averageSpeedKmh),
                                     MaterialTheme.colorScheme.primary
                                 )
                                 DetailStatItem(
-                                    Icons.Default.Terrain,
-                                    "Desnivel",
-                                    String.format(Locale.US, "%+.0f m", tramoAltDelta),
-                                    if (tramoAltDelta >= 0) Color(0xFF4CAF50) else Color(0xFFF44336)
+                                    Icons.Default.KeyboardArrowUp,
+                                    "Subida",
+                                    String.format(Locale.US, "+%.0f m", metrics.elevationGainMeters),
+                                    Color(0xFF4CAF50)
                                 )
                             }
                             Spacer(Modifier.height(12.dp))
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                                val paceStr = if (tramoPace > 0) {
-                                    val pMin = tramoPace.toInt()
-                                    val pSec = ((tramoPace - pMin) * 60).toInt()
-                                    String.format(Locale.US, "%d:%02d min/km", pMin, pSec)
-                                } else "\u2014"
+                                DetailStatItem(
+                                    Icons.Default.KeyboardArrowDown,
+                                    "Bajada",
+                                    String.format(Locale.US, "-%.0f m", metrics.elevationLossMeters),
+                                    Color(0xFFF44336)
+                                )
+                                val paceStr = if (metrics.averagePaceMinPerKm == "0:00") {
+                                    "\u2014"
+                                } else {
+                                    "${metrics.averagePaceMinPerKm} min/km"
+                                }
                                 DetailStatItem(Icons.Default.Timer, "Ritmo", paceStr, MaterialTheme.colorScheme.error)
+                            }
+                            Spacer(Modifier.height(12.dp))
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                                 DetailStatItem(Icons.AutoMirrored.Filled.DirectionsWalk, "Modo", tramoActivity, MaterialTheme.colorScheme.tertiary)
+                                DetailStatItem(Icons.Default.Terrain, "Distancia", String.format(Locale.US, "%.2f km", metrics.totalDistanceKm), MaterialTheme.colorScheme.secondary)
                             }
                         }
                     }
@@ -265,6 +272,17 @@ fun RouteAnalyticsScreen(
                 Spacer(Modifier.height(80.dp))
             }
         }
+    }
+}
+
+private fun buildElapsedLabels(points: List<LocationPoint>): List<String> {
+    if (points.isEmpty()) return emptyList()
+    val startTs = points.minOf { it.timestamp }
+    return points.map { pt ->
+        val sec = (pt.timestamp - startTs) / 1000
+        val m = sec / 60
+        val s = sec % 60
+        String.format(Locale.US, "%02d:%02d", m, s)
     }
 }
 
@@ -278,6 +296,19 @@ fun AnalyticsChart(
     rangeEnd: Float = 0f,
 ) {
     val xLabels = labels
+
+    val dataSet = remember(data, color) {
+        LineDataSet(data.mapIndexed { i, v -> Entry(i.toFloat(), v) }, "").apply {
+            this.color = color
+            setDrawValues(false)
+            setDrawCircles(false)
+            lineWidth = 2.5f
+            mode = LineDataSet.Mode.CUBIC_BEZIER
+            setDrawFilled(true)
+            fillColor = color
+            fillAlpha = 30
+        }
+    }
 
     AndroidView(
         modifier = modifier,
@@ -314,17 +345,6 @@ fun AnalyticsChart(
             }
         },
         update = { chart ->
-            val entries = data.mapIndexed { i, v -> Entry(i.toFloat(), v) }
-            val dataSet = LineDataSet(entries, "").apply {
-                this.color = color
-                setDrawValues(false)
-                setDrawCircles(false)
-                lineWidth = 2.5f
-                mode = LineDataSet.Mode.CUBIC_BEZIER
-                setDrawFilled(true)
-                fillColor = color
-                fillAlpha = 30
-            }
             chart.data = LineData(dataSet)
             chart.xAxis.axisMinimum = 0f
             chart.xAxis.axisMaximum = (data.size - 1).coerceAtLeast(0).toFloat()

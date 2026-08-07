@@ -2,6 +2,8 @@ package com.aistudio.localizador.domain.usecase
 
 import android.content.Context
 import android.net.Uri
+import android.os.Build
+import android.provider.MediaStore
 import android.util.Log
 import androidx.exifinterface.media.ExifInterface
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -27,14 +29,20 @@ class ExtractPhotoLocationUseCase @Inject constructor(
         try {
             val tempFile = File(context.cacheDir, "temp_exif_robust_buffer.jpg")
 
-            context.contentResolver.openInputStream(uri)?.use { input ->
+            val sourceUri = resolveOriginalUri(uri)
+
+            context.contentResolver.openInputStream(sourceUri)?.use { input ->
                 tempFile.outputStream().use { output ->
                     input.copyTo(output)
                 }
             }
 
             val exif = ExifInterface(tempFile.absolutePath)
-            val latLong = exif.latLong
+            var latLong = exif.latLong?.takeIf { it[0] != 0.0 || it[1] != 0.0 }
+
+            if (latLong == null) {
+                latLong = readLatLongFromStream(sourceUri)
+            }
 
             val dateString = exif.getAttribute(ExifInterface.TAG_DATETIME_ORIGINAL)
                 ?: exif.getAttribute(ExifInterface.TAG_DATETIME)
@@ -45,7 +53,7 @@ class ExtractPhotoLocationUseCase @Inject constructor(
                 tempFile.delete()
             }
 
-            if (latLong != null && (latLong[0] != 0.0 || latLong[1] != 0.0)) {
+            if (latLong != null) {
                 Log.d("Bitaru_EXIF", "Metadatos extraidos con exito: Lat=, Lon=, TS=")
                 PhotoMetadata(
                     latitude = latLong[0],
@@ -58,6 +66,30 @@ class ExtractPhotoLocationUseCase @Inject constructor(
             }
         } catch (e: Exception) {
             Log.e("Bitaru_EXIF", "Error critico en el pipeline de transcodificacion", e)
+            null
+        }
+    }
+
+    private fun resolveOriginalUri(uri: Uri): Uri {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            try {
+                MediaStore.setRequireOriginal(uri)
+            } catch (e: Exception) {
+                Log.w("Bitaru_EXIF", "setRequireOriginal no disponible, usando URI original", e)
+                uri
+            }
+        } else {
+            uri
+        }
+    }
+
+    private fun readLatLongFromStream(uri: Uri): DoubleArray? {
+        return try {
+            context.contentResolver.openInputStream(uri)?.use { input ->
+                ExifInterface(input).latLong?.takeIf { it[0] != 0.0 || it[1] != 0.0 }
+            }
+        } catch (e: Exception) {
+            Log.e("Bitaru_EXIF", "Fallo lectura EXIF directa desde stream", e)
             null
         }
     }

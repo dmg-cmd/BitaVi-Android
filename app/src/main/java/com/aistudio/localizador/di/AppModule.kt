@@ -3,15 +3,16 @@ package com.aistudio.localizador.di
 import android.content.Context
 import com.aistudio.localizador.data.export.RouteExchanger
 import com.aistudio.localizador.data.repository.RouteRepository
+import com.aistudio.localizador.domain.usecase.CalculateRouteMetricsUseCase
 import com.aistudio.localizador.domain.usecase.ExtractPhotoLocationUseCase
 import com.aistudio.localizador.ui.BackupUseCase
 import com.aistudio.localizador.ui.ContactUseCase
 import com.aistudio.localizador.ui.GeminiAiUseCase
 import com.aistudio.localizador.ui.GeocoderUseCase
-import com.aistudio.localizador.ui.GroqAiUseCase
 import com.aistudio.localizador.ui.LocationServiceManager
 import com.aistudio.localizador.ui.PhotoManager
 import com.aistudio.localizador.ui.PreferencesManager
+import com.aistudio.localizador.domain.usecase.PurgeOrphanPhotosUseCase
 import com.aistudio.localizador.domain.usecase.RouteExportUseCase
 import com.aistudio.localizador.ui.ShareUseCase
 import dagger.Module
@@ -42,10 +43,6 @@ object AppModule {
     fun providePhotoManager(@ApplicationContext context: Context): PhotoManager {
         return PhotoManager(context)
     }
-
-    @Provides
-    @Singleton
-    fun provideGroqAiUseCase(): GroqAiUseCase = GroqAiUseCase()
 
     @Provides
     @Singleton
@@ -97,5 +94,15 @@ object AppModule {
     fun provideLocationServiceManager(@ApplicationContext context: Context): LocationServiceManager {
         return LocationServiceManager(context)
     }
-}
 
+    @Provides
+    @Singleton
+    fun providePurgeOrphanPhotosUseCase(
+        @ApplicationContext context: Context,
+        repository: RouteRepository
+    ): PurgeOrphanPhotosUseCase = PurgeOrphanPhotosUseCase(context, repository)
+
+    @Provides
+    @Singleton
+    fun provideCalculateRouteMetricsUseCase(): CalculateRouteMetricsUseCase = CalculateRouteMetricsUseCase()
+}

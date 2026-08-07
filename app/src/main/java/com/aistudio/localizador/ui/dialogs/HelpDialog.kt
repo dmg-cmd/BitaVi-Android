@@ -49,7 +49,7 @@ fun HelpDialog(onDismiss: () -> Unit) {
                 HelpSection(Icons.Default.Menu, "Menú lateral", "Acceso a todos los ajustes y herramientas de la app.")
                 HelpSection(Icons.Default.VpnKey, "IA Groq (Llama 3)", "Analiza tus rutas automáticamente. Obtén tu clave en: https://console.groq.com/")
                 HelpSection(Icons.Default.Home, "Ubicación de Inicio", "Define dónde se centra el mapa al abrir la app.")
-                HelpSection(Icons.Default.AirplanemodeActive, "Modo Avión", "Permite grabar en vuelos comerciales (hasta 1200 km/h).")
+                HelpSection(Icons.Default.AirplanemodeActive, "Vuelo Automático", "Detección automática: al superar 150 km/h y 100 m de altitud, la app graba sin cortes hasta 1200 km/h.")
                 HelpSection(Icons.Default.FlashOn, "Modo Automático", "Graba solo si detecta movimiento (>25m) y para tras 15 min quieto.")
                 HelpSection(Icons.Default.CloudOff, "Mapas Offline", "Usa solo mapas en memoria para no gastar datos.")
                 HelpSection(Icons.Default.CloudUpload, "Respaldo en Drive", "Crea un ZIP con todo y guárdalo en tu nube. Tip: Puedes sobrescribir el archivo anterior para no llenar el Drive.")
