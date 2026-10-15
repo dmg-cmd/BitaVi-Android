@@ -38,6 +38,7 @@ import com.aistudio.localizador.location.manager.GpsFilterPipeline
 import com.aistudio.localizador.location.manager.ActivityRecognitionManager
 import com.aistudio.localizador.location.manager.ServiceNotificationManager
 import com.aistudio.localizador.location.manager.TrackingSessionManager
+import com.aistudio.localizador.location.manager.DepartureWatcherManager
 import com.aistudio.localizador.location.manager.ActivityModeManager
 import com.aistudio.localizador.location.manager.AutoTrackingManager
 import com.aistudio.localizador.location.manager.ShortStopMarkManager
@@ -75,6 +76,7 @@ class LocationService : Service(), AutoTrackingManager.AutoTrackingListener, Pro
     @Inject
     lateinit var proximityBleManager: ProximityBleManager
     @Inject lateinit var shortStopMarkManager: ShortStopMarkManager
+    @Inject lateinit var departureWatcherManager: DepartureWatcherManager
     private lateinit var sharedPrefs: SharedPreferences
     private var locationHandlerThread: HandlerThread? = null
     private var wakeLock: PowerManager.WakeLock? = null
@@ -149,12 +151,15 @@ class LocationService : Service(), AutoTrackingManager.AutoTrackingListener, Pro
         const val ACTION_START_PASSIVE = "ACTION_START_PASSIVE"
         const val ACTION_SHUTDOWN = "ACTION_SHUTDOWN"
         const val ACTION_UPDATE_SETTINGS = "ACTION_UPDATE_SETTINGS"
+        const val ACTION_UPDATE_AUTO_MODE = "ACTION_UPDATE_AUTO_MODE"
+        const val ACTION_START_FROM_DEPARTURE = "ACTION_START_FROM_DEPARTURE"
 
         // Claves para Intent
         const val EXTRA_ROUTE_NAME = "EXTRA_ROUTE_NAME"
         const val EXTRA_ROUTE_ID = "EXTRA_ROUTE_ID"
         const val EXTRA_UPDATE_INTERVAL = "EXTRA_UPDATE_INTERVAL"
         const val EXTRA_UPDATE_DISTANCE = "EXTRA_UPDATE_DISTANCE"
+        const val EXTRA_AUTO_MODE_ENABLED = "EXTRA_AUTO_MODE_ENABLED"
 
         // Última actividad conocida del usuario (toques en pantalla, screen on)
         @Volatile
@@ -292,7 +297,15 @@ class LocationService : Service(), AutoTrackingManager.AutoTrackingListener, Pro
                     stopTracking()
                 }
                 ACTION_UPDATE_SETTINGS -> {
-                    // No hace falta lógica especial, solo procesar la siguiente ubicación con los nuevos flags de SharedPreferences
+                    val isAutoModeActive = sharedPrefs.getBoolean("auto_mode", false)
+                    handleUpdateAutoMode(isAutoModeActive)
+                }
+                ACTION_UPDATE_AUTO_MODE -> {
+                    val isEnabled = intent.getBooleanExtra(EXTRA_AUTO_MODE_ENABLED, sharedPrefs.getBoolean("auto_mode", false))
+                    handleUpdateAutoMode(isEnabled)
+                }
+                ACTION_START_FROM_DEPARTURE -> {
+                    handleDepartureTriggered()
                 }
                 ACTION_AUTO_START_FROM_TRANSITION -> {
                     val detectedActivity = intent.getIntExtra(EXTRA_DETECTED_ACTIVITY, -1)
@@ -308,14 +321,19 @@ class LocationService : Service(), AutoTrackingManager.AutoTrackingListener, Pro
     }
 
     private fun startPassiveTracking() {
-        // Adquirir WakeLock para auto-mode con timeout de seguridad (25h)
-        wakeLock?.let {
-            if (!it.isHeld) it.acquire(25 * 60 * 60 * 1000L)
+        val isAutoModeActive = sharedPrefs.getBoolean("auto_mode", false)
+        if (!isAutoModeActive && !_isTracking.value) {
+            Log.i(TAG, "startPassiveTracking: auto_mode inactivo y no hay grabación. Apagando servicio en limpio (0% batería).")
+            shutdownService()
+            return
         }
 
-        // Al iniciar en modo pasivo con Auto-Mode, nos ponemos en primer plano para que Android no nos mate
-        val isAutoModeActive = sharedPrefs.getBoolean("auto_mode", false)
-        val statusText = if (isAutoModeActive) "Vigilando movimiento... Modo Automático activo." else "Servicio activo en modo pasivo."
+        // En modo pasivo, liberar WakeLock agresivo para permitir reposo profundo (Doze mode) sin penalizaciones
+        if (wakeLock?.isHeld == true) {
+            try { wakeLock?.release() } catch (_: Exception) { }
+        }
+
+        val statusText = if (isAutoModeActive) "Vigilando salidas... Modo Automático activo." else "Servicio activo en modo pasivo."
         val notification = buildNotification(getString(R.string.notification_service_title), statusText)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
@@ -323,14 +341,24 @@ class LocationService : Service(), AutoTrackingManager.AutoTrackingListener, Pro
             startForeground(NOTIFICATION_ID, notification)
         }
 
-        // Solicitar actualizaciones de baja frecuencia para la UI cuando no se está grabando
-        requestLocationUpdates(5000L, 2f)
+        // Anclar geocerca de salida si tenemos coordenada de reposo
+        _latestLocation.value?.let { loc ->
+            if (isAutoModeActive && !departureWatcherManager.isCurrentlyWatching()) {
+                departureWatcherManager.startWatchingDeparture(loc.latitude, loc.longitude)
+            }
+        }
+
+        // Solicitar actualizaciones pasivas equilibradas (15s, 10m) para no agotar la batería
+        requestLocationUpdates(15000L, 10f)
     }
 
     private fun startTracking(routeName: String, routeId: Int, interval: Long, distance: Float) {
         if (_isTracking.value) return // Ya está en marcha
 
-        // Adquirir WakeLock para asegurar procesamiento de GPS continuo
+        // Detener geocerca de salida activa ya que entramos en seguimiento continuo
+        departureWatcherManager.stopWatching()
+
+        // Adquirir WakeLock para asegurar procesamiento de GPS continuo durante la ruta
         wakeLock?.let {
             if (!it.isHeld) it.acquire(25 * 60 * 60 * 1000L)
         }
@@ -457,7 +485,9 @@ class LocationService : Service(), AutoTrackingManager.AutoTrackingListener, Pro
         lastComputedSpeedMps = if (lastValidLocation != null) {
             val dist = lastValidLocation!!.distanceTo(anchoredLocation)
             val time = location.time - lastValidLocation!!.time
-            if (time > 0) dist / (time / 1000f) else 0f
+            if (time > 0) dist / (time / 1000f) else if (location.hasSpeed()) location.speed else 0f
+        } else if (location.hasSpeed() && location.speed > 0f) {
+            location.speed
         } else 0f
 
         // Actualizar lastRealMovementTime solo cuando hay velocidad real (Módulo 3C)
@@ -501,6 +531,13 @@ class LocationService : Service(), AutoTrackingManager.AutoTrackingListener, Pro
                 isTracking = _isTracking.value,
                 sessionManager = sessionManager
             )
+            // En modo pasivo, mantener lastValidLocation actualizado para poder calcular la velocidad del próximo punto
+            if (anchoredLocation.accuracy <= TOLERANT_ACCURACY) {
+                lastValidLocation = anchoredLocation
+                if (!departureWatcherManager.isCurrentlyWatching() && anchoredLocation.accuracy <= AppConstants.Location.TOLERANT_GPS_ACCURACY_METERS) {
+                    departureWatcherManager.startWatchingDeparture(anchoredLocation.latitude, anchoredLocation.longitude)
+                }
+            }
         }
 
         serviceScope.launch {
@@ -744,24 +781,38 @@ class LocationService : Service(), AutoTrackingManager.AutoTrackingListener, Pro
             val dateStr = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date())
             val newName = "Auto-Ruta $dateStr"
             val newRouteId = repository.startNewRoute(newName)
-            // Insertar los puntos del buffer (backfill) asociados a la nueva ruta
-            if (backfillPoints.isNotEmpty()) {
-                // 🛡️ Copia inmutable defensiva en un solo paso funcional para evitar fugas de memoria
-                val preparedPoints = backfillPoints.map { point ->
+            // Insertar los puntos del buffer (backfill) o la última ubicación actual asociada a la nueva ruta
+            val pointsToInsert = if (backfillPoints.isNotEmpty()) {
+                backfillPoints.map { point ->
                     point.copy(
                         routeId = newRouteId,
-                        id = 0 // Forzamos a Room a autogenerar una clave primaria limpia por punto
+                        id = 0
                     )
-                }.toList()
-
-                serviceScope.launch(Dispatchers.IO) {
-                    repository.addLocationPoints(preparedPoints)
                 }
-                // Recalcular distancia inicial si hay puntos en el buffer
+            } else {
+                _latestLocation.value?.let { loc ->
+                    listOf(
+                        LocationPoint(
+                            id = 0,
+                            routeId = newRouteId,
+                            latitude = loc.latitude,
+                            longitude = loc.longitude,
+                            speed = loc.speed,
+                            altitude = loc.altitude,
+                            timestamp = loc.time
+                        )
+                    )
+                } ?: emptyList()
+            }
+
+            if (pointsToInsert.isNotEmpty()) {
+                serviceScope.launch(Dispatchers.IO) {
+                    repository.addLocationPoints(pointsToInsert)
+                }
                 var initialDistance = 0.0
-                for (i in 0 until preparedPoints.size - 1) {
-                    val p1 = preparedPoints[i]
-                    val p2 = preparedPoints[i+1]
+                for (i in 0 until pointsToInsert.size - 1) {
+                    val p1 = pointsToInsert[i]
+                    val p2 = pointsToInsert[i+1]
                     val results = FloatArray(1)
                     Location.distanceBetween(p1.latitude, p1.longitude, p2.latitude, p2.longitude, results)
                     initialDistance += results[0].toDouble()
@@ -829,9 +880,39 @@ class LocationService : Service(), AutoTrackingManager.AutoTrackingListener, Pro
                 // Purgar alertas y restablecer el modo síncronamente
                 isSignalLost = false
                 _currentActivityMode.value = ActivityMode.STOPPED
-                activityModeManager.reset()
+                // Si el modo automático NO está activo, APAGAR TOTALMENTE EL SERVICIO
+                val isAutoModeActive = sharedPrefs.getBoolean("auto_mode", false)
+                if (!isAutoModeActive) {
+                    Log.i(TAG, "Modo automático inactivo al detener ruta: apagando servicio en limpio (0% batería).")
+                    shutdownService()
+                } else {
+                    // Modo automático activo: vigilar salidas
+                    startPassiveTracking()
+                }
+            }
+        }
+    }
 
-                // No llamamos a stopSelf(). El servicio se mantiene en modo pasivo.
+    private fun handleDepartureTriggered() {
+        val autoModeActive = sharedPrefs.getBoolean("auto_mode", false)
+        if (!autoModeActive || _isTracking.value) return
+
+        Log.i(TAG, "¡Salida de perímetro confirmada por Geofence! Despertando e iniciando ruta automática.")
+        departureWatcherManager.stopWatching()
+        startAutoNewRoute()
+    }
+
+    private fun handleUpdateAutoMode(enabled: Boolean) {
+        Log.d(TAG, "handleUpdateAutoMode recibido: enabled=$enabled (isTracking=${_isTracking.value})")
+        if (!enabled) {
+            departureWatcherManager.stopWatching()
+            activityRecognitionManager?.stopTrackingTransitions()
+            if (!_isTracking.value) {
+                shutdownService()
+            }
+        } else {
+            activityRecognitionManager?.startTrackingTransitions()
+            if (!_isTracking.value) {
                 startPassiveTracking()
             }
         }
@@ -847,10 +928,12 @@ class LocationService : Service(), AutoTrackingManager.AutoTrackingListener, Pro
     }
 
     private fun shutdownService() {
-        Log.d(TAG, "Iniciando apagado total del servicio.")
+        Log.d(TAG, "Iniciando apagado total del servicio (0% RAM / 0% batería).")
         fusedLocationClient.removeLocationUpdates(locationCallback)
         timerJob?.cancel()
+        watchdogJob?.cancel()
         activityRecognitionManager?.stopTrackingTransitions()
+        departureWatcherManager.stopWatching()
         if (wakeLock?.isHeld == true) {
             try { wakeLock?.release() } catch (_: Exception) { }
         }

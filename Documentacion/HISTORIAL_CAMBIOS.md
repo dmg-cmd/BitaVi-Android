@@ -1,3 +1,243 @@
+## [2026-10-14] Fotos y Ubicación: Corrección de Carrera NullPointer y Guardado Infalible de Coordenadas
+
+### Logro
+Se detecta y soluciona la falla reportada por el usuario donde al presionar "Guardar" una foto con coordenadas en Favoritos la acción era ignorada o provocaba un fallo silencioso en segundo plano. Se corrigió una condición de carrera asíncrona (`NullPointerException` en `SavedLocationsScreen.kt:136`), la inversión de lectura de streams EXIF y la validación de nombre vacío, permitiendo ahora guardar ubicaciones con fotos con o sin nombre escrito, generando un nombre táctico automático (`"Foto dd/MM HH:mm"`).
+
+### Detalles Técnicos
+- **SavedLocationsScreen (`ui.screens`):**
+  - **Eliminación de NullPointerException:** Se extrae el URI objetivo en una referencia inmutable local antes de limpiar el estado de solicitud de permisos `pendingPhotoUri = null`.
+  - **Tolerancia a Permisos Denegados:** Si `ACCESS_MEDIA_LOCATION` es denegado o restringido en Android 10+, la foto del usuario ya no se descarta; se procesa el almacenamiento interno y la extracción de metadatos de forma segura.
+  - **Orden de Extracción EXIF:** Se ejecuta `extractLocationFromPhoto(targetUri)` antes de `saveImageToInternalStorage(targetUri)`, evitando que el stream de lectura de la galería sea consumido previamente.
+  - **Guardado Infalible:** Si el usuario no escribe un nombre manual, se asigna automáticamente `"Foto dd/MM HH:mm"` o la primera línea de la dirección encontrada, eliminando la condición bloqueante `if (newName.isNotBlank())`.
+  - **Feedback Visual:** Inclusión de confirmación `Toast.makeText("Ubicación guardada con éxito")`.
+- **MapScreen (`ui.screens`):**
+  - Aplicación del mismo blindaje defensivo para la selección de fotos y extracción de coordenadas de waypoints y favoritos desde el mapa.
+- **Auditoría de Calidad:**
+  - `./gradlew testDebugUnitTest`: 100% de tests unitarios en verde.
+  - `./gradlew assembleDebug`: Compilación exitosa e instalación en Google Pixel 9 Pro XL (`Success`, PID 13555).
+
+### Archivos Modificados
+- `app/src/main/java/com/aistudio/localizador/ui/screens/SavedLocationsScreen.kt`
+- `app/src/main/java/com/aistudio/localizador/ui/screens/MapScreen.kt`
+
+### Archivos Respaldados
+- `RESPALDO_ANTERIOR/20261014_SavedLocationsScreen_pre_fix_foto.kt`
+- `RESPALDO_ANTERIOR/20261014_MapScreen_pre_fix_foto.kt`
+
+## [2026-10-14] Arquitectura UI: Modularización Incremental y Desacoplada de MainActivity.kt
+
+### Logro
+Se completa con éxito la modularización táctica de `MainActivity.kt` (reducción drástica de 1.115 a 181 líneas, -83.7% de complejidad ciclomática) encapsulando contratos de permisos, biometría cifrada y el andamiaje composable en módulos satélite independientes en el paquete `com.aistudio.localizador.ui.container`. Se mantiene 100% la compatibilidad hacia atrás, contratos públicos y la suite completa de pruebas unitarias en verde sin regresiones ni alertas.
+
+### Detalles Técnicos
+- **ActivityContractsCoordinator (`ui.container`):**
+  - Encapsula el registro a nivel de Activity de `RequestPermission` para `ACCESS_FINE_LOCATION`, `ACCESS_BACKGROUND_LOCATION` y `ACTIVITY_RECOGNITION`.
+  - Orquesta la solicitud escalonada de permisos con diálogo explicativo (rationale Google Play) para ubicación en segundo plano.
+- **BiometricAuthHandler (`ui.container`):**
+  - Encapsula la orquestación de `BiometricPrompt` nativo (`authenticateSimple`), la inicialización resiliente de `EncryptedSharedPreferences` (con auto-recuperación ante llaves corruptas en el Keystore), la persistencia segura de la clave Groq y la frase de paso de la DB SQLCipher.
+- **MainScaffoldContainer (`ui.container`):**
+  - Desacopla la vista raíz composable conteniendo el `ModalNavigationDrawer`, cabecera táctica, diálogos modales (`ApiKeyDialog`, `DeleteAllConfirmDialog`, `LocationDialog`, `HelpDialog`), la barra inferior trifásica unificada (`Scaffold.bottomBar`) y el grafo de pantallas `NavHost`.
+- **MainActivity (`com.aistudio.localizador`):**
+  - Reducida a orquestador reactivo de ciclo de vida y anfitrión Compose (181 líneas).
+  - Conserva métodos de puente (`findActivity`, `authenticateSimple`, `Greeting`) para cero impacto en tests y componentes existentes.
+- **Auditoría de Calidad:**
+  - `gradle-compiler-qa`: `./gradlew testDebugUnitTest` y `./gradlew assembleDebug` en 100% BUILD SUCCESSFUL.
+
+### Archivos Creados
+- `app/src/main/java/com/aistudio/localizador/ui/container/ActivityContractsCoordinator.kt`
+- `app/src/main/java/com/aistudio/localizador/ui/container/BiometricAuthHandler.kt`
+- `app/src/main/java/com/aistudio/localizador/ui/container/MainScaffoldContainer.kt`
+
+### Archivos Modificados
+- `app/src/main/java/com/aistudio/localizador/MainActivity.kt`
+
+### Archivos Respaldados
+- `RESPALDO_ANTERIOR/20261014_MainActivity_pre_modularizacion.kt`
+
+## [2026-10-14] Telemetría y Eficiencia: Módulo Autónomo Detector de Salidas (Geofence Low-Power) y Cero Consumo
+
+### Logro
+Se resuelve de raíz la falla donde el modo automático se dormía o dejaba de detectar salidas tras reposo prolongado con pantalla apagada en Android 12+/14+. Se implementa el módulo satélite desacoplado `DepartureWatcherManager` basado en el coprocesador de hardware del módem (`GeofencingClient` con `GEOFENCE_TRANSITION_EXIT`), permitiendo despertar el servicio con privilegios de excepción desde segundo plano sin sufrir suspensiones por Doze Mode. Se garantiza además una política estricta de apagado absoluto (0% CPU, 0% RAM, 0% batería) cuando el modo automático está desactivado.
+
+### Detalles Técnicos
+- **DepartureWatcherManager (`com.aistudio.localizador.location.manager`):**
+  - Anclaje de geocerca pasiva en el punto de reposo (`radius = 50m`, `responsiveness = 10s`).
+  - Monitoreo por hardware de bajo consumo sin mantener la CPU despierta.
+- **GeofenceDepartureReceiver (`com.aistudio.localizador.location.receiver`):**
+  - `BroadcastReceiver` registrado en el manifiesto que recibe el evento `EXIT` y despierta `LocationService.ACTION_START_FROM_DEPARTURE`.
+- **LocationService (`com.aistudio.localizador.location`):**
+  - En modo pasivo, se libera el WakeLock continuo para permitir entrada a reposo profundo (*Doze safe*).
+  - Si `auto_mode == false` y finaliza o no hay tracking: ejecución inmediata de `shutdownService()` con remoción de notificaciones, desconexión de ubicación y `stopSelf()`.
+  - Integración de `ACTION_UPDATE_AUTO_MODE` para apagar o encender el monitoreo en caliente según el toggle de la interfaz.
+- **AutoTrackingManager (`com.aistudio.localizador.location.manager`):**
+  - Calibración de tolerancia de anclaje inicial para interiores (`accuracy <= TOLERANT_GPS_ACCURACY_METERS` = 45m).
+- **LocationServiceManager & RouteViewModel (`com.aistudio.localizador.ui`):**
+  - Conexión del interruptor `toggleAutoMode()` hacia `LocationServiceManager.updateAutoMode()`.
+- **Pruebas Automatizadas:**
+  - Nueva suite `DepartureWatcherManagerTest` con 3 pruebas unitarias deterministas.
+  - Suite completa ejecutada desde cero con `--rerun-tasks`: `BUILD SUCCESSFUL` en 2m 24s.
+
+### Archivos Modificados
+- `app/src/main/java/com/aistudio/localizador/util/AppConstants.kt`
+- `app/src/main/java/com/aistudio/localizador/location/LocationService.kt`
+- `app/src/main/java/com/aistudio/localizador/location/manager/AutoTrackingManager.kt`
+- `app/src/main/java/com/aistudio/localizador/ui/LocationServiceManager.kt`
+- `app/src/main/java/com/aistudio/localizador/ui/RouteViewModel.kt`
+- `app/src/main/java/com/aistudio/localizador/ui/screens/MapScreen.kt`
+- `app/src/main/AndroidManifest.xml`
+- `app/src/main/java/com/aistudio/localizador/location/manager/DepartureWatcherManager.kt` (Nuevo)
+- `app/src/main/java/com/aistudio/localizador/location/receiver/GeofenceDepartureReceiver.kt` (Nuevo)
+- `app/src/test/java/com/aistudio/localizador/location/manager/DepartureWatcherManagerTest.kt` (Nuevo)
+
+### Archivos Respaldados
+- `RESPALDO_ANTERIOR/20261014_1832_LocationService.kt`
+- `RESPALDO_ANTERIOR/20261014_1832_AutoTrackingManager.kt`
+- `RESPALDO_ANTERIOR/20261014_1832_RouteViewModel.kt`
+- `RESPALDO_ANTERIOR/20261014_1832_LocationServiceManager.kt`
+
+## [2026-09-29] Mapas y Visualización: Corrección de Teselas Satelitales (ArcGIS Z/Y/X)
+
+### Logro
+Se soluciona la distorsión y carga desordenada de fragmentos del mapa satelital. Se adapta la fuente de teselas de osmdroid a la convención nativa de ArcGIS REST API (`Z/Y/X` en lugar del estándar `Z/X/Y`), evitando la inversión de ejes y eliminando la caché corrupta previa.
+
+### Detalles Técnicos
+- **MapTileSourceManager (`com.aistudio.localizador.ui.map`):**
+  - Implementación de `ArcGisTileSource` extendiendo `OnlineTileSourceBase`.
+  - Sobreescritura de `getTileURLString()` para componer la URL con el orden requerido por ArcGIS: `{z}/{y}/{x}`.
+  - Actualización de la clave de caché a `"ArcGisSatellite_V2"` para aislar la descarga en un directorio limpio y descartar los mosaicos viejos invertidos.
+- **Despliegue (`adb`):**
+  - Compilación exitosa con Gradle e instalación en caliente en Google Pixel 9 Pro XL (`48201FDAS001L5`).
+
+### Archivos Modificados
+- `app/src/main/java/com/aistudio/localizador/ui/map/MapTileSourceManager.kt`
+
+### Archivos Respaldados
+- `RESPALDO_ANTERIOR/20260929_1537_MapTileSourceManager.kt`
+
+## [2026-09-29] Identidad y Despliegue: Renombramiento a BiTaVi e Instalación en Dispositivo Real
+
+### Logro
+Actualización de la denominación oficial de la aplicación a **BiTaVi** (**Bi**tácora **Tá**ctica de **Vi**aje). Compilación del paquete APK e instalación inalámbrica verificada en el dispositivo del usuario.
+
+### Detalles Técnicos
+- **Recursos de Cadenas (`strings.xml`):**
+  - `app_name`: "BiTaVi"
+  - `drawer_title_header`: "BiTaVi"
+  - `drawer_subtitle_header`: "Bitácora Táctica de Viaje"
+  - `notification_service_title`: "BiTaVi activo"
+- **Entorno de Compilación (`local.properties`):**
+  - Normalización de `sdk.dir` a ruta absoluta de Windows (`C\:\\Users\\delmi\\AppData\\Local\\Android\\Sdk`).
+- **Despliegue (`adb`):**
+  - Desinstalación limpia del paquete anterior en conflicto de firma (`com.aistudio.localizador.vqtspk`).
+  - Instalación exitosa de `app-debug.apk` e inicio del proceso con PID activo en Google Pixel 9 Pro XL (`48201FDAS001L5`).
+
+### Archivos Modificados
+- `app/src/main/res/values/strings.xml`
+- `local.properties`
+
+### Archivos Respaldados
+- `RESPALDO_ANTERIOR/20260929_1523_strings.xml`
+- `RESPALDO_ANTERIOR/20260929_1523_local.properties`
+
+## [2026-09-29] Telemetría y Modularidad: Corrección de Auto-Arranque por Alejamiento y Creación de scope-boundary-auditor
+
+### Logro
+Se soluciona la falla donde el modo automático no arrancaba al alejarse de un punto de reposo. Se implementa un doble mecanismo de disparo en `AutoTrackingManager` (alejamiento radial geográfico >= 25 metros calculado con Haversine JVM-Safe y velocidad sostenida), se habilita el cálculo continuo de velocidad en modo pasivo en `LocationService`, y se incorpora el subagente `scope-boundary-auditor` para evitar alteraciones cruzadas entre módulos.
+
+### Detalles Técnicos
+- **AutoTrackingManager (`com.aistudio.localizador.location.manager`):**
+  - Implementación del cálculo de distancia geográfica pura mediante la fórmula de Haversine (`calculateDistanceMeters`), 100% JVM-Safe sin acoplamiento a servicios o stubs de Android.
+  - Incorporación del disparador inmediato por alejamiento físico: si la distancia entre la ubicación actual y el anclaje de detención (`lastStopLocation`) es `>= MOVEMENT_TRIGGER_THRESHOLD_METERS` (25 m) con precisión `<= MAX_GPS_ACCURACY_METERS` (20 m), se inicia la nueva ruta inmediatamente.
+  - Mantenimiento del disparador secundario por velocidad sostenida (`speedKmh > AUTO_START_MIN_SPEED_KMH` durante 10 segundos).
+- **LocationService (`com.aistudio.localizador.location`):**
+  - Habilitación del cálculo de velocidad en modo pasivo: ahora `lastValidLocation` se actualiza durante el seguimiento pasivo, evitando que `lastComputedSpeedMps` quede fijado en 0.0 m/s.
+  - Inclusión de fallback a `location.speed` cuando el proveedor GPS satelital lo provea de forma nativa.
+- **Auditoría de Alcance (`scope-boundary-auditor`):**
+  - Creación y registro del séptimo subagente especializado en `.agents/AGENTS.md`, `.agents/skills/scope-boundary-auditor/SKILL.md` y `.opencode/skills/scope-boundary-auditor/SKILL.md`.
+  - Contención estricta: ninguna pantalla de UI, base de datos ni ViewModel fue alterado en esta corrección.
+- **Pruebas Automatizadas (`AutoTrackingManagerTest`):**
+  - Nueva prueba unitaria: `when distance from stop anchor exceeds threshold trigger immediately`, validando el arranque inmediato al alejarse ~45 metros.
+  - Suite completa de tests superada con `BUILD SUCCESSFUL`.
+
+### Archivos Modificados
+- `app/src/main/java/com/aistudio/localizador/location/manager/AutoTrackingManager.kt`
+- `app/src/main/java/com/aistudio/localizador/location/LocationService.kt`
+- `app/src/test/java/com/aistudio/localizador/location/manager/AutoTrackingManagerTest.kt`
+- `.agents/AGENTS.md`
+- `.agents/skills/scope-boundary-auditor/SKILL.md`
+- `.opencode/skills/scope-boundary-auditor/SKILL.md`
+
+### Archivos Respaldados
+- `RESPALDO_ANTERIOR/20260929_1520_AutoTrackingManager.kt`
+- `RESPALDO_ANTERIOR/20260929_1520_LocationService.kt`
+- `RESPALDO_ANTERIOR/20260929_1520_AutoTrackingManagerTest.kt`
+
+### Verificación
+- `./gradlew testDebugUnitTest`: BUILD SUCCESSFUL (100% de pruebas unitarias superadas, cero fallos).
+
+## [2026-09-27] Telemetría y Persistencia: Consolidación de Paradas Estáticas y Tiempo de Parada
+
+### Logro
+Se resuelve de forma integral la proliferación de rutas de 0 metros cuando el dispositivo permanece en el mismo sitio. Ahora, ante inactividad o sesiones automáticas sin desplazamiento (< 25 m), el sistema detecta si la ruta previa fue en el mismo lugar (< 40 m) y consolida el tiempo extendiendo el `endTime` de la anterior en lugar de crear infinidad de rutas vacías. Además, la entidad se representa explícitamente como "Parada" con su "Tiempo de parada" dedicado tanto en la base de datos como en la interfaz de usuario.
+
+### Detalles Técnicos
+- **RouteDao & Room (`com.aistudio.localizador.data.db`):**
+  - Nuevas consultas SQL: `getLastRoute()`, `getPreviousCompletedRoute(excludeId)`, `getLastPointForRoute(routeId)`, `updateRouteEndTime(routeId, endTime)` y `updateRouteEndTimeAndName(routeId, endTime, name)`.
+- **RouteRepository (`com.aistudio.localizador.data.repository`):**
+  - En `stopActiveRoute()`, si la sesión automática o de parada registra `distanceMeters < 25.0`:
+    - Evalúa la ruta anterior completada: si fue una parada o en las mismas coordenadas geográficas (< 40 metros con `Location.distanceBetween`), extiende el `endTime` de la ruta anterior con `System.currentTimeMillis()` y descarta la entrada duplicada actual.
+    - Si no hay parada previa contigua: renombra la ruta actual como `"Parada [Fecha Hora]"`, fija su `distanceMeters = 0.0` y establece `activityMode = "STOPPED"`.
+- **LocationService (`com.aistudio.localizador.location`):**
+  - En `startAutoNewRoute()`, si no hay puntos en el buffer de backfill, ancla de inmediato la última ubicación satelital fija (`_latestLocation`) como primer `LocationPoint` para asegurar que las paradas tengan coordenadas persistentes en base de datos.
+- **HistoryScreen (`com.aistudio.localizador.ui.screens`):**
+  - Detección de paradas (`isStop`): reemplaza la estadística de "Distancia 0.00 km" por un icono representativo (`Icons.Default.Place` en color ámbar) etiquetado como "Punto Fijo / Parada" y muestra la duración destacada bajo el rótulo **"Tiempo de parada"**.
+- **Estabilidad de Gradle (`gradle.properties`):**
+  - Ajuste adaptativo de memoria a `-Xmx2048m -XX:MaxMetaspaceSize=512m` para evitar intervenciones del OOM Killer del sistema operativo durante tareas pesadas de dexing.
+
+### Archivos Modificados
+- `app/src/main/java/com/aistudio/localizador/data/db/RouteDao.kt`
+- `app/src/main/java/com/aistudio/localizador/data/repository/RouteRepository.kt`
+- `app/src/main/java/com/aistudio/localizador/location/LocationService.kt`
+- `app/src/main/java/com/aistudio/localizador/ui/screens/HistoryScreen.kt`
+- `gradle.properties`
+
+### Archivos Respaldados
+- `RESPALDO_ANTERIOR/20260926_2342_RouteDao.kt`
+- `RESPALDO_ANTERIOR/20260926_2342_RouteRepository.kt`
+- `RESPALDO_ANTERIOR/20260926_2342_LocationService.kt`
+- `RESPALDO_ANTERIOR/20260926_2342_HistoryScreen.kt`
+
+### Verificación
+- `testDebugUnitTest`: BUILD SUCCESSFUL (100% pruebas unitarias superadas).
+- `assembleDebug`: BUILD SUCCESSFUL (APK generado sin errores).
+- `Deploy`: Exitoso vía ADB Wi-Fi en Pixel 9 Pro XL (`komodo`). Desinstalación limpia de versión en conflicto y arranque de `MainActivity` validado.
+
+## [2026-09-26] Infraestructura: Configuración y Creación de Agentes Especializados
+
+### Logro
+Se establecen y configuran en el entorno dinámico y en el repositorio los 5 subagentes especializados recomendados para el Proyecto Localizador, permitiendo una orquestación modular de tareas bajo los estándares tácticos y técnicos del proyecto.
+
+### Detalles Técnicos
+- **Definición Dinámica de Subagentes (`define_subagent`):**
+  - `doc-custodian`: Custodio de bitácoras, respaldos en `RESPALDO_ANTERIOR/`, gestión de tareas y redacción de Walkthroughs.
+  - `telemetry-gps-specialist`: Especialista en `LocationService.kt`, filtrado cinemático, despachos en `Dispatchers.IO` y mitigación de fugas de memoria en `osmdroid` (Anti-OOM).
+  - `compose-ui-tactical`: Especialista en Jetpack Compose, codificación `PANTALLA.BARRA.BOTON` (`ESQUEMA_PANTALLAS.md`), paleta cromática semántica (`Color.kt`) y ergonomía táctica.
+  - `gradle-compiler-qa`: Auditor de compilación real con Gradle, validación de Cero Warnings, depuración de imports y testing automatizado.
+  - `groq-route-analyst`: Especialista en integración analítica de rutas con Groq (Llama 3.3), prompts estructurados y resiliencia offline.
+  - `git-release-guardian`: Especialista en seguridad de repositorios Git/GitHub, prevención de fugas de secretos (.env, keystores, API keys), commits atómicos y generación de Releases.
+- **Estructura Persistente de Skills en Repositorio:**
+  - Creación de `.agents/skills/[doc-custodian, telemetry-gps-specialist, compose-ui-tactical, gradle-compiler-qa, groq-route-analyst, git-release-guardian]/SKILL.md`.
+  - Replicación y sincronización de directivas en `.opencode/skills/` para compatibilidad nativa con OpenCode.
+  - Actualización de `.agents/AGENTS.md` con el catálogo formal de subagentes.
+
+### Archivos Modificados / Creados
+- `.agents/AGENTS.md` (actualizado catálogo con 6 subagentes).
+- `.agents/skills/*/SKILL.md` (6 nuevos skills de agentes).
+- `.opencode/skills/*/SKILL.md` (6 nuevos skills sincronizados).
+- `Documentacion/HISTORIAL_CAMBIOS.md` (actualizado).
+- `Documentacion/DOCUMENTACION.md` (actualizado).
+- `Documentacion/Walkthroughs/walkthrough_20260926_2320_creacion_agentes_especializados.md` (informe de verificación).
+
 ## [2026-08-07] CR-29: CalculateRouteMetricsUseCase — Analitica de Tramos Fuera del UI Thread
 
 ### Logro

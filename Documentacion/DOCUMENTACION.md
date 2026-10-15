@@ -1,3 +1,44 @@
+## Modularización Táctica y Desacoplamiento de MainActivity.kt (2026-10-14)
+
+### ¿Qué cambió para el usuario y la arquitectura?
+- **Estabilidad y Mantenibilidad de la Interfaz:** Se extrajo la complejidad monolítica de `MainActivity.kt` (reduciendo su tamaño de 1.115 a 181 líneas, una reducción del 83.7%).
+- **Gestión Aislada de Permisos y Criptografía:** Los permisos del sistema operativo y los contratos SAF residen ahora en `ActivityContractsCoordinator.kt`, mientras que la biometría y la bóveda de claves están encapsuladas en `BiometricAuthHandler.kt`.
+- **Andamiaje Compose Independiente:** La estructura declarativa (Drawer, diálogos, BottomBar y NavHost) está contenida en `MainScaffoldContainer.kt`, facilitando futuras pruebas de UI y manteniendo intactos todos los flujos tácticos y contratos operativos.
+
+### ¿Dónde está el cambio?
+- `com.aistudio.localizador.ui.container.ActivityContractsCoordinator` (nuevo)
+- `com.aistudio.localizador.ui.container.BiometricAuthHandler` (nuevo)
+- `com.aistudio.localizador.ui.container.MainScaffoldContainer` (nuevo)
+- `com.aistudio.localizador.MainActivity.kt` (modularizado y reducido a orquestador)
+
+## Consolidar Paradas y Tiempo de Parada en Modo Automático (2026-09-27)
+
+### ¿Qué cambió para el usuario?
+- **No más rutas de 0 metros repetitivas:** En modo automático (`auto_mode`), cuando permaneces en un mismo lugar (casa, oficina, estacionamiento o cafetería), el sistema ya no llenará tu historial con decenas de "Auto-Ruta 0.00 km".
+- **Identificación como "Parada":** Si no hubo desplazamiento significativo (< 25 metros), el registro se cataloga automáticamente como una **Parada** con icono de punto fijo (`Place`).
+- **Medición del "Tiempo de parada":** Si permaneces en el mismo lugar y el sistema realiza comprobaciones periódicas, en lugar de crear rutas nuevas acumula el tiempo en la parada existente, mostrando claramente **"Tiempo de parada: HH:mm:ss"** con la duración total de permanencia.
+- **Transición fluida a trayecto:** En cuanto te desplazas más de 25 metros, el sistema inicia automáticamente una nueva ruta normal de movimiento con su distancia en kilómetros y traza completa.
+
+### ¿Dónde está el cambio?
+- `RouteRepository.kt` & `RouteDao.kt`: detección de parada contigua en el mismo radio (< 40m) y fusión de tiempo en `stopActiveRoute()`.
+- `LocationService.kt`: registro del punto de coordenadas inicial para fijar la ubicación de la parada.
+- `HistoryScreen.kt`: visualización táctica en el historial con icono de punto de parada y métrica destacada de tiempo de permanencia.
+
+## Infraestructura: Sistema de Agentes Especializados de Desarrollo (2026-09-26)
+
+### ¿Qué cambió para el usuario / desarrollador?
+- Se configuró e integró un ecosistema de **6 subagentes especializados** para acelerar, ordenar y proteger la calidad técnica del proyecto Localizador:
+  1. `doc-custodian`: automatiza y vigila el cumplimiento de respaldos previos, bitácoras e informes walkthrough.
+  2. `telemetry-gps-specialist`: cuida la estabilidad de `LocationService.kt`, filtrado GPS y prevención de fugas de memoria en osmdroid.
+  3. `compose-ui-tactical`: vigila el estándar táctico de UI (nomenclatura `PANTALLA.BARRA.BOTON` y colores semánticos).
+  4. `gradle-compiler-qa`: valida compilación real y cero warnings.
+  5. `groq-route-analyst`: asegura la calidad de resúmenes de telemetría con Groq (Llama 3.3).
+  6. `git-release-guardian`: audita la exclusión de secretos y credenciales confidenciales, prepara commits limpios y gestiona tags y Releases oficiales en GitHub.
+
+### ¿Dónde está el cambio?
+- `.agents/skills/` y `.opencode/skills/`: carpetas con directivas operativas de cada agente.
+- `.agents/AGENTS.md`: catálogo y reglas operativas de los subagentes.
+
 ## CR-29: Analitica de tramos sin tirones (2026-08-07)
 
 ### Que cambio para el usuario?

@@ -97,4 +97,24 @@ class AutoTrackingManagerTest {
         manager.processMovementSustained(loc, 3f, true, false, sessionManager)
         verify(exactly = 0) { listener.onMovementSustainedTriggered(any()) }
     }
+
+    @Test
+    fun `when distance from stop anchor exceeds threshold trigger immediately`() {
+        val anchorLoc = mockk<Location>(relaxed = true)
+        every { anchorLoc.latitude } returns -34.6037
+        every { anchorLoc.longitude } returns -58.3816
+        every { anchorLoc.accuracy } returns 10f
+        manager.setAutoRestartAnchor(anchorLoc)
+
+        // Punto desplazado ~45 metros
+        val newLoc = mockk<Location>(relaxed = true)
+        every { newLoc.latitude } returns -34.6033
+        every { newLoc.longitude } returns -58.3816
+        every { newLoc.accuracy } returns 12f
+        every { newLoc.time } returns System.currentTimeMillis()
+
+        manager.processMovementSustained(newLoc, 0f, true, false, sessionManager)
+
+        verify(exactly = 1) { listener.onMovementSustainedTriggered(any()) }
+    }
 }

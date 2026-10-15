@@ -31,6 +31,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -105,6 +106,10 @@ fun SavedLocationsScreen(
             usePhotoGps = true
             selectedPhotoTimestamp = metadata.timestamp
             viewModel.fetchPhotoAddress(metadata.latitude, metadata.longitude)
+            if (newName.isBlank()) {
+                val timeStr = SimpleDateFormat("dd/MM HH:mm", Locale.getDefault()).format(Date(metadata.timestamp ?: System.currentTimeMillis()))
+                newName = "Foto $timeStr"
+            }
         } else {
             photoGpsLocation = null
             usePhotoGps = false
@@ -115,9 +120,10 @@ fun SavedLocationsScreen(
     val cameraLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.TakePicture()
     ) { success ->
-        if (success && capturedPhotoUri != null) {
+        val uriToProcess = capturedPhotoUri
+        if (success && uriToProcess != null) {
             scope.launch(Dispatchers.IO) {
-                val metadata = viewModel.extractLocationFromPhoto(capturedPhotoUri!!)
+                val metadata = viewModel.extractLocationFromPhoto(uriToProcess)
                 withContext(Dispatchers.Main) {
                     applyPhotoMetadata(metadata)
                 }
@@ -129,18 +135,19 @@ fun SavedLocationsScreen(
 
     val mediaLocationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
-    ) { isGranted ->
-        if (isGranted && pendingPhotoUri != null) {
+    ) { _ ->
+        val targetUri = pendingPhotoUri
+        pendingPhotoUri = null
+        if (targetUri != null) {
             scope.launch(Dispatchers.IO) {
-                val savedUri = viewModel.saveImageToInternalStorage(pendingPhotoUri!!)
-                val metadata = viewModel.extractLocationFromPhoto(pendingPhotoUri!!)
+                val metadata = viewModel.extractLocationFromPhoto(targetUri)
+                val savedUri = viewModel.saveImageToInternalStorage(targetUri)
                 withContext(Dispatchers.Main) {
-                    capturedPhotoUri = savedUri
+                    capturedPhotoUri = savedUri ?: targetUri
                     applyPhotoMetadata(metadata)
                 }
             }
         }
-        pendingPhotoUri = null
     }
 
     val photoPickerLauncher = rememberLauncherForActivityResult(
@@ -152,10 +159,10 @@ fun SavedLocationsScreen(
             } else true
             if (hasMediaLocation) {
                 scope.launch(Dispatchers.IO) {
-                    val savedUri = viewModel.saveImageToInternalStorage(targetUri)
                     val metadata = viewModel.extractLocationFromPhoto(targetUri)
+                    val savedUri = viewModel.saveImageToInternalStorage(targetUri)
                     withContext(Dispatchers.Main) {
-                        capturedPhotoUri = savedUri
+                        capturedPhotoUri = savedUri ?: targetUri
                         applyPhotoMetadata(metadata)
                     }
                 }
@@ -546,53 +553,61 @@ fun SavedLocationsScreen(
             },
             confirmButton = {
                 Button(onClick = {
-                    if (newName.isNotBlank()) {
-                        // Decidimos qué coordenadas usar
-                        val finalLat: Double
-                        val finalLon: Double
-                        val finalAddress: String
-                        
-                        finalLat = inputLatitude.toDoubleOrNull() ?: 0.0
-                        finalLon = inputLongitude.toDoubleOrNull() ?: 0.0
-                        finalAddress = manualAddress.ifBlank {
-                            if (usePhotoGps) {
-                                viewModel.photoExtractedAddress ?: String.format(Locale.US, "GPS Foto: %.5f, %.5f", finalLat, finalLon)
-                            } else {
-                                viewModel.currentAddress ?: String.format(Locale.US, "GPS: %.5f, %.5f", finalLat, finalLon)
-                            }
+                    val finalName = newName.ifBlank {
+                        if (usePhotoGps) {
+                            val timeStr = SimpleDateFormat("dd/MM HH:mm", Locale.getDefault()).format(Date(selectedPhotoTimestamp ?: System.currentTimeMillis()))
+                            "Foto $timeStr"
+                        } else {
+                            manualAddress.split(",").firstOrNull()?.trim()?.takeIf { it.isNotBlank() } ?: "Lugar guardado"
                         }
-
-                        viewModel.saveSpecificLocation(
-                            name = newName, 
-                            address = finalAddress,
-                            latitude = finalLat,
-                            longitude = finalLon,
-                            comment = comment,
-                            author = author,
-                            photoPath = capturedPhotoUri?.toString(),
-                            phoneNumber = phone,
-                            email = email,
-                            isContact = isContact,
-                            color = selectedColor,
-                            photoTimestamp = selectedPhotoTimestamp
-                        )
-                        showAddDialog = false
-                        newName = ""
-                        author = ""
-                        comment = ""
-                        manualAddress = ""
-                        phone = ""
-                        email = ""
-                        isContact = false
-                        selectedColor = "#FFD700"
-                        capturedPhotoUri = null
-                        photoGpsLocation = null
-                        selectedPhotoTimestamp = null
-                        usePhotoGps = false
-                        inputLatitude = ""
-                        inputLongitude = ""
-                        viewModel.clearCurrentAddress()
                     }
+
+                    // Decidimos qué coordenadas usar
+                    val finalLat: Double
+                    val finalLon: Double
+                    val finalAddress: String
+                    
+                    finalLat = inputLatitude.toDoubleOrNull() ?: 0.0
+                    finalLon = inputLongitude.toDoubleOrNull() ?: 0.0
+                    finalAddress = manualAddress.ifBlank {
+                        if (usePhotoGps) {
+                            viewModel.photoExtractedAddress ?: String.format(Locale.US, "GPS Foto: %.5f, %.5f", finalLat, finalLon)
+                        } else {
+                            viewModel.currentAddress ?: String.format(Locale.US, "GPS: %.5f, %.5f", finalLat, finalLon)
+                        }
+                    }
+
+                    viewModel.saveSpecificLocation(
+                        name = finalName, 
+                        address = finalAddress,
+                        latitude = finalLat,
+                        longitude = finalLon,
+                        comment = comment,
+                        author = author,
+                        photoPath = capturedPhotoUri?.toString(),
+                        phoneNumber = phone,
+                        email = email,
+                        isContact = isContact,
+                        color = selectedColor,
+                        photoTimestamp = selectedPhotoTimestamp
+                    )
+                    Toast.makeText(context, "Ubicación guardada con éxito", Toast.LENGTH_SHORT).show()
+                    showAddDialog = false
+                    newName = ""
+                    author = ""
+                    comment = ""
+                    manualAddress = ""
+                    phone = ""
+                    email = ""
+                    isContact = false
+                    selectedColor = "#FFD700"
+                    capturedPhotoUri = null
+                    photoGpsLocation = null
+                    selectedPhotoTimestamp = null
+                    usePhotoGps = false
+                    inputLatitude = ""
+                    inputLongitude = ""
+                    viewModel.clearCurrentAddress()
                 }) { Text("Guardar") }
             },
             dismissButton = {
@@ -814,6 +829,11 @@ fun LocationCard(
     onFocus: () -> Unit
 ) {
     val context = LocalContext.current
+    val configuration = LocalConfiguration.current
+    val formattedDate = remember(location.timestamp, configuration) {
+        val locale = configuration.locales[0]
+        SimpleDateFormat("dd/MM/yyyy HH:mm", locale).format(Date(location.timestamp))
+    }
     var photoToZoom by remember { mutableStateOf<String?>(null) }
     Card(
         modifier = Modifier
@@ -888,7 +908,7 @@ fun LocationCard(
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        text = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(Date(location.timestamp)),
+                        text = formattedDate,
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

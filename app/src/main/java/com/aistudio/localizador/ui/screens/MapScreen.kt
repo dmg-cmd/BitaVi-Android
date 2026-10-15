@@ -50,6 +50,7 @@ import com.aistudio.localizador.ui.components.FullScreenPhotoDialog
 import com.aistudio.localizador.ui.components.TourOverlay
 import com.aistudio.localizador.ui.components.BrandWatermark
 import com.aistudio.localizador.ui.components.TopBarLocalizador
+import com.aistudio.localizador.ui.components.MapLayersSelectorDialog
 import android.graphics.Canvas
 import android.graphics.Paint
 import com.aistudio.localizador.ui.model.IconCategory
@@ -83,12 +84,13 @@ fun MapScreen(
     val routePoints by viewModel.activeRoutePoints.collectAsState()
     val waypoints by viewModel.activeRouteWaypoints.collectAsState()
     val savedLocations by viewModel.allSavedLocations.collectAsState()
+    val currentMapLayer by viewModel.currentMapLayer.collectAsState()
     val scope = rememberCoroutineScope()
-
 
     var showStartDialog by remember { mutableStateOf(false) }
     var showWaypointDialog by remember { mutableStateOf(false) }
     var showSaveLocationDialog by remember { mutableStateOf(false) }
+    var showLayersDialog by remember { mutableStateOf(false) }
     var showAddressBox by remember { mutableStateOf(false) }
     var newRouteName by remember { mutableStateOf("") }
     var clickedGeoPoint by remember { mutableStateOf<GeoPoint?>(null) }
@@ -124,39 +126,39 @@ fun MapScreen(
     }
     val mediaLocationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
-    ) { isGranted ->
-        if (isGranted && pendingPhotoUri != null) {
+    ) { _ ->
+        val targetUri = pendingPhotoUri
+        pendingPhotoUri = null
+        if (targetUri != null) {
             scope.launch {
-                val internalUri = viewModel.saveImageToInternalStorage(pendingPhotoUri!!)
-                capturedPhotoUri = internalUri
-                val metadata = viewModel.extractLocationFromPhoto(pendingPhotoUri!!)
+                val metadata = viewModel.extractLocationFromPhoto(targetUri)
+                val internalUri = viewModel.saveImageToInternalStorage(targetUri)
+                capturedPhotoUri = internalUri ?: targetUri
                 photoGpsLocation = metadata?.let { Pair(it.latitude, it.longitude) }
                 photoTimestamp = metadata?.timestamp
                 usePhotoGps = photoGpsLocation != null
             }
-            pendingPhotoUri = null
         }
     }
-
 
     val galleryLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.GetContent()
     ) { uri ->
-        uri?.let {
+        uri?.let { targetUri ->
             val hasMediaLocation = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_MEDIA_LOCATION) == PackageManager.PERMISSION_GRANTED
             } else true
             if (hasMediaLocation) {
                 scope.launch {
-                    val internalUri = viewModel.saveImageToInternalStorage(it)
-                    capturedPhotoUri = internalUri
-                    val metadata = viewModel.extractLocationFromPhoto(it)
+                    val metadata = viewModel.extractLocationFromPhoto(targetUri)
+                    val internalUri = viewModel.saveImageToInternalStorage(targetUri)
+                    capturedPhotoUri = internalUri ?: targetUri
                     photoGpsLocation = metadata?.let { Pair(it.latitude, it.longitude) }
                     photoTimestamp = metadata?.timestamp
                     usePhotoGps = photoGpsLocation != null
                 }
             } else {
-                pendingPhotoUri = it
+                pendingPhotoUri = targetUri
                 mediaLocationPermissionLauncher.launch(Manifest.permission.ACCESS_MEDIA_LOCATION)
             }
         }
@@ -166,7 +168,9 @@ fun MapScreen(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
         if (permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true) {
-            viewModel.startPassiveLocationService()
+            if (viewModel.isAutoMode) {
+                viewModel.startPassiveLocationService()
+            }
         }
     }
 
@@ -303,7 +307,7 @@ fun MapScreen(
             modifier = Modifier.fillMaxSize(),
             factory = {
                 mapView.apply {
-                    setTileSource(TileSourceFactory.MAPNIK)
+                    setTileSource(viewModel.mapTileSourceManager.getTileSource(currentMapLayer))
                     setMultiTouchControls(true)
                     setOnTouchListener { v, _ ->
                         v.performClick()
@@ -404,8 +408,13 @@ fun MapScreen(
                     // Sincronizar iconos de ubicación (solo si cambiaron por isTracking)
                     locationOverlay.setPersonIcon(circleIcon)
                     locationOverlay.setDirectionIcon(circleIcon)
-
                     var needsInvalidate = false
+
+                    val targetTileSource = viewModel.mapTileSourceManager.getTileSource(currentMapLayer)
+                    if (view.tileProvider.tileSource != targetTileSource) {
+                        view.setTileSource(targetTileSource)
+                        needsInvalidate = true
+                    }
 
                     // 1. Polyline segmentada por modo de actividad (OPTIMIZADA: diffing incremental)
                     val newSegments = routePoints.toGradientRouteSegments(viewModel.routeColorUseCase)
@@ -612,6 +621,15 @@ fun MapScreen(
                 ) {
                     Icon(Icons.Default.CompassCalibration, contentDescription = "Fijar Norte")
                 }
+            }
+
+            FloatingActionButton(
+                onClick = { showLayersDialog = true },
+                containerColor = Color(0xFF3498DB), // 🔥 Azul Satelital Homologado
+                contentColor = Color.White,
+                elevation = FloatingActionButtonDefaults.elevation(4.dp)
+            ) {
+                Icon(Icons.Default.Layers, contentDescription = "Capas de Mapa")
             }
 
             FloatingActionButton(
@@ -1114,7 +1132,14 @@ fun MapScreen(
         )
     }
 
-
+    if (showLayersDialog) {
+        MapLayersSelectorDialog(
+            currentLayer = currentMapLayer,
+            availableLayers = viewModel.getAvailableMapLayers(),
+            onLayerSelected = { viewModel.setMapLayer(it) },
+            onDismiss = { showLayersDialog = false }
+        )
+    }
 }
 
 /**

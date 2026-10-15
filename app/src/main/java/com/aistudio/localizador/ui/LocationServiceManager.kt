@@ -32,4 +32,16 @@ class LocationServiceManager(private val context: Context) {
         val intent = Intent(context, LocationService::class.java).apply { action = LocationService.ACTION_UPDATE_SETTINGS }
         context.startService(intent)
     }
+
+    fun updateAutoMode(enabled: Boolean) {
+        val intent = Intent(context, LocationService::class.java).apply {
+            action = LocationService.ACTION_UPDATE_AUTO_MODE
+            putExtra(LocationService.EXTRA_AUTO_MODE_ENABLED, enabled)
+        }
+        if (enabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            context.startForegroundService(intent)
+        } else {
+            context.startService(intent)
+        }
+    }
 }

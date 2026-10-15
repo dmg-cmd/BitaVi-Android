@@ -330,15 +330,23 @@ fun RouteCard(
                     }
                 }
                 Spacer(modifier = Modifier.height(14.dp))
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    StatItem(icon = Icons.AutoMirrored.Filled.TrendingUp, value = String.format(Locale.ROOT, "%.2f km", km), label = "Distancia", tint = MaterialTheme.colorScheme.primary)
-                    StatItem(icon = Icons.Default.Schedule, value = formattedDuration, label = "Duracion", tint = MaterialTheme.colorScheme.secondary)
-                }
-                if (route.maxSpeed > 0) {
-                    Spacer(modifier = Modifier.height(8.dp))
+                val isStop = route.name.startsWith("Parada") || route.activityMode == "STOPPED" || (route.distanceMeters < 25.0 && !route.isActive)
+                if (isStop) {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        StatItem(icon = Icons.Default.Speed, value = String.format(Locale.ROOT, "%.1f km/h", route.avgSpeed * 3.6f), label = "Promedio", tint = Color(0xFF4CAF50))
-                        StatItem(icon = Icons.Default.Bolt, value = String.format(Locale.ROOT, "%.1f km/h", route.maxSpeed * 3.6f), label = "Maxima", tint = Color(0xFFFF9800))
+                        StatItem(icon = Icons.Default.Place, value = "Punto Fijo", label = "Parada", tint = Color(0xFFFF9800))
+                        StatItem(icon = Icons.Default.AccessTime, value = formattedDuration, label = "Tiempo de parada", tint = MaterialTheme.colorScheme.primary)
+                    }
+                } else {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        StatItem(icon = Icons.AutoMirrored.Filled.TrendingUp, value = String.format(Locale.ROOT, "%.2f km", km), label = "Distancia", tint = MaterialTheme.colorScheme.primary)
+                        StatItem(icon = Icons.Default.Schedule, value = formattedDuration, label = "Duracion", tint = MaterialTheme.colorScheme.secondary)
+                    }
+                    if (route.maxSpeed > 0) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            StatItem(icon = Icons.Default.Speed, value = String.format(Locale.ROOT, "%.1f km/h", route.avgSpeed * 3.6f), label = "Promedio", tint = Color(0xFF4CAF50))
+                            StatItem(icon = Icons.Default.Bolt, value = String.format(Locale.ROOT, "%.1f km/h", route.maxSpeed * 3.6f), label = "Maxima", tint = Color(0xFFFF9800))
+                        }
                     }
                 }
             }

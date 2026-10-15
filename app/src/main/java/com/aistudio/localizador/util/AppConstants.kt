@@ -24,6 +24,9 @@ object AppConstants {
         const val STOP_SPEED_THRESHOLD_KMH = 2.5f
         const val AUTO_STOP_SPEED_MPS = 0.3f
         val INACTIVITY_THRESHOLD_MILLIS = TimeUnit.MINUTES.toMillis(5)
+        const val GEOFENCE_DEPARTURE_RADIUS_METERS = 50f
+        const val GEOFENCE_DEPARTURE_ID = "bitavi_departure_geofence"
+        const val TOLERANT_GPS_ACCURACY_METERS = 45f
     }
 
     object Map {

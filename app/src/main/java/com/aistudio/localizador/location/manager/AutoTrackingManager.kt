@@ -47,12 +47,31 @@ class AutoTrackingManager @Inject constructor() {
         if (now - lastAutoStartTimeMillis < 30000) return
 
         if (lastStopLocation == null) {
-            if (location.accuracy < 20f) {
+            if (location.accuracy <= AppConstants.Location.TOLERANT_GPS_ACCURACY_METERS) {
                 lastStopLocation = location
                 movementSustainedStartTime = 0L
                 Log.d(TAG, "Anclaje inicial establecido para velocidad sostenida: Acc=${location.accuracy}")
             }
         } else {
+            // Disparador 1: Alejamiento radial respecto al punto de detención
+            val distanceFromStop = lastStopLocation?.let { stopLoc ->
+                calculateDistanceMeters(stopLoc.latitude, stopLoc.longitude, location.latitude, location.longitude)
+            } ?: 0.0
+
+            val isDistanceTriggered = distanceFromStop >= AppConstants.Location.MOVEMENT_TRIGGER_THRESHOLD_METERS &&
+                    location.accuracy <= AppConstants.Location.TOLERANT_GPS_ACCURACY_METERS
+
+            if (isDistanceTriggered) {
+                Log.i(TAG, "Alejamiento detectado: ${distanceFromStop.toInt()}m del anclaje de parada. Disparando arranque automático.")
+                lastStopLocation = null
+                movementSustainedStartTime = 0L
+                lastAutoStartTimeMillis = now
+                val snapshot = sessionManager.getPreRecordingBufferSnapshot()
+                listener?.onMovementSustainedTriggered(snapshot)
+                return
+            }
+
+            // Disparador 2: Velocidad sostenida
             val speedKmh = computedSpeedMps * 3.6f
             if (speedKmh > AppConstants.Location.AUTO_START_MIN_SPEED_KMH && location.accuracy < 30f) {
                 if (movementSustainedStartTime == 0L) {
@@ -76,6 +95,19 @@ class AutoTrackingManager @Inject constructor() {
                 movementSustainedStartTime = 0L
             }
         }
+    }
+
+    private fun calculateDistanceMeters(
+        lat1: Double, lon1: Double,
+        lat2: Double, lon2: Double
+    ): Double {
+        val dLat = Math.toRadians(lat2 - lat1)
+        val dLon = Math.toRadians(lon2 - lon1)
+        val a = kotlin.math.sin(dLat / 2) * kotlin.math.sin(dLat / 2) +
+                kotlin.math.cos(Math.toRadians(lat1)) * kotlin.math.cos(Math.toRadians(lat2)) *
+                kotlin.math.sin(dLon / 2) * kotlin.math.sin(dLon / 2)
+        val c = 2 * kotlin.math.atan2(kotlin.math.sqrt(a), kotlin.math.sqrt(1 - a))
+        return 6371000.0 * c
     }
 
     fun setAutoRestartAnchor(location: Location?) {

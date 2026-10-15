@@ -56,6 +56,11 @@
             android:name=".location.receiver.ActivityTransitionReceiver"
             android:exported="false" />
 
+        <!-- Receptor de geocercas pasivas de salida para Modo Automático (Bajo Consumo) -->
+        <receiver
+            android:name=".location.receiver.GeofenceDepartureReceiver"
+            android:exported="false" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"

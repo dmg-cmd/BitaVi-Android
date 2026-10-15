@@ -34,6 +34,9 @@ import com.aistudio.localizador.location.ActivityMode
 import com.aistudio.localizador.location.LocationService
 import com.aistudio.localizador.location.manager.KineticProfile
 import com.aistudio.localizador.model.RouteMetricsResult
+import com.aistudio.localizador.ui.map.MapLayerOption
+import com.aistudio.localizador.ui.map.MapLayerType
+import com.aistudio.localizador.ui.map.MapTileSourceManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
@@ -106,8 +109,15 @@ class RouteViewModel @Inject constructor(
     private val groupRoutesByDateUseCase: GroupRoutesByDateUseCase,
     private val locationServiceManager: LocationServiceManager,
     private val shareExperienceUseCase: ShareExperienceUseCase,
-    private val calculateRouteMetricsUseCase: CalculateRouteMetricsUseCase
+    private val calculateRouteMetricsUseCase: CalculateRouteMetricsUseCase,
+    val mapTileSourceManager: MapTileSourceManager
 ) : ViewModel() {
+
+    // ─── Capas de Mapa (osmdroid) ──────────────────────────────────
+    val currentMapLayer: StateFlow<MapLayerType> = mapTileSourceManager.currentLayer
+    fun setMapLayer(type: MapLayerType) = mapTileSourceManager.setLayer(type)
+    fun getAvailableMapLayers(): List<MapLayerOption> = mapTileSourceManager.getAvailableLayers()
+    fun getCurrentTileSource() = mapTileSourceManager.getCurrentTileSource()
 
     private val _uiEvent = Channel<UiEvent>(Channel.BUFFERED)
     val uiEvent = _uiEvent.receiveAsFlow()
@@ -231,6 +241,7 @@ class RouteViewModel @Inject constructor(
     fun toggleAutoMode() {
         isAutoMode = !isAutoMode
         prefsManager.setAutoMode(isAutoMode)
+        locationServiceManager.updateAutoMode(isAutoMode)
     }
 
 

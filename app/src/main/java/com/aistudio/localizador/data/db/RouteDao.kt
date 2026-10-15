@@ -26,6 +26,12 @@ interface RouteDao {
     @Query("SELECT * FROM routes WHERE id = :id")
     suspend fun getRouteById(id: Int): Route?
 
+    @Query("SELECT * FROM routes ORDER BY startTime DESC LIMIT 1")
+    suspend fun getLastRoute(): Route?
+
+    @Query("SELECT * FROM routes WHERE id <> :excludeId AND isActive = 0 ORDER BY startTime DESC LIMIT 1")
+    suspend fun getPreviousCompletedRoute(excludeId: Int): Route?
+
     @Query("SELECT * FROM routes WHERE id = :id")
     fun getRouteByIdFlow(id: Int): Flow<Route?>
 
@@ -37,6 +43,12 @@ interface RouteDao {
 
     @Query("UPDATE routes SET color = :color WHERE id = :routeId")
     suspend fun updateRouteColor(routeId: Int, color: String)
+
+    @Query("UPDATE routes SET endTime = :endTime WHERE id = :routeId")
+    suspend fun updateRouteEndTime(routeId: Int, endTime: Long)
+
+    @Query("UPDATE routes SET endTime = :endTime, name = :name WHERE id = :routeId")
+    suspend fun updateRouteEndTimeAndName(routeId: Int, endTime: Long, name: String)
 
     @Query("DELETE FROM routes WHERE id = :id")
     suspend fun deleteRouteById(id: Int)
@@ -53,6 +65,9 @@ interface RouteDao {
 
     @Query("SELECT * FROM location_points WHERE route_id = :routeId ORDER BY timestamp ASC")
     suspend fun getLocationPointsForRoute(routeId: Int): List<LocationPoint>
+
+    @Query("SELECT * FROM location_points WHERE route_id = :routeId ORDER BY timestamp DESC LIMIT 1")
+    suspend fun getLastPointForRoute(routeId: Int): LocationPoint?
 
     @Insert
     suspend fun insertLocationPoint(point: LocationPoint)

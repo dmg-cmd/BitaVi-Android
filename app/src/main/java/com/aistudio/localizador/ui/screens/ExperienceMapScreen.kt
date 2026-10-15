@@ -133,6 +133,7 @@ fun ExperienceMapScreen(
 
     val linkedFavorites by viewModel.getFavoritesForRouteFlow(routeId).collectAsState(initial = emptyList())
     val gpsPrecisionState by viewModel.gpsAccuracy.collectAsStateWithLifecycle()
+    val currentMapLayer by viewModel.currentMapLayer.collectAsState()
     var hasInitiallyCenteredRoute by remember { mutableStateOf(false) }
 
     // Carga orquestada de waypoints e imágenes de la experiencia (Uso de prepareExperience)
@@ -262,7 +263,7 @@ fun ExperienceMapScreen(
             modifier = Modifier.fillMaxSize(),
             factory = {
                 mapView.apply {
-                    setTileSource(TileSourceFactory.MAPNIK)
+                    setTileSource(viewModel.mapTileSourceManager.getTileSource(currentMapLayer))
                     setMultiTouchControls(true)
                     zoomController.setVisibility(CustomZoomButtonsController.Visibility.NEVER)
                     setBuiltInZoomControls(false)
@@ -282,6 +283,11 @@ fun ExperienceMapScreen(
                 }
             },
             update = { view ->
+                val targetTileSource = viewModel.mapTileSourceManager.getTileSource(currentMapLayer)
+                if (view.tileProvider.tileSource != targetTileSource) {
+                    view.setTileSource(targetTileSource)
+                }
+
                 val overlays = view.overlays
                 overlays.removeIf { it is Marker || it is GuideLinesOverlay || it is Polyline }
 
