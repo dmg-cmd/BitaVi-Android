@@ -1,3 +1,25 @@
+## FASE 1.3: Servicio de Ubicación más Robusto y Grabaciones sin Límite de Tiempo (2026-10-15)
+
+### ¿Qué cambió para el usuario?
+- **Las grabaciones largas ya no se cortan:** antes el servicio mantenía el teléfono despierto por un máximo de 25 horas; si seguías grabando, el sistema podía dormir la CPU y perder el GPS. Ahora, mientras la grabación está activa, el teléfono permanece despierto y pidiendo señal GPS sin límite de tiempo.
+- **Menos gasto de batería cuando no grabás:** al pausar o detener, el servicio suelta ese permiso de inmediato (antes podía quedar retenido hasta 25 h).
+
+### ¿Dónde está el cambio?
+- Nuevos delegados en `com.aistudio.localizador.location.delegate` (GPS, notificaciones, persistencia).
+- `LocationService.kt` reorganizado (de 1057 a 806 líneas).
+
+## Cierre de Modularización de Pantallas y Suite de Pruebas Verde (2026-10-15)
+
+### ¿Qué cambió para el usuario y la arquitectura?
+- **Pantallas más livianas y estables:** la Pantalla de Mapa y la Pantalla de Favoritos quedaron divididas en componentes pequeños y reutilizables (`MapScreen.kt` de 1173 a 243 líneas y `SavedLocationsScreen.kt` de 1055 a 153 líneas), sin ningún cambio visible en los flujos, botones o colores tácticos.
+- **Calidad asegurada:** se incorporaron pruebas automáticas que verifican que el contenedor translúcido, la tarjeta de favorito y la lista agrupada por país/ciudad se dibujan y comportan correctamente (incluido el colapso por país).
+- **Base de compilación saneada:** se corrigió un problema de cachés de compilación que apuntaban a una carpeta vieja del equipo y que impedía correr las pruebas. La suite completa (109 pruebas) vuelve a ejecutarse y está 100% en verde.
+
+### ¿Dónde está el cambio?
+- `app/src/test/java/com/aistudio/localizador/ui/screens/map/` y `.../ui/screens/saved/` (nuevas pruebas de regresión).
+- `app/src/test/java/com/aistudio/localizador/location/manager/DepartureWatcherManagerTest.kt` y `.../ExampleRobolectricTest.kt` (pruebas corregidas).
+- Cachés de compilación `app/build` y `.gradle` (regeneradas limpiamente).
+
 ## Modularización Táctica y Desacoplamiento de MainActivity.kt (2026-10-14)
 
 ### ¿Qué cambió para el usuario y la arquitectura?

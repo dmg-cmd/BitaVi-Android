@@ -1,3 +1,47 @@
+## [2026-10-15] FASE 1.3: Patrón Fachada en LocationService y Nueva Política de WakeLock (Grabación sin Límite)
+
+### Logro
+Se refactoriza `LocationService.kt` (1057 -> 806 líneas) extrayendo la persistencia, las notificaciones y el ciclo de vida del GPS a tres delegados inyectables. Además se corrige el WakeLock que tenía un límite fijo de 25 horas: ahora, mientras la grabación está activa, la CPU permanece despierta y el GPS solicitando señal de forma indefinida (una grabación larga nunca se corta), y se libera al pasar a modo pasivo o al detener.
+
+### Detalles Técnicos
+- `location/delegate/GpsLifecycleDelegate.kt` (nuevo): cliente GPS fusionado + HandlerThread + LocationCallback + WakeLock. `setTrackingActive(true)` -> `acquire()` SIN timeout; `false` -> `release()`.
+- `location/delegate/LocationNotificationDelegate.kt` (nuevo): envuelve `ServiceNotificationManager`, notificación de seguimiento y alertas de proximidad.
+- `location/delegate/LocationPersistenceDelegate.kt` (nuevo): envuelve `RouteRepository`; `attach()` tras descifrar la base SQLCipher.
+- `LocationService.kt`: inyecta los 3 delegados; se retiran WakeLock/HandlerThread/callback directos; liberación de WakeLock en pasivo/pausa/stop/shutdown/onDestroy.
+
+### Archivos
+- Nuevos: `location/delegate/GpsLifecycleDelegate.kt`, `location/delegate/LocationNotificationDelegate.kt`, `location/delegate/LocationPersistenceDelegate.kt`
+- Modificado: `location/LocationService.kt`
+- Respaldo: `RESPALDO_ANTERIOR/20261015_LocationService_pre_fase13.kt`
+
+### Verificación
+- `compileDebugKotlin`: BUILD SUCCESSFUL.
+- `testDebugUnitTest`: 109 tests, 0 fallos, 0 errores.
+- `installDebug`: BUILD SUCCESSFUL, instalado en 2 dispositivos (Pixel 9 Pro XL).
+
+## [2026-10-15] Cierre FASE 1.1/1.2: Modularización de MapScreen/SavedLocationsScreen, Reparación de Cachés Gradle y Suite 100% Verde
+
+### Logro
+Se retoma y cierra la modularización de las dos pantallas más grandes del proyecto (FASE 1.1 y 1.2 del Plan Maestro), que había quedado interrumpida por un cuelgue de sesión el 2026-10-14. `MapScreen.kt` pasó de 1173 a 243 líneas y `SavedLocationsScreen.kt` de 1055 a 153 líneas. Además se descubrió y corrigió un problema de infraestructura de compilación: las cachés de Gradle conservaban rutas absolutas de la ubicación anterior del proyecto (`D:\Google IA Studio\localizador`), lo que impedía ejecutar cualquier test unitario. Tras la reparación, se añadieron tests de regresión y la suite completa quedó en verde (109/0).
+
+### Detalles Técnicos
+- **Causa raíz del fallo de tests:** la tarea `kspDebugUnitTestKotlin` lanzaba `IllegalArgumentException: this and base files have different roots` porque `app/build` y `.gradle` contenían rutas absolutas de `D:\`. Se eliminaron esos artefactos generados y se reconstruyó con `--no-build-cache`.
+- **MapScreen.kt (ui.screens):** orquestador reducido a 243 líneas; delega en `ui/screens/map/` (MapCanvas, MapTopBar, MapFloatingControls, MapOverlayController, IndicadorTranslucidoContenedor, MapSaveLocationDialog, WaypointDialog, StartRouteDialog).
+- **SavedLocationsScreen.kt (ui.screens):** orquestador reducido a 153 líneas; delega en `ui/screens/saved/` (SavedLocationsList, LocationCard, SaveLocationDialog, EditLocationDialog).
+- **Tests nuevos (5):** IndicadorTranslucidoContenedorTest (1), LocationCardTest (2), SavedLocationsListTest (2). Patrón Robolectric + Compose UI Test.
+- **Tests preexistentes corregidos (3):** DepartureWatcherManagerTest (2, faltaba mock de Intent/PendingIntent en entorno JVM) y ExampleRobolectricTest (1, string esperado desactualizado "BiTaRu" -> "BiTaVi").
+- **Regla de idioma reforzada** en `AGENTS.md` y `.aierules`.
+
+### Archivos
+- Nuevos: `app/src/test/java/com/aistudio/localizador/ui/screens/map/IndicadorTranslucidoContenedorTest.kt`, `.../ui/screens/saved/LocationCardTest.kt`, `.../ui/screens/saved/SavedLocationsListTest.kt`
+- Modificados: `.../location/manager/DepartureWatcherManagerTest.kt`, `.../ExampleRobolectricTest.kt`, `AGENTS.md`, `.aierules`
+- Respaldos: `RESPALDO_ANTERIOR/20261015_DepartureWatcherManagerTest.kt`, `RESPALDO_ANTERIOR/20261015_ExampleRobolectricTest.kt`
+
+### Verificación
+- `testDebugUnitTest`: 109 tests, 0 fallos, 0 errores, 0 skipped.
+- `installDebug`: BUILD SUCCESSFUL, instalado en 2 dispositivos (Pixel 9 Pro XL).
+- Sin rutas `Google IA Studio` en el nuevo `app/build`.
+
 ## [2026-10-14] Fotos y Ubicación: Corrección de Carrera NullPointer y Guardado Infalible de Coordenadas
 
 ### Logro

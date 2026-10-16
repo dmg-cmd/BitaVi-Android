@@ -1,6 +1,8 @@
 package com.aistudio.localizador.location.manager
 
+import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
 import android.util.Log
 import com.google.android.gms.location.GeofencingClient
 import com.google.android.gms.location.LocationServices
@@ -25,6 +27,12 @@ class DepartureWatcherManagerTest {
         every { Log.w(any<String>(), any<String>()) } returns 0
         every { Log.e(any<String>(), any<String>()) } returns 0
         every { Log.e(any<String>(), any<String>(), any()) } returns 0
+
+        // Intent y PendingIntent no existen en el entorno JVM puro de los tests unitarios:
+        // se simulan para que la construcción de la geocerca no lance "not mocked".
+        mockkConstructor(Intent::class)
+        mockkStatic(PendingIntent::class)
+        every { PendingIntent.getBroadcast(any(), any(), any(), any()) } returns mockk(relaxed = true)
 
         mockkStatic(LocationServices::class)
         every { LocationServices.getGeofencingClient(any<Context>()) } returns geofencingClient

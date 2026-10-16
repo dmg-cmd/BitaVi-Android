@@ -1,7 +1,7 @@
 # Plan Maestro Consolidado — BitaVi-Android
 **Fecha:** 15 de Octubre de 2026  
 **Estado:** Plan de acción priorizado tras verificación cruzada (docs vs código real)  
-**Contexto:** MainActivity ya refactorizada (181 líneas). Pendientes: 3 pantallas grandes, LocationService, branding, tests, WakeLock, limpieza.
+**Contexto:** MainActivity ya refactorizada (181 líneas). **Actualización 2026-10-15:** FASE 1.1 (`MapScreen`) y 1.2 (`SavedLocationsScreen`) cerradas y suite de tests en verde (109/0). Pendientes: `LocationService` (FASE 1.3 parcial: delegados hechos 2026-10-15), branding y limpieza.
 
 ---
 
@@ -10,14 +10,14 @@
 | Componente | Líneas | Estado | Prioridad |
 |------------|--------|--------|-----------|
 | `MainActivity.kt` | **181** | ✅ Hecho (era 1115) | — |
-| `MapScreen.kt` | **1173** | ❌ Pendiente | **P1** |
-| `SavedLocationsScreen.kt` | **1055** | ❌ Pendiente | **P1** |
-| `LocationService.kt` | **1057** | ❌ Pendiente | **P1** |
+| `MapScreen.kt` | **243** | ✅ Hecho (2026-10-15, era 1173) | — |
+| `SavedLocationsScreen.kt` | **153** | ✅ Hecho (2026-10-15, era 1055) | — |
+| `LocationService.kt` | **806** | ⚠️ Parcial (2026-10-15: 3 delegados; meta <400) | P1 |
 | `BiometricAuthHandler.kt` | 178 | ⚠️ Revisar API keys | P2 |
 | `RetrofitClient.kt` | 73 | ⚠️ No mockeable en tests | P2 |
 | `AppDatabase.kt` | 124 | OK | — |
 | Tests con API key hardcoded | — | ❌ Pendiente | P2 |
-| WakeLock 25h | Línea 363 | ❌ Pendiente | P1 |
+| WakeLock 25h | Resuelto | ✅ Hecho (2026-10-15: acquire() sin timeout en grabación) | - |
 | Branding inconsistente | Código fuente | ❌ Pendiente | P3 |
 | `tmp/` + `RESPALDO_ANTERIOR/` | ~18 + 6 archivos | ❌ Pendiente | P4 |
 
@@ -58,7 +58,7 @@
 
 ---
 
-### 1.3 Patrón Fachada en `LocationService.kt` (1057 → <400 líneas)
+### 1.3 Patrón Fachada en `LocationService.kt` (1057 -> 806 líneas; ✅ delegados hechos 2026-10-15, meta <400 pendiente)
 **Objetivo:** Delegar persistencia, notificaciones y ciclo de vida GPS.
 
 | Paso | Archivo/Componente | Descripción |
@@ -68,7 +68,7 @@
 | 1.3.3 | `location/delegate/GpsLifecycleDelegate.kt` | `requestLocationUpdates` / `removeUpdates` + WakeLock |
 | 1.3.4 | `location/LocationService.kt` | Orquestador puro: `onStartCommand`, `onDestroy`, `onBind` |
 
-**WakeLock 25h (Línea 363):** Mover a `GpsLifecycleDelegate` con política:
+**WakeLock 25h (Línea 363):** ✅ RESUELTO 2026-10-15 — movido a `GpsLifecycleDelegate` con política:
 - Tracking activo: `acquire()` sin timeout (o 30 min renovable)
 - Modo pasivo: `release()` inmediato
 - `auto_mode == false` + sin tracking: `stopSelf()` total
@@ -212,8 +212,8 @@ Continuo:    Fase 5 (Documentación)
 
 - [ ] `MapScreen.kt` < 300 líneas, overlays en `ui/screens/map/overlays/`
 - [ ] `SavedLocationsScreen.kt` < 300 líneas, componentes en `ui/screens/saved/`
-- [ ] `LocationService.kt` < 400 líneas, 3 delegates inyectados por Hilt
-- [ ] WakeLock: 0% CPU/batería en `auto_mode=false` + sin tracking
+- [x] 3 delegates inyectados por Hilt (2026-10-15); [ ] `LocationService.kt` < 400 líneas (actual: 806)
+- [x] WakeLock: política sin timeout en grabación y release en pasivo/detenido (2026-10-15)
 - [ ] 0 API keys hardcoded en tests; `RetrofitClient` mockeable
 - [ ] 0 referencias "Bitaru"/"LocalizadorTheme"/"TopBarLocalizador" en `app/src/main`
 - [ ] `tmp/` eliminado; `RESPALDO_ANTERIOR/` ≤ 30 días
@@ -226,7 +226,7 @@ Continuo:    Fase 5 (Documentación)
 ## 🤔 PREGUNTAS PARA CONFIRMAR ANTES DE EJECUTAR
 
 1. **¿Orden estricto 1.1 → 1.2 → 1.3 o se puede paralelizar 1.1 + 1.2?**
-2. **¿WakeLock: política de 30 min renovable o `acquire()` indefinido solo en tracking activo?**
+2. **~~WakeLock: 30 min renovable o `acquire()` indefinido?~~ RESUELTO (2026-10-15): `acquire()` indefinido solo en tracking activo.**
 3. **¿Branding: renombrar archivos (`BitaruBrandHeader.kt` → `BitaViBrandHeader.kt`) o solo contenido?**
 4. **¿`RESPALDO_ANTERIOR/`: comprimir todo y borrar carpeta, o mantener últimos 30 días?**
 5. **¿Ejecutar todo en una sesión `implementa` o por fases con deploy intermedio?**

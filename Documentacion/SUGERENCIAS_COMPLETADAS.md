@@ -1,3 +1,19 @@
+## 2026-10-15 — FASE 1.3: Patrón Fachada en LocationService + WakeLock sin límite
+- **GpsLifecycleDelegate.kt** (nuevo): cliente GPS + HandlerThread + callback + WakeLock; acquire() SIN timeout en grabación, release en pasivo/detenido.
+- **LocationNotificationDelegate.kt** (nuevo): envuelve ServiceNotificationManager + alertas de proximidad.
+- **LocationPersistenceDelegate.kt** (nuevo): envuelve RouteRepository con attach() posterior a SQLCipher.
+- **LocationService.kt**: 1057 -> 806 líneas; inyecta los 3 delegados; elimina acquire(25h).
+- **Resultado**: compileDebugKotlin OK; suite 109 tests, 0 failures, 0 errors; installDebug OK (2 dispositivos).
+- **Nota**: meta de <400 líneas no alcanzada (806); prueba prolongada en dispositivo pendiente.
+
+## 2026-10-15 — CIERRE FASE 1.1/1.2: Modularización de pantallas + Suite 100% verde
+- **MapScreen.kt**: 1173 -> 243 líneas; delega en `ui/screens/map/` (MapCanvas, MapTopBar, MapFloatingControls, MapOverlayController, IndicadorTranslucidoContenedor y diálogos).
+- **SavedLocationsScreen.kt**: 1055 -> 153 líneas; delega en `ui/screens/saved/` (SavedLocationsList, LocationCard, SaveLocationDialog, EditLocationDialog).
+- **Infraestructura de tests**: eliminadas cachés Gradle con rutas de `D:\Google IA Studio\localizador` que rompían KSP (`this and base files have different roots`); reconstrucción con `--no-build-cache`.
+- **Tests nuevos (5)**: IndicadorTranslucidoContenedorTest (1), LocationCardTest (2), SavedLocationsListTest (2).
+- **Tests corregidos (3)**: DepartureWatcherManagerTest (2, mock de Intent/PendingIntent) + ExampleRobolectricTest (1, branding "BiTaVi").
+- **Resultado**: suite 109 tests, 0 failures, 0 errors, 0 skipped. installDebug OK (2 dispositivos).
+
 ## 2026-08-07 — CR-29: CalculateRouteMetricsUseCase (analitica de tramos en segundo plano)
 - **RouteMetricsResult.kt** (nuevo, com.aistudio.localizador.model): modelo inmutable de dominio.
 - **CalculateRouteMetricsUseCase.kt** (nuevo): Haversine pura + histeresis altimetrica d=2.5m + velocidad/ritmo; pure-JVM, @Inject constructor().

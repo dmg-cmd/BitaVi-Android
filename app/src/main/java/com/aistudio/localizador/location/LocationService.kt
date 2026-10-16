@@ -31,6 +31,9 @@ import com.aistudio.localizador.data.model.Route
 import com.aistudio.localizador.data.repository.RouteRepository
 import androidx.preference.PreferenceManager
 import com.aistudio.localizador.data.model.SavedLocation
+import com.aistudio.localizador.location.delegate.GpsLifecycleDelegate
+import com.aistudio.localizador.location.delegate.LocationNotificationDelegate
+import com.aistudio.localizador.location.delegate.LocationPersistenceDelegate
 import com.aistudio.localizador.location.manager.StationaryAnchorManager
 import com.aistudio.localizador.location.manager.CinematicFilterManager
 import com.aistudio.localizador.location.manager.KineticProfile
@@ -67,7 +70,6 @@ enum class ActivityMode { STOPPED, WALKING, BIKING, DRIVING, SIN_SENAL }
 class LocationService : Service(), AutoTrackingManager.AutoTrackingListener, ProximityBleManager.ProximityListener {
 
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-    @Inject lateinit var repository: RouteRepository
     @Inject lateinit var activityModeManager: ActivityModeManager
 
 
@@ -77,12 +79,11 @@ class LocationService : Service(), AutoTrackingManager.AutoTrackingListener, Pro
     lateinit var proximityBleManager: ProximityBleManager
     @Inject lateinit var shortStopMarkManager: ShortStopMarkManager
     @Inject lateinit var departureWatcherManager: DepartureWatcherManager
+    @Inject lateinit var gpsDelegate: GpsLifecycleDelegate
+    @Inject lateinit var notificationDelegate: LocationNotificationDelegate
+    @Inject lateinit var persistenceDelegate: LocationPersistenceDelegate
     private lateinit var sharedPrefs: SharedPreferences
-    private var locationHandlerThread: HandlerThread? = null
-    private var wakeLock: PowerManager.WakeLock? = null
 
-    private lateinit var fusedLocationClient: FusedLocationProviderClient
-    private lateinit var locationCallback: LocationCallback
     private val screenStateReceiver: BroadcastReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             if (intent.action == Intent.ACTION_SCREEN_ON) {
@@ -92,7 +93,6 @@ class LocationService : Service(), AutoTrackingManager.AutoTrackingListener, Pro
     }
 
     private var lastValidLocation: Location? = null
-    private val notificationManager = ServiceNotificationManager(this)
 
     private var timerJob: Job? = null
     private var startTimeMillis: Long = 0L
@@ -215,37 +215,22 @@ class LocationService : Service(), AutoTrackingManager.AutoTrackingListener, Pro
 
         // Inicialización simétrica blindada
         val database = AppDatabase.getInstance(applicationContext, dbPassphrase)
-        repository = RouteRepository(database.routeDao())
+        persistenceDelegate.attach(RouteRepository(database.routeDao()))
 
-
-        // Inicializar WakeLock para evitar que el sistema suspenda el CPU
-        val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
-        wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Localizador:TrackingWakeLock")
 
         // Cache de SharedPreferences para evitar I/O repetitivo en el Main Thread
         sharedPrefs = PreferenceManager.getDefaultSharedPreferences(this)
 
-        // HandlerThread dedicado para procesar ubicación fuera del Main Thread
-        locationHandlerThread = HandlerThread("LocationHandlerThread").apply {
-            start()
-        }
-
-        fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
-
-        // Configuración del callback para actualizaciones GPS de FusedLocationProviderClient
-        locationCallback = object : LocationCallback() {
-            override fun onLocationResult(result: LocationResult) {
-                super.onLocationResult(result)
-                result.locations.forEach { location ->
-                    processNewLocation(location)
-                }
+        // Delegado GPS: hilo dedicado, cliente fusionado y WakeLock
+        gpsDelegate.initialize(
+            onLocation = { location -> processNewLocation(location) },
+            onPermissionError = {
+                _isTracking.value = false
+                stopSelf()
             }
-        }
+        )
 
         proximityBleManager.init(this, sharedPrefs, contactUseCase)
-
-        createNotificationChannel()
-
         // Registrar receiver para detectar encendido de pantalla (actividad de usuario)
         val screenFilter = IntentFilter(Intent.ACTION_SCREEN_ON).apply {
             addAction(Intent.ACTION_SCREEN_OFF)
@@ -328,13 +313,11 @@ class LocationService : Service(), AutoTrackingManager.AutoTrackingListener, Pro
             return
         }
 
-        // En modo pasivo, liberar WakeLock agresivo para permitir reposo profundo (Doze mode) sin penalizaciones
-        if (wakeLock?.isHeld == true) {
-            try { wakeLock?.release() } catch (_: Exception) { }
-        }
+        // En modo pasivo, liberar el WakeLock para permitir Doze (0% bateria parada)
+        gpsDelegate.setTrackingActive(false)
 
         val statusText = if (isAutoModeActive) "Vigilando salidas... Modo Automático activo." else "Servicio activo en modo pasivo."
-        val notification = buildNotification(getString(R.string.notification_service_title), statusText)
+        val notification = notificationDelegate.buildNotification(getString(R.string.notification_service_title), statusText)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
         } else {
@@ -349,7 +332,7 @@ class LocationService : Service(), AutoTrackingManager.AutoTrackingListener, Pro
         }
 
         // Solicitar actualizaciones pasivas equilibradas (15s, 10m) para no agotar la batería
-        requestLocationUpdates(15000L, 10f)
+        gpsDelegate.requestLocationUpdates(15000L, 10f)
     }
 
     private fun startTracking(routeName: String, routeId: Int, interval: Long, distance: Float) {
@@ -358,10 +341,8 @@ class LocationService : Service(), AutoTrackingManager.AutoTrackingListener, Pro
         // Detener geocerca de salida activa ya que entramos en seguimiento continuo
         departureWatcherManager.stopWatching()
 
-        // Adquirir WakeLock para asegurar procesamiento de GPS continuo durante la ruta
-        wakeLock?.let {
-            if (!it.isHeld) it.acquire(25 * 60 * 60 * 1000L)
-        }
+        // Mantener la CPU despierta SIN limite durante la grabacion (no se corta a las 25h)
+        gpsDelegate.setTrackingActive(true)
 
         // Limpiar buffer de pre-grabación si el usuario inicia manualmente
         sessionManager.clearPreRecordingBuffer()
@@ -375,7 +356,7 @@ class LocationService : Service(), AutoTrackingManager.AutoTrackingListener, Pro
         isWaitingForMovement = false
 
         // Iniciar en primer plano mostrando la notificación obligatoria
-        val notification = buildNotification(routeName, "Calculando ubicación...")
+        val notification = notificationDelegate.buildNotification(routeName, "Calculando ubicación...")
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             startForeground(
                 NOTIFICATION_ID,
@@ -388,12 +369,12 @@ class LocationService : Service(), AutoTrackingManager.AutoTrackingListener, Pro
 
         serviceScope.launch {
             // Si la ruta ya existía, recuperamos su distancia histórica para continuar acumulando
-            val existingRoute = repository.getRouteById(routeId)
+            val existingRoute = persistenceDelegate.getRouteById(routeId)
             sessionManager.setInitialDistance(existingRoute?.distanceMeters ?: 0.0)
             _currentDistanceMeters = sessionManager.getTotalDistance()
 
             // Consultar las coordenadas previas para tener continuidad si es una reanudación
-            val previousPoints = repository.getLocationPointsSync(routeId)
+            val previousPoints = persistenceDelegate.getPreviousPoints(routeId)
             if (previousPoints.isNotEmpty()) {
                 val lastPoint = previousPoints.last()
                 lastValidLocation = Location("gps").apply {
@@ -405,33 +386,9 @@ class LocationService : Service(), AutoTrackingManager.AutoTrackingListener, Pro
                 lastValidLocation = null
             }
 
-            requestLocationUpdates(interval, distance)
+            gpsDelegate.requestLocationUpdates(interval, distance)
             startTimer()
             startGpsWatchdog()
-        }
-    }
-
-    private fun requestLocationUpdates(interval: Long, distance: Float) {
-        // Intervalos equilibrados para ahorrar batería y dar excelente precisión real
-        val locationRequest = LocationRequest.Builder(
-            Priority.PRIORITY_HIGH_ACCURACY,
-            interval
-        ).apply {
-            setMinUpdateIntervalMillis(interval / 2) // Intervalo más rápido permisible
-            setMinUpdateDistanceMeters(distance)    // Desplazamiento mínimo indispensable para registrar
-            setMaxUpdateDelayMillis(0)                   // Anula el batching de Doze mode
-        }.build()
-
-        try {
-            fusedLocationClient.requestLocationUpdates(
-                locationRequest,
-                locationCallback,
-                locationHandlerThread?.looper ?: Looper.getMainLooper()
-            )
-        } catch (unlikely: SecurityException) {
-            Log.e(TAG, "No se admiten permisos necesarios para iniciar updates de ubicación GPS: $unlikely")
-            _isTracking.value = false
-            stopSelf()
         }
     }
 
@@ -562,9 +519,9 @@ class LocationService : Service(), AutoTrackingManager.AutoTrackingListener, Pro
                         sessionManager.addDistanceFromStep(distanceStep.toDouble())
                         _currentDistanceMeters = sessionManager.getTotalDistance()
 
-                        val currentRoute = repository.getRouteById(routeId)
+                        val currentRoute = persistenceDelegate.getRouteById(routeId)
                         if (currentRoute != null) {
-                            repository.updateRoute(currentRoute.copy(distanceMeters = sessionManager.getTotalDistance()))
+                            persistenceDelegate.updateRoute(currentRoute.copy(distanceMeters = sessionManager.getTotalDistance()))
                         }
                     }
                 } else {
@@ -579,7 +536,7 @@ class LocationService : Service(), AutoTrackingManager.AutoTrackingListener, Pro
                     MAX_GPS_ACCURACY
                 }
                 if (accuracy <= dbAccuracyLimit) {
-                    repository.addLocationPoint(
+                    persistenceDelegate.addLocationPoint(
                         routeId = routeId,
                         latitude = anchoredLocation.latitude,
                         longitude = anchoredLocation.longitude,
@@ -603,7 +560,7 @@ class LocationService : Service(), AutoTrackingManager.AutoTrackingListener, Pro
         serviceScope.launch {
             try {
                 // Obtener favoritos de la base de datos de forma síncrona/segura
-                val favorites = repository.allSavedLocations.first()
+                val favorites = persistenceDelegate.allSavedLocationsOnce()
                 for (fav in favorites) {
                     val favLoc = Location("temp").apply {
                         latitude = fav.latitude
@@ -612,7 +569,7 @@ class LocationService : Service(), AutoTrackingManager.AutoTrackingListener, Pro
                     val distance = currentLocation.distanceTo(favLoc)
                     if (distance < PROXIMITY_THRESHOLD_METERS) {
                         if (fav.id != lastNotifiedFavoriteId || (now - lastNotificationTime > NOTIFICATION_COOLDOWN_MS)) {
-                            sendProximityNotification(fav)
+                            notificationDelegate.sendProximityNotification(fav)
                             lastNotifiedFavoriteId = fav.id
                             lastNotificationTime = now
                             break // Solo una notificación por vez
@@ -623,25 +580,6 @@ class LocationService : Service(), AutoTrackingManager.AutoTrackingListener, Pro
         }
     }
 
-    private fun sendProximityNotification(favorite: SavedLocation) {
-        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        // Canal especial para alertas si no existe
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel("proximity_alerts", "Alertas de Proximidad", NotificationManager.IMPORTANCE_HIGH)
-            notificationManager.createNotificationChannel(channel)
-        }
-
-        val notification = NotificationCompat.Builder(this, "proximity_alerts")
-            .setContentTitle("📍 Cerca de tu Estrella")
-            .setContentText("Estás pasando por: ${favorite.name}")
-            .setSmallIcon(android.R.drawable.ic_dialog_map)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setAutoCancel(true)
-            .build()
-
-        notificationManager.notify(favorite.id + 2000, notification)
-    }
-
     // ─── BLE Proximity (Módulo 3B) ─────────────────────────────────
 
     override fun onBleContactDetected(contactName: String, distanceMeters: Double) {
@@ -649,19 +587,13 @@ class LocationService : Service(), AutoTrackingManager.AutoTrackingListener, Pro
     }
     private fun updateServiceNotification(routeId: Int) {
         serviceScope.launch {
-            val route = repository.getRouteById(routeId) ?: return@launch
+            val route = persistenceDelegate.getRouteById(routeId) ?: return@launch
             val km = sessionManager.getTotalDistance() / 1000.0
             val formattedDistance = String.format(Locale.US, "%.2f km", km)
             val formattedTime = formatElapsedTime(_elapsedTimeSeconds)
-
-            val contentText = "Distancia: $formattedDistance | Tiempo: $formattedTime"
-            val notification = buildNotification(route.name, contentText)
-
-            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            notificationManager.notify(NOTIFICATION_ID, notification)
+            notificationDelegate.notifyTracking(route.name, "Distancia: $formattedDistance | Tiempo: $formattedTime")
         }
     }
-
     private fun startTimer() {
         timerJob?.cancel()
         startTimeMillis = System.currentTimeMillis() - (_elapsedTimeSeconds * 1000L)
@@ -689,8 +621,8 @@ class LocationService : Service(), AutoTrackingManager.AutoTrackingListener, Pro
                 // COMPROBACIÓN 3: Watchdog GPS silencioso (Doze batching)
                 if (!_isTracking.value && (now - lastGpsUpdateTimeMillis) > 120_000L) {
                     Log.d(TAG, "GPS silencioso por " + ((now - lastGpsUpdateTimeMillis) / 1000L) + "s. Reiniciando canal de ubicación.")
-                    fusedLocationClient.removeLocationUpdates(locationCallback)
-                    requestLocationUpdates(5000L, 2f)
+                    gpsDelegate.removeLocationUpdates()
+                    gpsDelegate.requestLocationUpdates(5000L, 2f)
                 }
 
                 delay(1.seconds) // Revisar cada 1 segundo
@@ -745,7 +677,7 @@ class LocationService : Service(), AutoTrackingManager.AutoTrackingListener, Pro
         serviceScope.launch {
             // Guardar la actual
             if (sessionManager.getActiveRouteId() != null) {
-                repository.stopActiveRoute(sessionManager.getActiveRouteId()!!.toInt(), sessionManager.getTotalDistance(), activityModeManager.getCurrentMode().name)
+                persistenceDelegate.stopActiveRoute(sessionManager.getActiveRouteId()!!.toInt(), sessionManager.getTotalDistance(), activityModeManager.getCurrentMode().name)
             }
             // Iniciar una nueva inmediatamente
             startAutoNewRoute()
@@ -780,7 +712,7 @@ class LocationService : Service(), AutoTrackingManager.AutoTrackingListener, Pro
         serviceScope.launch {
             val dateStr = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date())
             val newName = "Auto-Ruta $dateStr"
-            val newRouteId = repository.startNewRoute(newName)
+            val newRouteId = persistenceDelegate.startNewRoute(newName)
             // Insertar los puntos del buffer (backfill) o la última ubicación actual asociada a la nueva ruta
             val pointsToInsert = if (backfillPoints.isNotEmpty()) {
                 backfillPoints.map { point ->
@@ -807,7 +739,7 @@ class LocationService : Service(), AutoTrackingManager.AutoTrackingListener, Pro
 
             if (pointsToInsert.isNotEmpty()) {
                 serviceScope.launch(Dispatchers.IO) {
-                    repository.addLocationPoints(pointsToInsert)
+                    persistenceDelegate.addLocationPoints(pointsToInsert)
                 }
                 var initialDistance = 0.0
                 for (i in 0 until pointsToInsert.size - 1) {
@@ -835,7 +767,8 @@ class LocationService : Service(), AutoTrackingManager.AutoTrackingListener, Pro
     }
 
     private fun pauseTracking() {
-        fusedLocationClient.removeLocationUpdates(locationCallback)
+        gpsDelegate.removeLocationUpdates()
+        gpsDelegate.setTrackingActive(false)
         timerJob?.cancel()
         watchdogJob?.cancel()
         isSignalLost = false
@@ -850,18 +783,16 @@ class LocationService : Service(), AutoTrackingManager.AutoTrackingListener, Pro
     }
 
     private fun stopTracking() {
-        fusedLocationClient.removeLocationUpdates(locationCallback)
+        gpsDelegate.removeLocationUpdates()
         timerJob?.cancel()
         watchdogJob?.cancel()
 
-        // Liberar WakeLock
-        if (wakeLock?.isHeld == true) {
-            try { wakeLock?.release() } catch (e: Exception) { Log.e(TAG, "Error liberando WakeLock: ${e.message}") }
-        }
+        // Liberar WakeLock (grabacion detenida)
+        gpsDelegate.setTrackingActive(false)
 
         serviceScope.launch {
             if (sessionManager.getActiveRouteId() != null) {
-                repository.stopActiveRoute(sessionManager.getActiveRouteId()!!.toInt(), sessionManager.getTotalDistance(), activityModeManager.getCurrentMode().name)
+                persistenceDelegate.stopActiveRoute(sessionManager.getActiveRouteId()!!.toInt(), sessionManager.getTotalDistance(), activityModeManager.getCurrentMode().name)
             }
 
             // Reiniciar estados una vez confirmado el guardado
@@ -929,18 +860,16 @@ class LocationService : Service(), AutoTrackingManager.AutoTrackingListener, Pro
 
     private fun shutdownService() {
         Log.d(TAG, "Iniciando apagado total del servicio (0% RAM / 0% batería).")
-        fusedLocationClient.removeLocationUpdates(locationCallback)
+        gpsDelegate.removeLocationUpdates()
         timerJob?.cancel()
         watchdogJob?.cancel()
         activityRecognitionManager?.stopTrackingTransitions()
         departureWatcherManager.stopWatching()
-        if (wakeLock?.isHeld == true) {
-            try { wakeLock?.release() } catch (_: Exception) { }
-        }
+        gpsDelegate.setTrackingActive(false)
 
         serviceScope.launch {
             if (sessionManager.getActiveRouteId() != null) {
-                repository.stopActiveRoute(sessionManager.getActiveRouteId()!!.toInt(), sessionManager.getTotalDistance(), activityModeManager.getCurrentMode().name)
+                persistenceDelegate.stopActiveRoute(sessionManager.getActiveRouteId()!!.toInt(), sessionManager.getTotalDistance(), activityModeManager.getCurrentMode().name)
             }
             withContext(Dispatchers.Main) {
                 _isTracking.value = false
@@ -951,64 +880,11 @@ class LocationService : Service(), AutoTrackingManager.AutoTrackingListener, Pro
     }
 
     private fun ensureForeground() {
-        val notification = buildNotification(getString(R.string.notification_service_title), getString(R.string.notification_service_description))
+        val notification = notificationDelegate.buildNotification(getString(R.string.notification_service_title), getString(R.string.notification_service_description))
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
         } else {
             startForeground(NOTIFICATION_ID, notification)
-        }
-    }
-
-    private fun buildNotification(title: String, content: String): Notification {
-        val openAppIntent = Intent(this, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
-        }
-
-        val pendingIntent = PendingIntent.getActivity(
-            this,
-            0,
-            openAppIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val stopIntent = Intent(this, LocationService::class.java).apply {
-            action = ACTION_STOP
-        }
-        val stopPendingIntent = PendingIntent.getService(
-            this,
-            1,
-            stopIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle(title)
-            .setContentText(content)
-            .setSmallIcon(android.R.drawable.ic_menu_mylocation) 
-            .setOngoing(true)
-            .setContentIntent(pendingIntent)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
-            .addAction(
-                android.R.drawable.ic_menu_close_clear_cancel,
-                "Detener y Guardar",
-                stopPendingIntent
-            )
-            .setCategory(NotificationCompat.CATEGORY_SERVICE)
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .build()
-    }
-
-    private fun createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val name = getString(R.string.notification_service_title)
-            val descriptionText = getString(R.string.notification_service_description)
-            val importance = NotificationManager.IMPORTANCE_LOW
-            val channel = NotificationChannel(CHANNEL_ID, name, importance).apply {
-                description = descriptionText
-            }
-            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            notificationManager.createNotificationChannel(channel)
         }
     }
 
@@ -1025,20 +901,12 @@ class LocationService : Service(), AutoTrackingManager.AutoTrackingListener, Pro
 
     override fun onDestroy() {
         activityModeManager.reset()
-        fusedLocationClient.removeLocationUpdates(locationCallback)
         timerJob?.cancel()
         watchdogJob?.cancel()
         serviceScope.cancel()
 
-        // Liberar WakeLock si aún está activo
-        if (wakeLock?.isHeld == true) {
-            try { wakeLock?.release() } catch (_: Exception) { }
-        }
-
-        // Liberar el HandlerThread para evitar fugas de memoria
-        locationHandlerThread?.quitSafely()
-        locationHandlerThread = null
-
+        // Liberar el delegado GPS (updates + WakeLock + hilo dedicado)
+        gpsDelegate.shutdown()
         // Liberar BLE Proximity (delegado a ProximityBleManager)
         proximityBleManager.clearAll()
 

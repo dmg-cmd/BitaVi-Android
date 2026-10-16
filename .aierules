@@ -1,8 +1,14 @@
 # Reglas de Oro del Proyecto Localizador
 
-## Idioma y Pensamiento
-- El agente debe comunicarse exclusivamente en **Español**.
+## Idioma y Pensamiento (OBLIGATORIO — PRIORIDAD MAXIMA)
+- El agente debe comunicarse **exclusivamente en Español** en TODAS sus respuestas visibles al usuario.
+- Esto aplica a TODO texto visible: respuestas, resúmenes de progreso, tablas de estado, títulos, notas, advertencias, listas de pasos, mensajes de error y confirmaciones.
 - El pensamiento interno (thought) debe ser **estrictamente en Español**.
+- NO usar encabezados ni etiquetas en inglés para texto conversacional. Ejemplos correctos: "Estado: Hecho", "Pendiente", "Compilación exitosa", "En progreso". Incorrecto: "Status: Done", "Pending", "Build successful", "WIP".
+- Se permite mantener en inglés únicamente términos técnicos universales sin traducción estándar (nombres de archivos, clases, funciones, comandos, APIs, dependencias), pero el texto que los rodea DEBE estar en español.
+- Nunca cambiar a inglés a menos que el usuario lo pida explícitamente.
+- Usar el dialecto neutro de español latinoamericano, evitando modismos muy regionales.
+- SI EL USUARIO NO ENTIENDE UN MENSAJE O DEBE TRADUCIRLO: significa que se incumplió esta regla. Se debe reescribir la respuesta en español.
 
 ## Protocolo de Documentación (MANDATORIO)
 Al finalizar cada tarea o antes de cerrar la sesión, el agente DEBE:
@@ -33,7 +39,7 @@ Al finalizar cada tarea o antes de cerrar la sesión, el agente DEBE:
 - IconCompartir (Color 0xFF4DD0E1, Cian) para cualquier boton de compartir/enviar.
 - IconExportar (Color 0xFFFFB74D, Amber) para cualquier boton de exportar/guardar/descargar.
 - IconFavorito (Color 0xFFFFD54F, Dorado) para cualquier boton de marcar/agregar a favoritos.
-- Definiciones centralizadas en pp/src/main/java/com/example/ui/theme/Color.kt.
+- Definiciones centralizadas en  pp/src/main/java/com/example/ui/theme/Color.kt.
 - Siempre usar estas constantes en lugar de colores hardcodeados para acciones semanticas.
 - Iconos: Icons.Default.Favorite (lleno) para favoritos, iconos de accion segun contexto.
 
