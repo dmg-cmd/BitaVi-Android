@@ -11,7 +11,7 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun BrandWatermark(
     modifier: Modifier = Modifier,
-    version: String = "v3.2.2-RC1"
+    version: String = "v3.2.3-RC1"
 ) {
     Text(
         text = "BiTaRu — $version",

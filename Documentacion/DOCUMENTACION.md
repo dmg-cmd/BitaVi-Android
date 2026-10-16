@@ -1,3 +1,14 @@
+## Sincronización de la versión visible a v3.2.3-RC1 (2026-10-15 22:38)
+
+### ¿Qué cambió para el usuario?
+- La app ahora muestra la versión **v3.2.3-RC1** en la barra superior y en la marca de agua.
+- El número de instalación (Ajustes del teléfono / tienda) quedó alineado en **3.2.3**,
+  para que coincida con lo que se ve dentro de la app.
+
+### Aclaración
+- El número visible es un texto propio de la app; el de instalación vive en
+  `app/build.gradle.kts`. Antes no coincidían (2.0 vs v3.2.2-RC1).
+
 ## FASE 1.3: Servicio de Ubicación más Robusto y Grabaciones sin Límite de Tiempo (2026-10-15)
 
 ### ¿Qué cambió para el usuario?

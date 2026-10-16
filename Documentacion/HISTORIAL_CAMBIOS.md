@@ -1,3 +1,24 @@
+## [2026-10-15 22:38] Sincronización de la versión visible a v3.2.3-RC1
+
+### Logro
+La etiqueta de versión que muestra la app pasa de `v3.2.2-RC1` a `v3.2.3-RC1` y se
+sincroniza con el número de instalación (`build.gradle.kts`), que antes era `2.0`
+y quedaba descolgado del texto visible.
+
+### Detalles Técnicos
+- `ui/components/BrandWatermark.kt`: valor por defecto `version = "v3.2.3-RC1"`.
+- `ui/components/TopBarLocalizador.kt`: texto `"Infraestructura Suite — v3.2.3-RC1"`.
+- `app/build.gradle.kts`: `versionName = "3.2.3"`, `versionCode = 3`.
+
+### Verificación
+- `testDebugUnitTest`: 109 tests, 0 fallos.
+- `installDebug`: BUILD SUCCESSFUL, instalado en Pixel 9 Pro XL.
+
+### Respaldo
+- `RESPALDO_ANTERIOR/20261015_BrandWatermark_pre_v323.kt`
+- `RESPALDO_ANTERIOR/20261015_TopBarLocalizador_pre_v323.kt`
+- `RESPALDO_ANTERIOR/20261015_app_build.gradle_pre_v323.kts`
+
 ## [2026-10-15] FASE 1.3: Patrón Fachada en LocationService y Nueva Política de WakeLock (Grabación sin Límite)
 
 ### Logro

@@ -18,8 +18,8 @@ android {
     applicationId = "com.aistudio.localizador.vqtspk"
     minSdk = 24
     targetSdk = 35
-    versionCode = 2
-    versionName = "2.0"
+    versionCode = 3
+    versionName = "3.2.3"
 
     testInstrumentationRunner = "com.aistudio.localizador.HiltTestRunner"
 

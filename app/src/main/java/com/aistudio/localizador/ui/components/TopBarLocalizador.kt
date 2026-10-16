@@ -28,7 +28,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
 /**
- * 🛰️ TopBarLocalizador v3.2.2-RC1-patch15.7
+ * 🛰️ TopBarLocalizador v3.2.3-RC1-patch15.7
  * Cabecera translúcida optimizada. Deja espacio libre para el menú flotante izquierdo
  * e implementa escala de grises de alto contraste diurno.
  */
@@ -83,7 +83,7 @@ fun TopBarLocalizador(
                 }
                 
                 Text(
-                    text = "Infraestructura Suite — v3.2.2-RC1",
+                    text = "Infraestructura Suite — v3.2.3-RC1",
                     style = MaterialTheme.typography.bodySmall,
                     color = Color.White.copy(alpha = 0.65f), // 🔥 Contraste aumentado (Gris más nítido)
                     modifier = Modifier.padding(top = 2.dp)

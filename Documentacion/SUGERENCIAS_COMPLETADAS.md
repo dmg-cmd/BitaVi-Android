@@ -1,3 +1,9 @@
+## 2026-10-15 22:38 — Sincronización de versión visible a v3.2.3-RC1
+- **BrandWatermark.kt** y **TopBarLocalizador.kt**: etiqueta `v3.2.2-RC1` -> `v3.2.3-RC1`.
+- **app/build.gradle.kts**: `versionName` 2.0 -> 3.2.3; `versionCode` 2 -> 3.
+- **Resultado**: compile + suite 109/0 + installDebug OK (Pixel 9 Pro XL).
+- **Nota**: la marca visible aún dice "BiTaRu" (queda para branding P3).
+
 ## 2026-10-15 — FASE 1.3: Patrón Fachada en LocationService + WakeLock sin límite
 - **GpsLifecycleDelegate.kt** (nuevo): cliente GPS + HandlerThread + callback + WakeLock; acquire() SIN timeout en grabación, release en pasivo/detenido.
 - **LocationNotificationDelegate.kt** (nuevo): envuelve ServiceNotificationManager + alertas de proximidad.
