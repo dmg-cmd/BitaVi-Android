@@ -1,3 +1,18 @@
+## [2026-10-16 00:58] Saneamiento y purga de respaldos caducados en RESPALDO_ANTERIOR/
+
+### Logro
+Se depuran 237 respaldos y carpetas históricas obsoletas en `RESPALDO_ANTERIOR/` (períodos 2024, julio, agosto y septiembre de 2026), reduciendo el peso de 7,0 MB a 576 KB y preservando únicamente los 19 respaldos vigentes de octubre de 2026 (sesiones del 14 y 15 de octubre).
+
+### Detalles Técnicos
+- **Elementos eliminados:** 237 archivos y subcarpetas (`20260715_com.example.backup` y `ME06_20260719_1202`) que contenían código monolítico ya reemplazado y versionado en el historial de Git.
+- **Respaldos preservados (19 vigentes):**
+  - Sesión 15/10/2026 (12 archivos): `LocationService_pre_fase13`, `MapScreen_pre_refactor`, `SavedLocationsScreen_pre_refactor`, `BitaruBrandHeader_pre_brand`, `BrandWatermark_pre_brand`, `BrandWatermark_pre_v323`, `TopBarLocalizador_pre_v323`, `app_build.gradle_pre_v323`, `ExperienceMapScreen_pre_brand`, `ShareExperienceUseCase_pre_brand`, `DepartureWatcherManagerTest`, `ExampleRobolectricTest`.
+  - Sesión 14/10/2026 (7 archivos): `MainActivity_pre_modularizacion`, `MapScreen_pre_fix_foto`, `SavedLocationsScreen_pre_fix_foto`, `LocationService`, `RouteViewModel`, `AutoTrackingManager`, `LocationServiceManager`.
+
+### Verificación
+- Conteo final en `RESPALDO_ANTERIOR/`: exactamente 19 archivos, 0 subdirectorios.
+- Espacio optimizado: de 7,0 MB a 576 KB.
+
 ## [2026-10-15 23:00] Limpieza integral de la marca "Bitaru" -> "BitaVi"
 
 ### Logro

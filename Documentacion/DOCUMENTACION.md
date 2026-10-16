@@ -1,3 +1,10 @@
+## Saneamiento y Purga de Respaldos Caducados (2026-10-16 00:58)
+
+### ¿Qué cambió en el proyecto?
+- **Carpeta de respaldos saneada:** Se eliminaron 237 copias históricas de 2024 y mediados de 2026 que habían quedado desactualizadas tras las sucesivas modularizaciones y la refactorización a Hilt.
+- **Retención táctica:** Se mantienen exclusivamente los 19 respaldos vigentes de octubre de 2026 (sesiones del 14 y 15 de octubre), correspondientes al estado previo de las pantallas, servicios y módulos recientemente actualizados.
+- **Optimización de almacenamiento:** El tamaño de la carpeta `RESPALDO_ANTERIOR/` se redujo de 7,0 MB a 576 KB.
+
 ## Limpieza de la marca "Bitaru" -> "BitaVi" (2026-10-15 23:00)
 
 ### ¿Qué cambió para el usuario?
