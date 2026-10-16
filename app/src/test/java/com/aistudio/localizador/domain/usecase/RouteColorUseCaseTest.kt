@@ -15,7 +15,7 @@ class RouteColorUseCaseTest {
     }
 
     @Test
-    fun `dado un hex invalido o nulo debe retornar el color por defecto Azul Bitaru`() {
+    fun `dado un hex invalido o nulo debe retornar el color por defecto Azul BitaVi`() {
         val result = useCase.sanitizeColorHex("invalido")
         assertEquals("#3498DB", result)
     }

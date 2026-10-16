@@ -27,7 +27,7 @@ class AddFavoriteFromTrackingUseCase @Inject constructor(
     ): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             if (currentLocation == null || (currentLocation.latitude == 0.0 && currentLocation.longitude == 0.0)) {
-                Log.w("Bitaru_Tracking", "Ubicacion nula o coordenadas GPS invalidas (0.0, 0.0).")
+                Log.w("BitaVi_Tracking", "Ubicacion nula o coordenadas GPS invalidas (0.0, 0.0).")
                 return@withContext Result.failure(IllegalArgumentException("Coordenadas GPS no disponibles."))
             }
 
@@ -67,13 +67,13 @@ class AddFavoriteFromTrackingUseCase @Inject constructor(
                     routeId = activeRouteId,
                     favoriteId = newFavoriteId.toInt()
                 )
-                Log.d("Bitaru_Tracking", "Favorito $newFavoriteId vinculado a Ruta $activeRouteId")
+                Log.d("BitaVi_Tracking", "Favorito $newFavoriteId vinculado a Ruta $activeRouteId")
             }
 
-            Log.d("Bitaru_Tracking", "Favorito guardado: $pointName ($lat, $lon)")
+            Log.d("BitaVi_Tracking", "Favorito guardado: $pointName ($lat, $lon)")
             Result.success(Unit)
         } catch (e: Exception) {
-            Log.e("Bitaru_Tracking", "Error al crear favorito en tracking", e)
+            Log.e("BitaVi_Tracking", "Error al crear favorito en tracking", e)
             Result.failure(e)
         }
     }

@@ -59,9 +59,9 @@ class ShortStopMarkManager @Inject constructor(
             try {
                 val details = geocoderUseCase.fetchLocationDetails(lat, lon)
                 shortStopAddress = details.first ?: ""
-                Log.d("Bitaru_ShortStop", """Fase I: Direccion pre-resuelta: $shortStopAddress""")
+                Log.d("BitaVi_ShortStop", """Fase I: Direccion pre-resuelta: $shortStopAddress""")
             } catch (e: Exception) {
-                Log.e("Bitaru_ShortStop", "Error al geocodificar la parada", e)
+                Log.e("BitaVi_ShortStop", "Error al geocodificar la parada", e)
                 shortStopAddress = ""
             }
         }
@@ -90,7 +90,7 @@ class ShortStopMarkManager @Inject constructor(
                     author = "Autom\u00e1tico"
                 )
             } catch (e: Exception) {
-                Log.e("Bitaru_ShortStop", """Fallo critico al persistir: $e""")
+                Log.e("BitaVi_ShortStop", """Fallo critico al persistir: $e""")
             }
         }
     }

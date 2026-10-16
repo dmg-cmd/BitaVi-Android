@@ -539,10 +539,10 @@ class RouteViewModel @Inject constructor(
                 val details = geocoderUseCase.fetchLocationDetails(latitude, longitude)
                 withContext(Dispatchers.Main) {
                     photoExtractedAddress = details.first
-                    Log.d("Bitaru_EXIF", "Dirección extraída de la foto: ${details.first}")
+                    Log.d("BitaVi_EXIF", "Dirección extraída de la foto: ${details.first}")
                 }
             } catch (e: Exception) {
-                Log.e("Bitaru_EXIF", "Error al geocodificar coordenadas EXIF", e)
+                Log.e("BitaVi_EXIF", "Error al geocodificar coordenadas EXIF", e)
             }
         }
     }
@@ -770,7 +770,7 @@ class RouteViewModel @Inject constructor(
     fun getContactDetails(contactUri: Uri, onResult: (name: String, phone: String, email: String, address: String) -> Unit) {
         viewModelScope.launch(Dispatchers.IO) {
             val details = contactUseCase.getContactDetails(contactUri)
-                .onFailure { Log.e("Bitaru", "Fallo obteniendo contacto", it) }
+                .onFailure { Log.e("BitaVi", "Fallo obteniendo contacto", it) }
                 .getOrDefault(ContactUseCase.ContactDetails("", "", "", ""))
             withContext(Dispatchers.Main) { onResult(details.name, details.phone, details.email, details.address) }
         }

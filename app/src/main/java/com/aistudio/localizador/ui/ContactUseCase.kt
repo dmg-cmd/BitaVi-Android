@@ -42,7 +42,7 @@ class ContactUseCase @Inject constructor(
                 }
             } ?: Result.failure(IllegalArgumentException("ContentResolver devolvió cursor nulo"))
         } catch (e: Exception) {
-            Log.e("Bitaru_Contact", "Fallo al consultar ContentProvider", e)
+            Log.e("BitaVi_Contact", "Fallo al consultar ContentProvider", e)
             Result.failure(e)
         }
     }

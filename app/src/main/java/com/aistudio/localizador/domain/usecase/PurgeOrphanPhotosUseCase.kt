@@ -38,12 +38,12 @@ class PurgeOrphanPhotosUseCase @Inject constructor(
                     if (file.name !in referencedNames) {
                         if (file.delete()) {
                             purged++
-                            Log.d("Bitaru_Purge", "Foto huerfana purgada: ${file.name}")
+                            Log.d("BitaVi_Purge", "Foto huerfana purgada: ${file.name}")
                         }
                     }
                 }
             }
-            Log.d("Bitaru_Purge", "Purga completada: escaneadas=$scanned, purgadas=$purged")
+            Log.d("BitaVi_Purge", "Purga completada: escaneadas=$scanned, purgadas=$purged")
             PurgeResult(scanned = scanned, purged = purged)
         }
     }

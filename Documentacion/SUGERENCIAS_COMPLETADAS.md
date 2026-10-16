@@ -1,3 +1,10 @@
+## 2026-10-15 23:00 — Limpieza integral de la marca "Bitaru" -> "BitaVi"
+- Textos visibles: BrandWatermark, contentDescription del logo, textos de compartir (ShareExperienceUseCase) y ExperienceMapScreen.
+- Logs: `Bitaru_*` -> `BitaVi_*` (Tracking/EXIF/Purge/AutoTrack/Ble/ShortStop/Core/Contact), `BitaruDebug` -> `BitaViDebug`.
+- Identificadores/recursos: `BitaruBrandHeader` -> `BitaViBrandHeader`, `AZUL_BITARU` -> `AZUL_BITAVI`, `bitaru_logo.png` -> `bitavi_logo.png`.
+- **Resultado**: 0 restos en app/src/main; suite 109/0; deploy OK (Pixel 9 Pro XL).
+- **Pendiente**: renombrar `LocalizadorTheme`/`TopBarLocalizador`/`Theme.Localizador` (no es la marca).
+
 ## 2026-10-15 22:38 — Sincronización de versión visible a v3.2.3-RC1
 - **BrandWatermark.kt** y **TopBarLocalizador.kt**: etiqueta `v3.2.2-RC1` -> `v3.2.3-RC1`.
 - **app/build.gradle.kts**: `versionName` 2.0 -> 3.2.3; `versionCode` 2 -> 3.

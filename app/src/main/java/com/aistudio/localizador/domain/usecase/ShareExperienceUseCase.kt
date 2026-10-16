@@ -42,12 +42,12 @@ class ShareExperienceUseCase @Inject constructor() {
             }
         }
 
-        val routeName = route?.name?.takeIf { it.isNotBlank() } ?: "Recorrido Bitaru"
+        val routeName = route?.name?.takeIf { it.isNotBlank() } ?: "Recorrido BitaVi"
         val distanceMeters = route?.distanceMeters ?: 0.0
         val distanceKmFormatted = String.format(Locale.getDefault(), "%.2f", distanceMeters / 1000.0)
 
         val routeInfo = StringBuilder().apply {
-            append("📍 Experiencia Bitaru Localizador\n")
+            append("📍 Experiencia BitaVi\n")
             append("📌 Ruta: $routeName\n")
             append("📏 Distancia: $distanceKmFormatted km\n")
             if (contentUris.isNotEmpty()) {
@@ -75,7 +75,7 @@ class ShareExperienceUseCase @Inject constructor() {
             }
         }
 
-        return Intent.createChooser(shareIntent, "Compartir Experiencia Bitaru")
+        return Intent.createChooser(shareIntent, "Compartir Experiencia BitaVi")
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     }
 }

@@ -1,3 +1,21 @@
+## [2026-10-15 23:00] Limpieza integral de la marca "Bitaru" -> "BitaVi"
+
+### Logro
+Se eliminan todas las referencias a la marca antigua "Bitaru/BiTaRu" en `app/src/main`:
+textos visibles, etiquetas de log, el nombre de la clase del encabezado de marca, la
+constante de color por defecto y el recurso del logo.
+
+### Detalles Técnicos
+- Textos: `BrandWatermark`, `BitaViBrandHeader` (contentDescription), `ShareExperienceUseCase`, `ExperienceMapScreen`.
+- Logs: `Bitaru_*` -> `BitaVi_*`, `BitaruDebug` -> `BitaViDebug`, `Log.e("Bitaru")` -> `"BitaVi"`.
+- Identificadores/recursos: `BitaruBrandHeader` -> `BitaViBrandHeader`; `AZUL_BITARU` -> `AZUL_BITAVI`; `drawable/bitaru_logo.png` -> `drawable/bitavi_logo.png`.
+- 16 archivos modificados + 2 renombres.
+
+### Verificación
+- 0 restos de "Bitaru|BiTaRu|bitaru" en `app/src/main`.
+- `testDebugUnitTest`: 109 tests, 0 fallos.
+- `installDebug`: BUILD SUCCESSFUL (Pixel 9 Pro XL).
+
 ## [2026-10-15 22:38] Sincronización de la versión visible a v3.2.3-RC1
 
 ### Logro

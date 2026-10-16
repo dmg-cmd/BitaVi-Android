@@ -22,7 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import com.aistudio.localizador.ui.components.BitaruBrandHeader
+import com.aistudio.localizador.ui.components.BitaViBrandHeader
 
 @Composable
 fun BiometricLockScreen(
@@ -42,7 +42,7 @@ fun BiometricLockScreen(
         ) {
             Spacer(modifier = Modifier.height(24.dp))
 
-            BitaruBrandHeader(
+            BitaViBrandHeader(
                 maxWidthFraction = 0.75f,
                 subtitleText = "SISTEMA PROTEGIDO POR BIOMETRÍA"
             )

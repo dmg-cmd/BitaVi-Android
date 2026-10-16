@@ -14,7 +14,7 @@ fun BrandWatermark(
     version: String = "v3.2.3-RC1"
 ) {
     Text(
-        text = "BiTaRu — $version",
+        text = "BitaVi — $version",
         style = MaterialTheme.typography.labelSmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = modifier

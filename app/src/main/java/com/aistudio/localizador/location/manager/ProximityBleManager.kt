@@ -66,17 +66,17 @@ class ProximityBleManager @Inject constructor(
                             pm.updateScanHashes(contactHashes)
                         }
                     } catch (e: SecurityException) {
-                        Log.w("Bitaru_Ble", "READ_CONTACTS no concedido, saltando hashing de contactos")
+                        Log.w("BitaVi_Ble", "READ_CONTACTS no concedido, saltando hashing de contactos")
                     }
                 }
                 pm.startScanning()
-                Log.d("Bitaru_Ble", "BLE scanning iniciado")
+                Log.d("BitaVi_Ble", "BLE scanning iniciado")
             }
         } else {
             if (isBleActive) {
                 isBleActive = false
                 pm.stop()
-                Log.d("Bitaru_Ble", "BLE scanning detenido")
+                Log.d("BitaVi_Ble", "BLE scanning detenido")
             }
         }
     }

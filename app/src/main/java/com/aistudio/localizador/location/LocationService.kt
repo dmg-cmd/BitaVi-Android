@@ -583,7 +583,7 @@ class LocationService : Service(), AutoTrackingManager.AutoTrackingListener, Pro
     // ─── BLE Proximity (Módulo 3B) ─────────────────────────────────
 
     override fun onBleContactDetected(contactName: String, distanceMeters: Double) {
-        Log.d("Bitaru_Core", "Contacto BLE detectado: $contactName a ${distanceMeters.toInt()}m")
+        Log.d("BitaVi_Core", "Contacto BLE detectado: $contactName a ${distanceMeters.toInt()}m")
     }
     private fun updateServiceNotification(routeId: Int) {
         serviceScope.launch {

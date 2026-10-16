@@ -126,6 +126,6 @@ class AutoTrackingManager @Inject constructor() {
     }
 
     companion object {
-        private const val TAG = "Bitaru_AutoTrack"
+        private const val TAG = "BitaVi_AutoTrack"
     }
 }

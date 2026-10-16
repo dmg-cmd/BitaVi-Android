@@ -129,7 +129,7 @@ fun DetailScreen(
             )
 
             LaunchedEffect(routeId, waypoints) {
-                Log.d("BitaruDebug", "Puntos de inter\u00e9s: ${waypoints.size}")
+                Log.d("BitaViDebug", "Puntos de inter\u00e9s: ${waypoints.size}")
             }
 
             // ANALISIS CON IA (4.6)

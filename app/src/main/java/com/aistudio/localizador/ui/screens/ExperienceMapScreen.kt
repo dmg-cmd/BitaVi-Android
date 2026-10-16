@@ -542,7 +542,7 @@ fun ExperienceMapScreen(
                                     val intent = Intent(Intent.ACTION_SEND).apply {
                                         type = "image/png"
                                         putExtra(Intent.EXTRA_STREAM, uri)
-                                        putExtra(Intent.EXTRA_TEXT, "📍 Experiencia Bitaru: $routeName")
+                                        putExtra(Intent.EXTRA_TEXT, "📍 Experiencia BitaVi: $routeName")
                                         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                     }
                                     context.startActivity(Intent.createChooser(intent, "Compartir Experiencia..."))

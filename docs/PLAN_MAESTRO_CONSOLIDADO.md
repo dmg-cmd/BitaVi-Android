@@ -18,7 +18,7 @@
 | `AppDatabase.kt` | 124 | OK | — |
 | Tests con API key hardcoded | — | ❌ Pendiente | P2 |
 | WakeLock 25h | Resuelto | ✅ Hecho (2026-10-15: acquire() sin timeout en grabación) | - |
-| Branding inconsistente | Código fuente | ❌ Pendiente | P3 |
+| Branding Bitaru -> BitaVi | Código fuente | ✅ Hecho (2026-10-15; resta "Localizador" interno) | P3 |
 | `tmp/` + `RESPALDO_ANTERIOR/` | ~18 + 6 archivos | ❌ Pendiente | P4 |
 
 ---
@@ -142,7 +142,7 @@ local.properties
 | `domain/usecase/ShareExperienceUseCase.kt` | `"Recorrido Bitaru"` → `"Recorrido BitaVi"` |
 | `ui/screens/ExperienceMapScreen.kt` | `"Experiencia Bitaru"` → `"Experiencia BitaVi"` |
 | `location/manager/AutoTrackingManager.kt` | TAG `"Bitaru_AutoTrack"` → `"BitaVi_AutoTrack"` |
-| `location/LocationService.kt` | TAG `"Bitaru_Core"` → `"BitaVi_Core"` |
+| `location/LocationService.kt` | TAG `"Bitaru_Core"` -> `"BitaVi_Core"` ✅ Hecho 2026-10-15 |
 | `location/manager/ProximityBleManager.kt` | TAG `"Bitaru_Ble"` → `"BitaVi_Ble"` |
 | `location/manager/ShortStopMarkManager.kt` | TAG `"Bitaru_ShortStop"` → `"BitaVi_ShortStop"` |
 | `domain/usecase/*` | Logs `"Bitaru_*"` → `"BitaVi_*"` |
@@ -215,7 +215,7 @@ Continuo:    Fase 5 (Documentación)
 - [x] 3 delegates inyectados por Hilt (2026-10-15); [ ] `LocationService.kt` < 400 líneas (actual: 806)
 - [x] WakeLock: política sin timeout en grabación y release en pasivo/detenido (2026-10-15)
 - [ ] 0 API keys hardcoded en tests; `RetrofitClient` mockeable
-- [ ] 0 referencias "Bitaru"/"LocalizadorTheme"/"TopBarLocalizador" en `app/src/main`
+- [x] 0 referencias "Bitaru"/"BiTaRu"/"bitaru" en app/src/main (2026-10-15); [ ] renombrar "LocalizadorTheme"/"TopBarLocalizador"
 - [ ] `tmp/` eliminado; `RESPALDO_ANTERIOR/` ≤ 30 días
 - [ ] Suite tests 100% verde (`./gradlew testDebugUnitTest`)
 - [ ] Compilación 0 warnings (`./gradlew assembleDebug`)

@@ -7,7 +7,7 @@ import javax.inject.Singleton
 class RouteColorUseCase @Inject constructor() {
 
     enum class RoutePalette(val hex: String, val displayName: String) {
-        AZUL_BITARU("#3498DB", "Azul Primario"),
+        AZUL_BITAVI("#3498DB", "Azul Primario"),
         VERDE_GPS("#2ECC71", "Verde Activo"),
         AMBER_EXPORT("#FFB74D", "Ambar Historico"),
         VIOLETA_EXPERIENCIA("#7C4DFF", "Violeta Experiencia"),
@@ -15,7 +15,7 @@ class RouteColorUseCase @Inject constructor() {
 
         companion object {
             fun fromHex(hex: String?): RoutePalette {
-                return values().find { it.hex.equals(hex, ignoreCase = true) } ?: AZUL_BITARU
+                return values().find { it.hex.equals(hex, ignoreCase = true) } ?: AZUL_BITAVI
             }
         }
     }
@@ -72,10 +72,10 @@ class RouteColorUseCase @Inject constructor() {
     }
 
     fun sanitizeColorHex(rawHex: String?): String {
-        if (rawHex.isNullOrBlank()) return RoutePalette.AZUL_BITARU.hex
+        if (rawHex.isNullOrBlank()) return RoutePalette.AZUL_BITAVI.hex
         val formatted = if (rawHex.startsWith("#")) rawHex else "#"
         val regex = Regex("^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{8})$")
-        return if (regex.matches(formatted)) formatted else RoutePalette.AZUL_BITARU.hex
+        return if (regex.matches(formatted)) formatted else RoutePalette.AZUL_BITAVI.hex
     }
 
     fun parseHexToColorInt(hexColor: String?): Int {

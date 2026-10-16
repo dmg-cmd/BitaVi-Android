@@ -54,18 +54,18 @@ class ExtractPhotoLocationUseCase @Inject constructor(
             }
 
             if (latLong != null) {
-                Log.d("Bitaru_EXIF", "Metadatos extraidos con exito: Lat=, Lon=, TS=")
+                Log.d("BitaVi_EXIF", "Metadatos extraidos con exito: Lat=, Lon=, TS=")
                 PhotoMetadata(
                     latitude = latLong[0],
                     longitude = latLong[1],
                     timestamp = timestamp
                 )
             } else {
-                Log.w("Bitaru_EXIF", "El archivo fisico local carece de metadatos GPS validos.")
+                Log.w("BitaVi_EXIF", "El archivo fisico local carece de metadatos GPS validos.")
                 null
             }
         } catch (e: Exception) {
-            Log.e("Bitaru_EXIF", "Error critico en el pipeline de transcodificacion", e)
+            Log.e("BitaVi_EXIF", "Error critico en el pipeline de transcodificacion", e)
             null
         }
     }
@@ -75,7 +75,7 @@ class ExtractPhotoLocationUseCase @Inject constructor(
             try {
                 MediaStore.setRequireOriginal(uri)
             } catch (e: Exception) {
-                Log.w("Bitaru_EXIF", "setRequireOriginal no disponible, usando URI original", e)
+                Log.w("BitaVi_EXIF", "setRequireOriginal no disponible, usando URI original", e)
                 uri
             }
         } else {
@@ -89,7 +89,7 @@ class ExtractPhotoLocationUseCase @Inject constructor(
                 ExifInterface(input).latLong?.takeIf { it[0] != 0.0 || it[1] != 0.0 }
             }
         } catch (e: Exception) {
-            Log.e("Bitaru_EXIF", "Fallo lectura EXIF directa desde stream", e)
+            Log.e("BitaVi_EXIF", "Fallo lectura EXIF directa desde stream", e)
             null
         }
     }

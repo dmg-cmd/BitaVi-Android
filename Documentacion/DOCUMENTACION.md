@@ -1,3 +1,15 @@
+## Limpieza de la marca "Bitaru" -> "BitaVi" (2026-10-15 23:00)
+
+### ¿Qué cambió para el usuario?
+- Ya no aparece la marca antigua "BiTaRu" en la marca de agua de la app.
+- Los textos para compartir una experiencia ahora dicen "BitaVi" (antes "Bitaru").
+- La descripción accesible del logo dice "Logo Corporativo BitaVi".
+
+### Aclaración
+- El paquete interno (`com.aistudio.localizador`) no cambia: es la identidad de la app.
+- Quedan nombres internos con la palabra "Localizador" (tema y barra superior), que no
+  son la marca; se pueden renombrar aparte si se desea.
+
 ## Sincronización de la versión visible a v3.2.3-RC1 (2026-10-15 22:38)
 
 ### ¿Qué cambió para el usuario?
