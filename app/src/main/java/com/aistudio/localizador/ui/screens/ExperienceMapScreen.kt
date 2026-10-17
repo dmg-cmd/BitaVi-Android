@@ -1,5 +1,6 @@
 package com.aistudio.localizador.ui.screens
 
+import com.aistudio.localizador.ui.screens.map.RouteDirectionArrowsOverlay
 import com.aistudio.localizador.ui.theme.IconCompartir
 import com.aistudio.localizador.ui.theme.IconExportar
 import com.aistudio.localizador.ui.toGradientRouteSegments
@@ -263,7 +264,7 @@ fun ExperienceMapScreen(
             modifier = Modifier.fillMaxSize(),
             factory = {
                 mapView.apply {
-                    setTileSource(viewModel.mapTileSourceManager.getTileSource(currentMapLayer))
+                    viewModel.mapTileSourceManager.applyLayerToMapView(this, currentMapLayer)
                     setMultiTouchControls(true)
                     zoomController.setVisibility(CustomZoomButtonsController.Visibility.NEVER)
                     setBuiltInZoomControls(false)
@@ -283,13 +284,10 @@ fun ExperienceMapScreen(
                 }
             },
             update = { view ->
-                val targetTileSource = viewModel.mapTileSourceManager.getTileSource(currentMapLayer)
-                if (view.tileProvider.tileSource != targetTileSource) {
-                    view.setTileSource(targetTileSource)
-                }
+                viewModel.mapTileSourceManager.applyLayerToMapView(view, currentMapLayer)
 
                 val overlays = view.overlays
-                overlays.removeIf { it is Marker || it is GuideLinesOverlay || it is Polyline }
+                overlays.removeIf { it is Marker || it is GuideLinesOverlay || it is Polyline || it is RouteDirectionArrowsOverlay }
 
                 if (sortedPoints.isNotEmpty()) {
                     sortedPoints.toGradientRouteSegments(viewModel.routeColorUseCase).forEach { seg ->
@@ -297,8 +295,12 @@ fun ExperienceMapScreen(
                             setPoints(seg.points)
                             outlinePaint.color = seg.color
                             outlinePaint.strokeWidth = viewModel.mapStrokeWidth
+                            outlinePaint.strokeCap = android.graphics.Paint.Cap.ROUND
+                            outlinePaint.strokeJoin = android.graphics.Paint.Join.ROUND
+                            outlinePaint.isAntiAlias = true
                         })
                     }
+                    overlays.add(RouteDirectionArrowsOverlay(sortedPoints, stepPoints = 12))
                 }
 
                 waypoints.forEach { wp ->

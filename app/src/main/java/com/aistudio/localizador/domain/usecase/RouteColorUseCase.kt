@@ -20,6 +20,35 @@ class RouteColorUseCase @Inject constructor() {
         }
     }
 
+    companion object {
+        /** Rojo intenso (< 2 km/h: Inicio / Detenido / Paso muy lento) */
+        const val COLOR_STOPPED_SLOW: Int = 0xFFD32F2F.toInt()
+        /** Verde esmeralda oscuro (2 – 7 km/h: Caminata) */
+        const val COLOR_WALKING: Int = 0xFF2E7D32.toInt()
+        /** Azul profundo (7 – 20 km/h: Bicicleta / Urbano) */
+        const val COLOR_BIKING: Int = 0xFF1565C0.toInt()
+        /** Violeta intenso (> 20 km/h: Vehículo) */
+        const val COLOR_DRIVING: Int = 0xFF7B1FA2.toInt()
+    }
+
+    /**
+     * Convierte la velocidad instantánea (en m/s) en un color táctico de alto contraste
+     * sobre mapas claros y oscuros, usando rangos fijos en km/h:
+     * - < 2 km/h   -> Rojo intenso (#D32F2F)
+     * - 2 - 7 km/h -> Verde esmeralda oscuro (#2E7D32)
+     * - 7 - 20 km/h -> Azul profundo (#1565C0)
+     * - > 20 km/h  -> Violeta intenso (#7B1FA2)
+     */
+    fun speedToTacticalColor(speedMps: Float): Int {
+        val speedKmh = (speedMps * 3.6f).coerceAtLeast(0f)
+        return when {
+            speedKmh < 2.0f -> COLOR_STOPPED_SLOW
+            speedKmh <= 7.0f -> COLOR_WALKING
+            speedKmh <= 20.0f -> COLOR_BIKING
+            else -> COLOR_DRIVING
+        }
+    }
+
     /**
      * Convierte velocidad instantánea en un Color Int (ARGB) usando gradiente térmico HSV continuo.
      * Azul/Cian (200°) para velocidad baja → Rojo (0°) para velocidad máxima.

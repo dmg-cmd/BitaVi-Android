@@ -74,7 +74,7 @@ fun MapCanvas(
         modifier = modifier.fillMaxSize(),
         factory = {
             mapView.apply {
-                setTileSource(viewModel.mapTileSourceManager.getTileSource(currentMapLayer))
+                viewModel.mapTileSourceManager.applyLayerToMapView(this, currentMapLayer)
                 setMultiTouchControls(true)
                 setOnTouchListener { v, _ ->
                     v.performClick()
@@ -160,9 +160,7 @@ fun MapCanvas(
                 locationOverlay.setDirectionIcon(circleIcon)
                 var needsInvalidate = false
 
-                val targetTileSource = viewModel.mapTileSourceManager.getTileSource(currentMapLayer)
-                if (view.tileProvider.tileSource != targetTileSource) {
-                    view.setTileSource(targetTileSource)
+                if (viewModel.mapTileSourceManager.applyLayerToMapView(view, currentMapLayer)) {
                     needsInvalidate = true
                 }
 

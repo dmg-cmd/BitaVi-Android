@@ -58,10 +58,19 @@ fun BoxScope.MapTopBar(
             }
         }
 
+        val speedKmh = (latestLocation?.speed ?: 0f) * 3.6f
+        val colorActual = when {
+            speedKmh < 2.0f -> Color(0xFFD32F2F)
+            speedKmh <= 7.0f -> Color(0xFF2E7D32)
+            speedKmh <= 20.0f -> Color(0xFF1565C0)
+            else -> Color(0xFF7B1FA2)
+        }
+
         TopBarLocalizador(
             onLocalizadorClick = onLocalizadorClick,
             modoTrafico = modoTraficoText,
-            velocidad = "${String.format(LocalConfiguration.current.locales[0], "%.1f", (latestLocation?.speed ?: 0f) * 3.6f)} km/h"
+            velocidad = "${String.format(LocalConfiguration.current.locales[0], "%.1f", speedKmh)} km/h",
+            colorIndicador = colorActual
         )
 
         if (showAddressBox && currentAddress != null) {

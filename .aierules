@@ -18,6 +18,8 @@ Al finalizar cada tarea o antes de cerrar la sesión, el agente DEBE:
 4. **Actualizar `Documentacion/SUGERENCIAS.md`**: Marcar tareas completadas.
 5. **Actualizar `Documentacion/SUGERENCIAS_COMPLETADAS.md`**: Mover las tareas finalizadas aquí.
 6. **Archivos Walkthrough**: Guardar todos los informes de verificación (walkthrough) generados en la carpeta `Documentacion/Walkthroughs/` nombrándolos con la fecha y hora de ocurrencia (ej: `walkthrough_AAAAMMDD_HHMM_[tema].md`).
+7. **Incremento Automático de Versión (`version-sync-guardian`)**: En cada modificación de código que se compile o despliegue, incrementar automáticamente la versión de forma sincronizada en `app/build.gradle.kts` (`versionCode` y `versionName`), `TopBarLocalizador.kt` y `BrandWatermark.kt`.
+
 
 
 ## Protocolo de Ejecución

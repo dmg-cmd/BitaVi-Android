@@ -32,6 +32,7 @@ class MapOverlayController(private val context: Context) {
     private val routePolylines = mutableListOf<Polyline>()
     private val prevSegmentModes = mutableListOf<ActivityMode>()
     private var prevTotalPoints = 0
+    private val directionArrowsOverlay = RouteDirectionArrowsOverlay(stepPoints = 12)
 
     private fun getCachedIcon(resId: Int, colorHex: String): Drawable {
         val key = "$resId-$colorHex"
@@ -42,7 +43,18 @@ class MapOverlayController(private val context: Context) {
     }
 
     fun renderRoute(view: MapView, routePoints: List<LocationPoint>, viewModel: RouteViewModel): Boolean {
-        if (routePoints.isEmpty()) return false
+        if (routePoints.isEmpty()) {
+            if (routePolylines.isNotEmpty() || view.overlays.contains(directionArrowsOverlay)) {
+                routePolylines.forEach { view.overlays.remove(it) }
+                routePolylines.clear()
+                view.overlays.remove(directionArrowsOverlay)
+                directionArrowsOverlay.updatePoints(emptyList())
+                prevSegmentModes.clear()
+                prevTotalPoints = 0
+                return true
+            }
+            return false
+        }
         var needsInvalidate = false
 
         val newSegments = routePoints.toGradientRouteSegments(viewModel.routeColorUseCase)
@@ -53,17 +65,23 @@ class MapOverlayController(private val context: Context) {
         if (structureChanged || currentTotalPoints <= prevTotalPoints) {
             routePolylines.forEach { view.overlays.remove(it) }
             routePolylines.clear()
+            view.overlays.remove(directionArrowsOverlay)
             newSegments.forEach { seg ->
                 Polyline().apply {
                     setPoints(seg.points)
                     outlinePaint.color = seg.color
                     outlinePaint.strokeWidth = viewModel.mapStrokeWidth
+                    outlinePaint.strokeCap = android.graphics.Paint.Cap.ROUND
+                    outlinePaint.strokeJoin = android.graphics.Paint.Join.ROUND
+                    outlinePaint.isAntiAlias = true
                 }.also {
                     routePolylines.add(it)
                     view.overlays.add(it)
                     needsInvalidate = true
                 }
             }
+            directionArrowsOverlay.updatePoints(routePoints)
+            view.overlays.add(directionArrowsOverlay)
         } else {
             val lastPolyline = routePolylines.lastOrNull()
             val lastSegment = newSegments.lastOrNull()
@@ -72,6 +90,10 @@ class MapOverlayController(private val context: Context) {
                 if (existingCount < lastSegment.points.size) {
                     val newGeoPoints = lastSegment.points.drop(existingCount)
                     newGeoPoints.forEach { lastPolyline.addPoint(it) }
+                    directionArrowsOverlay.updatePoints(routePoints)
+                    if (!view.overlays.contains(directionArrowsOverlay)) {
+                        view.overlays.add(directionArrowsOverlay)
+                    }
                     needsInvalidate = true
                 }
             }
@@ -147,14 +169,29 @@ class MapOverlayController(private val context: Context) {
                 }
             }
             val newPos = GeoPoint(loc.latitude, loc.longitude)
-            if (isNew || marker.position != newPos || marker.title != loc.name) {
+            if (isNew || marker.position != newPos || marker.title != loc.name || marker.snippet != loc.address) {
+                val isStop = loc.iconCategory == "AUTOMATIC" ||
+                        loc.author.equals("Automático", ignoreCase = true) ||
+                        loc.author.contains("Parada", ignoreCase = true) ||
+                        loc.comment.contains("Parada", ignoreCase = true)
+                val effectiveColorHex = if (isStop && loc.color.equals("#FFD700", ignoreCase = true)) {
+                    "#FF6D00"
+                } else {
+                    loc.color
+                }
+                val effectiveCategory = if (isStop) {
+                    IconCategory.AUTOMATIC
+                } else {
+                    IconCategory.fromKey(loc.iconCategory)
+                }
                 marker.position = newPos
-                marker.title = loc.name
+                marker.title = if (isStop && !loc.name.startsWith("🛑")) "🛑 ${loc.name}" else loc.name
                 marker.snippet = loc.address
-                marker.icon = IconCategory.fromKey(loc.iconCategory).toBitmap(40, loc.color.toColorInt()).toDrawable(resources)
+                marker.icon = effectiveCategory.toBitmap(44, effectiveColorHex.toColorInt()).toDrawable(resources)
                 needsInvalidate = true
             }
         }
         return needsInvalidate
     }
 }
+

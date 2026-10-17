@@ -146,6 +146,25 @@ class RouteRepository @Inject constructor(private val routeDao: RouteDao) {
                                 activityMode = "STOPPED"
                             )
                         )
+                        if (currentPoint != null) {
+                            val coordText = String.format(Locale.US, "GPS: %.5f, %.5f", currentPoint.latitude, currentPoint.longitude)
+                            val favId = routeDao.insertIfNew(
+                                SavedLocation(
+                                    name = stopName,
+                                    address = coordText,
+                                    latitude = currentPoint.latitude,
+                                    longitude = currentPoint.longitude,
+                                    timestamp = now,
+                                    comment = "⏱️ Punto de parada registrado (coloque aquí la dirección)",
+                                    author = "Automático",
+                                    color = "#FF6D00",
+                                    iconCategory = "AUTOMATIC"
+                                )
+                            )
+                            if (favId > 0L) {
+                                routeDao.addRouteFavoriteCrossRef(RouteFavoriteCrossRef(routeId = routeId, favoriteId = favId.toInt()))
+                            }
+                        }
                         return@withContext true
                     }
                 }
@@ -264,6 +283,19 @@ class RouteRepository @Inject constructor(private val routeDao: RouteDao) {
         color: String = "#FFD700",
         timestamp: Long = System.currentTimeMillis(),
     ): Long {
+        val isStopPoint = author.equals("Automático", ignoreCase = true) ||
+                author.contains("Parada", ignoreCase = true) ||
+                comment.contains("Parada", ignoreCase = true)
+        val effectiveColor = if (isStopPoint && color.equals("#FFD700", ignoreCase = true)) {
+            "#FF6D00"
+        } else {
+            color
+        }
+        val effectiveCategory = if (isStopPoint || effectiveColor.equals("#FF6D00", ignoreCase = true)) {
+            "AUTOMATIC"
+        } else {
+            "DEFAULT"
+        }
         val location = SavedLocation(
             name = name,
             address = address,
@@ -278,7 +310,8 @@ class RouteRepository @Inject constructor(private val routeDao: RouteDao) {
             isContact = isContact,
             country = country,
             city = city,
-            color = color
+            color = effectiveColor,
+            iconCategory = effectiveCategory
         )
         return routeDao.insertSavedLocation(location)
     }

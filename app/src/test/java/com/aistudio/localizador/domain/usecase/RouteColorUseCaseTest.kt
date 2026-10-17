@@ -81,4 +81,28 @@ class RouteColorUseCaseTest {
         val blue = color and 0xFF
         assertTrue("Velocidad superior al maximo debe dar rojo", red > blue)
     }
+
+    @Test
+    fun `speedToTacticalColor con velocidad menor a 2 kmh debe devolver rojo intenso`() {
+        val color = useCase.speedToTacticalColor(0.2f) // 0.72 km/h
+        assertEquals(RouteColorUseCase.COLOR_STOPPED_SLOW, color)
+    }
+
+    @Test
+    fun `speedToTacticalColor en rango caminata 2 a 7 kmh debe devolver verde esmeralda oscuro`() {
+        val color = useCase.speedToTacticalColor(1.4f) // 5.04 km/h
+        assertEquals(RouteColorUseCase.COLOR_WALKING, color)
+    }
+
+    @Test
+    fun `speedToTacticalColor en rango bicicleta 7 a 20 kmh debe devolver azul profundo`() {
+        val color = useCase.speedToTacticalColor(3.5f) // 12.6 km/h
+        assertEquals(RouteColorUseCase.COLOR_BIKING, color)
+    }
+
+    @Test
+    fun `speedToTacticalColor en rango vehiculo mayor a 20 kmh debe devolver violeta intenso`() {
+        val color = useCase.speedToTacticalColor(10.0f) // 36.0 km/h
+        assertEquals(RouteColorUseCase.COLOR_DRIVING, color)
+    }
 }

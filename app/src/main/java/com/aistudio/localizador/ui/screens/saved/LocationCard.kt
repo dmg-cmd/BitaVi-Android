@@ -69,12 +69,34 @@ fun LocationCard(
         SimpleDateFormat("dd/MM/yyyy HH:mm", locale).format(Date(location.timestamp))
     }
     var photoToZoom by remember { mutableStateOf<String?>(null) }
+    val isStopPoint = location.iconCategory == "AUTOMATIC" ||
+            location.author.equals("Automático", ignoreCase = true) ||
+            location.author.contains("Parada", ignoreCase = true) ||
+            location.comment.contains("Parada", ignoreCase = true) ||
+            location.color.equals("#FF6D00", ignoreCase = true)
+    val displayColorHex = if (isStopPoint && location.color.equals("#FFD700", ignoreCase = true)) {
+        "#FF6D00"
+    } else {
+        location.color
+    }
+    val displayCategory = if (isStopPoint) {
+        IconCategory.AUTOMATIC
+    } else {
+        IconCategory.fromKey(location.iconCategory)
+    }
+    val needsAddress = location.address.isBlank() || location.address.startsWith("GPS:", ignoreCase = true)
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .padding(bottom = 8.dp)
             .clickable { onShowOnMap() },
         shape = RoundedCornerShape(12.dp),
+        border = if (isStopPoint) {
+            androidx.compose.foundation.BorderStroke(1.5.dp, Color(0xFFFF6D00).copy(alpha = 0.7f))
+        } else {
+            null
+        },
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column {
@@ -91,6 +113,23 @@ fun LocationCard(
             }
 
             Column(modifier = Modifier.padding(16.dp)) {
+                if (isStopPoint) {
+                    Row(
+                        modifier = Modifier
+                            .padding(bottom = 6.dp)
+                            .background(Color(0xFFFF6D00).copy(alpha = 0.18f), RoundedCornerShape(6.dp))
+                            .padding(horizontal = 8.dp, vertical = 3.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "🛑 PUNTO DE PARADA",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color(0xFFFF6D00)
+                        )
+                    }
+                }
+
                 Row(
                     verticalAlignment = Alignment.Top,
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -98,9 +137,9 @@ fun LocationCard(
                 ) {
                     Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
                         Icon(
-                            imageVector = IconCategory.fromKey(location.iconCategory).icon,
+                            imageVector = displayCategory.icon,
                             contentDescription = null,
-                            tint = Color(location.color.toColorInt()),
+                            tint = Color(displayColorHex.toColorInt()),
                             modifier = Modifier.size(28.dp)
                         )
                         Spacer(Modifier.width(8.dp))
@@ -114,7 +153,7 @@ fun LocationCard(
                                 Text(
                                     text = "Por: ${location.author}",
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.secondary
+                                    color = if (isStopPoint) Color(0xFFFF6D00) else MaterialTheme.colorScheme.secondary
                                 )
                             }
                         }
@@ -149,6 +188,22 @@ fun LocationCard(
                 if (location.address.isNotBlank()) {
                     Spacer(Modifier.height(4.dp))
                     Text(text = location.address, style = MaterialTheme.typography.bodyMedium)
+                }
+
+                if (isStopPoint && needsAddress) {
+                    Spacer(Modifier.height(6.dp))
+                    AssistChip(
+                        onClick = onEdit,
+                        label = { Text("Colocar dirección donde se paró", fontSize = 12.sp) },
+                        leadingIcon = {
+                            Icon(
+                                Icons.Default.Edit,
+                                contentDescription = null,
+                                tint = Color(0xFFFF6D00),
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    )
                 }
 
                 if (location.comment.isNotBlank()) {

@@ -52,25 +52,68 @@ fun EditLocationDialog(
     viewModel: RouteViewModel,
     onDismiss: () -> Unit
 ) {
+    val initialIsStop = location.iconCategory == "AUTOMATIC" ||
+            location.author.equals("Automático", ignoreCase = true) ||
+            location.author.contains("Parada", ignoreCase = true) ||
+            location.comment.contains("Parada", ignoreCase = true) ||
+            location.color.equals("#FF6D00", ignoreCase = true)
+
     var current by remember(location.id) { mutableStateOf(location) }
     var editName by remember(current.id) { mutableStateOf(current.name) }
+    var editAddress by remember(current.id) { mutableStateOf(current.address) }
     var editComment by remember(current.id) { mutableStateOf(current.comment) }
     var editAuthor by remember(current.id) { mutableStateOf(current.author) }
     var editPhone by remember(current.id) { mutableStateOf(current.phoneNumber) }
     var editEmail by remember(current.id) { mutableStateOf(current.email) }
     var editIsContact by remember(current.id) { mutableStateOf(current.isContact) }
-    var editColor by remember(current.id) { mutableStateOf(current.color) }
+    var editIsStopPoint by remember(current.id) { mutableStateOf(initialIsStop) }
+    var editColor by remember(current.id) {
+        mutableStateOf(
+            if (initialIsStop && current.color.equals("#FFD700", ignoreCase = true)) "#FF6D00" else current.color
+        )
+    }
     var isRefreshingLocation by remember { mutableStateOf(false) }
 
-    val colors = listOf("#FFD700", "#4CAF50", "#2196F3", "#F44336", "#9C27B0", "#FF9800")
+    val colors = listOf("#FFD700", "#FF6D00", "#4CAF50", "#2196F3", "#F44336", "#9C27B0")
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Editar Favorito") },
+        title = { Text(if (editIsStopPoint) "Editar Punto de Parada" else "Editar Favorito") },
         text = {
             Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
-                OutlinedTextField(value = editName, onValueChange = { editName = it }, label = { Text("Nombre") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(
+                    value = editName,
+                    onValueChange = { editName = it },
+                    label = { Text("Nombre del lugar o parada") },
+                    modifier = Modifier.fillMaxWidth()
+                )
                 Spacer(modifier = Modifier.height(8.dp))
+
+                OutlinedTextField(
+                    value = editAddress,
+                    onValueChange = { editAddress = it },
+                    label = { Text(if (editIsStopPoint) "Dirección donde se paró" else "Dirección") },
+                    placeholder = { Text("Ej: Av. Mitre 1250, José Mármol") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(
+                        checked = editIsStopPoint,
+                        onCheckedChange = { checked ->
+                            editIsStopPoint = checked
+                            if (checked) {
+                                editColor = "#FF6D00"
+                                viewModel.updateSavedLocationColorReactively(current.id, "#FF6D00")
+                            } else if (editColor.equals("#FF6D00", ignoreCase = true)) {
+                                editColor = "#FFD700"
+                                viewModel.updateSavedLocationColorReactively(current.id, "#FFD700")
+                            }
+                        }
+                    )
+                    Text("🛑 Es un Punto de Parada (Color Naranja)", style = MaterialTheme.typography.bodyMedium)
+                }
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(checked = editIsContact, onCheckedChange = { editIsContact = it })
@@ -94,6 +137,12 @@ fun EditLocationDialog(
                         isRefreshingLocation = true
                         viewModel.refreshLocationDetails(current) { updated ->
                             current = updated
+                            if (updated.address.isNotBlank()) {
+                                editAddress = updated.address
+                                if (editName.startsWith("GPS:", ignoreCase = true)) {
+                                    editName = updated.address
+                                }
+                            }
                             isRefreshingLocation = false
                         }
                     },
@@ -107,11 +156,11 @@ fun EditLocationDialog(
                             color = MaterialTheme.colorScheme.primary
                         )
                         Spacer(Modifier.width(8.dp))
-                        Text("Geocodificando...")
+                        Text("Buscando dirección por GPS...")
                     } else {
                         Icon(Icons.Default.Refresh, null)
                         Spacer(Modifier.width(8.dp))
-                        Text("Actualizar País/Ciudad")
+                        Text("Autocompletar Dirección por GPS")
                     }
                 }
 
@@ -134,7 +183,7 @@ fun EditLocationDialog(
                     )
                 }
                 Spacer(modifier = Modifier.height(16.dp))
-                Text("Color de la estrella:", style = MaterialTheme.typography.labelMedium)
+                Text("Color del marcador (#FF6D00 = Parada):", style = MaterialTheme.typography.labelMedium)
 
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
@@ -147,11 +196,12 @@ fun EditLocationDialog(
                                 .background(Color(colorHex.toColorInt()), RoundedCornerShape(16.dp))
                                 .clickable {
                                     editColor = colorHex
+                                    editIsStopPoint = colorHex.equals("#FF6D00", ignoreCase = true)
                                     viewModel.updateSavedLocationColorReactively(current.id, colorHex)
                                 }
                                 .padding(4.dp)
                         ) {
-                            if (editColor == colorHex) {
+                            if (editColor.equals(colorHex, ignoreCase = true)) {
                                 Icon(Icons.Default.Check, null, tint = Color.White, modifier = Modifier.fillMaxSize())
                             }
                         }
@@ -192,13 +242,15 @@ fun EditLocationDialog(
             Button(onClick = {
                 viewModel.updateSavedLocation(
                     current.copy(
-                        name = editName,
+                        name = editName.ifBlank { editAddress.ifBlank { current.name } },
+                        address = editAddress,
                         comment = editComment,
                         author = editAuthor,
                         phoneNumber = editPhone,
                         email = editEmail,
                         isContact = editIsContact,
-                        color = editColor
+                        color = editColor,
+                        iconCategory = if (editIsStopPoint) "AUTOMATIC" else if (current.iconCategory == "AUTOMATIC") "DEFAULT" else current.iconCategory
                     )
                 )
                 onDismiss()
@@ -209,3 +261,4 @@ fun EditLocationDialog(
         }
     )
 }
+

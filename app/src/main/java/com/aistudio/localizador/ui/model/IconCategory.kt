@@ -39,10 +39,30 @@ enum class IconCategory(val key: String, val icon: ImageVector, val label: Strin
         val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = android.graphics.Color.WHITE
             style = Paint.Style.STROKE
-            strokeWidth = 2f
+            strokeWidth = 3f
         }
-        canvas.drawCircle(size / 2f, size / 2f, size / 2f - 2f, paint)
-        canvas.drawCircle(size / 2f, size / 2f, size / 2f - 2f, borderPaint)
+        val center = size / 2f
+        val radius = size / 2f - 2f
+        canvas.drawCircle(center, center, radius, paint)
+        canvas.drawCircle(center, center, radius, borderPaint)
+
+        if (this == AUTOMATIC) {
+            val stopPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = android.graphics.Color.WHITE
+                style = Paint.Style.FILL
+            }
+            val halfBox = size * 0.18f
+            canvas.drawRoundRect(
+                center - halfBox,
+                center - halfBox,
+                center + halfBox,
+                center + halfBox,
+                3f,
+                3f,
+                stopPaint
+            )
+        }
         return bitmap
     }
 }
+

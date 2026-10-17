@@ -12,18 +12,18 @@ data class SegmentoRuta(
 )
 
 fun Float.toActivityMode(): ActivityMode = when {
-    this * 3.6f < 1.0f -> ActivityMode.STOPPED
+    this * 3.6f < 2.0f -> ActivityMode.STOPPED
     this * 3.6f <= 7.0f -> ActivityMode.WALKING
-    this * 3.6f <= 13.0f -> ActivityMode.BIKING
+    this * 3.6f <= 20.0f -> ActivityMode.BIKING
     else -> ActivityMode.DRIVING
 }
 
 fun ActivityMode.toSegmentColor(): Int = when (this) {
-    ActivityMode.STOPPED -> android.graphics.Color.argb(128, 255, 214, 0)
-    ActivityMode.WALKING -> android.graphics.Color.rgb(76, 175, 80)
-    ActivityMode.BIKING -> android.graphics.Color.rgb(33, 150, 243)
-    ActivityMode.DRIVING -> android.graphics.Color.rgb(255, 82, 82)
-    ActivityMode.SIN_SENAL -> android.graphics.Color.argb(128, 220, 53, 69)
+    ActivityMode.STOPPED -> RouteColorUseCase.COLOR_STOPPED_SLOW
+    ActivityMode.WALKING -> RouteColorUseCase.COLOR_WALKING
+    ActivityMode.BIKING -> RouteColorUseCase.COLOR_BIKING
+    ActivityMode.DRIVING -> RouteColorUseCase.COLOR_DRIVING
+    ActivityMode.SIN_SENAL -> RouteColorUseCase.COLOR_STOPPED_SLOW
 }
 
 fun List<LocationPoint>.toRouteSegments(): List<SegmentoRuta> {
@@ -68,25 +68,21 @@ fun List<LocationPoint>.toRouteSegments(): List<SegmentoRuta> {
 }
 
 /**
- * Genera segmentos de polilínea con gradiente térmico continuo basado en velocidad.
- * Cada segmento conecta un par consecutivo de puntos con el color interpolado
- * según la velocidad promedio del tramo: Azul (lento) → Rojo (rápido).
+ * Genera segmentos de polilínea con colores tácticos de alto contraste basados en velocidad real (km/h).
+ * Evita tonos claros (amarillo, celeste o verde lima) que se pierden sobre mapas claros:
+ * - < 2 km/h: Rojo intenso (#D32F2F)
+ * - 2-7 km/h: Verde esmeralda oscuro (#2E7D32)
+ * - 7-20 km/h: Azul profundo (#1565C0)
+ * - > 20 km/h: Violeta intenso (#7B1FA2)
  */
 fun List<LocationPoint>.toGradientRouteSegments(
     colorUseCase: RouteColorUseCase
 ): List<SegmentoRuta> {
     if (size < 2) return emptyList()
 
-    val maxSpeed = maxOfOrNull { it.speed } ?: 1.0f
-    val minSpeed = minOfOrNull { it.speed } ?: 0.0f
-
     return zipWithNext { p1, p2 ->
         val avgSpeed = (p1.speed + p2.speed) / 2.0f
-        val segmentColor = colorUseCase.speedToGradientColor(
-            speedMps = avgSpeed,
-            minSpeedMps = minSpeed,
-            maxSpeedMps = maxSpeed
-        )
+        val segmentColor = colorUseCase.speedToTacticalColor(avgSpeed)
 
         SegmentoRuta(
             points = listOf(
@@ -98,3 +94,4 @@ fun List<LocationPoint>.toGradientRouteSegments(
         )
     }
 }
+

@@ -18,6 +18,8 @@ import org.osmdroid.tileprovider.tilesource.OnlineTileSourceBase
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.tileprovider.tilesource.XYTileSource
 import org.osmdroid.util.MapTileIndex
+import org.osmdroid.views.MapView
+import org.osmdroid.views.overlay.TilesOverlay
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -80,18 +82,6 @@ class MapTileSourceManager @Inject constructor(
             "© Esri, Maxar, Earthstar Geographics"
         )
 
-        val CARTO_DARK: ITileSource = XYTileSource(
-            "CartoDark",
-            0, 20, 256, ".png",
-            arrayOf(
-                "https://a.basemaps.cartocdn.com/dark_all/",
-                "https://b.basemaps.cartocdn.com/dark_all/",
-                "https://c.basemaps.cartocdn.com/dark_all/",
-                "https://d.basemaps.cartocdn.com/dark_all/"
-            ),
-            "© OpenStreetMap contributors © CARTO"
-        )
-
         val CYCLOSM: ITileSource = XYTileSource(
             "CyclOSM",
             0, 18, 256, ".png",
@@ -124,9 +114,43 @@ class MapTileSourceManager @Inject constructor(
             MapLayerType.OSM_STANDARD -> TileSourceFactory.MAPNIK
             MapLayerType.OPENTOPO -> TileSourceFactory.OpenTopo
             MapLayerType.SATELLITE -> ESRI_SATELLITE
-            MapLayerType.TACTICAL_DARK -> CARTO_DARK
+            MapLayerType.TACTICAL_DARK -> TileSourceFactory.MAPNIK
             MapLayerType.CYCLOSM -> CYCLOSM
         }
+    }
+
+    /**
+     * Aplica la fuente de teselas y el filtro visual correspondiente (como inversión nocturna
+     * en TACTICAL_DARK) sobre el [MapView], devolviendo true si requiere redibujado.
+     */
+    fun applyLayerToMapView(mapView: MapView, type: MapLayerType): Boolean {
+        var changed = false
+        val targetTileSource = getTileSource(type)
+        if (mapView.tileProvider.tileSource != targetTileSource) {
+            mapView.setTileSource(targetTileSource)
+            changed = true
+        }
+
+        val tilesOverlay = mapView.overlayManager.tilesOverlay
+        val isDark = type == MapLayerType.TACTICAL_DARK
+        val expectedBg = if (isDark) android.graphics.Color.rgb(18, 18, 24) else android.graphics.Color.rgb(216, 208, 208)
+
+        if (tilesOverlay.loadingBackgroundColor != expectedBg) {
+            tilesOverlay.setColorFilter(if (isDark) TilesOverlay.INVERT_COLORS else null)
+            tilesOverlay.loadingBackgroundColor = expectedBg
+            tilesOverlay.loadingLineColor = if (isDark) {
+                android.graphics.Color.rgb(42, 42, 52)
+            } else {
+                android.graphics.Color.rgb(200, 192, 192)
+            }
+            changed = true
+        } else if (isDark) {
+            tilesOverlay.setColorFilter(TilesOverlay.INVERT_COLORS)
+        } else {
+            tilesOverlay.setColorFilter(null)
+        }
+
+        return changed
     }
 
     fun getCurrentTileSource(): ITileSource {
@@ -143,3 +167,4 @@ class MapTileSourceManager @Inject constructor(
         )
     }
 }
+
