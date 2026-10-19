@@ -135,7 +135,7 @@ fun ExperienceMapScreen(
     val linkedFavorites by viewModel.getFavoritesForRouteFlow(routeId).collectAsState(initial = emptyList())
     val gpsPrecisionState by viewModel.gpsAccuracy.collectAsStateWithLifecycle()
     val currentMapLayer by viewModel.currentMapLayer.collectAsState()
-    var hasInitiallyCenteredRoute by remember { mutableStateOf(false) }
+    var hasInitiallyCenteredRoute by remember(routeId) { mutableStateOf(false) }
 
     // Carga orquestada de waypoints e imágenes de la experiencia (Uso de prepareExperience)
     LaunchedEffect(routeId) {
@@ -237,12 +237,41 @@ fun ExperienceMapScreen(
                 linkedFavorites.forEach { add(GeoPoint(it.latitude, it.longitude)) }
             }
             if (geoPoints.isNotEmpty()) {
-                try {
-                    val boundingBox = BoundingBox.fromGeoPoints(geoPoints)
-                    mapView.post { mapView.zoomToBoundingBox(boundingBox, true, 100) }
-                } catch (_: Exception) {}
+                val performCentering = {
+                    try {
+                        if (geoPoints.size == 1) {
+                            mapView.controller.setZoom(16.0)
+                            mapView.controller.setCenter(geoPoints.first())
+                            hasInitiallyCenteredRoute = true
+                        } else {
+                            val boundingBox = BoundingBox.fromGeoPoints(geoPoints)
+                            if (boundingBox.latitudeSpan < 0.0005 && boundingBox.longitudeSpanWithDateLine < 0.0005) {
+                                mapView.controller.setZoom(16.0)
+                                mapView.controller.setCenter(boundingBox.centerWithDateLine)
+                                hasInitiallyCenteredRoute = true
+                            } else {
+                                mapView.zoomToBoundingBox(boundingBox, true, 100)
+                                hasInitiallyCenteredRoute = true
+                            }
+                        }
+                    } catch (_: Exception) {}
+                }
+
+                if (mapView.width > 0 && mapView.height > 0) {
+                    mapView.post { performCentering() }
+                } else {
+                    mapView.addOnLayoutChangeListener(object : android.view.View.OnLayoutChangeListener {
+                        override fun onLayoutChange(
+                            v: android.view.View?,
+                            left: Int, top: Int, right: Int, bottom: Int,
+                            oldLeft: Int, oldTop: Int, oldRight: Int, oldBottom: Int
+                        ) {
+                            mapView.removeOnLayoutChangeListener(this)
+                            performCentering()
+                        }
+                    })
+                }
             }
-            hasInitiallyCenteredRoute = true
         }
     }
 
@@ -268,10 +297,6 @@ fun ExperienceMapScreen(
                     setMultiTouchControls(true)
                     zoomController.setVisibility(CustomZoomButtonsController.Visibility.NEVER)
                     setBuiltInZoomControls(false)
-                    post {
-                        // Explicitly remove any non-tile overlay that could render UI buttons
-                        overlays.removeAll { it !is org.osmdroid.views.overlay.gestures.RotationGestureOverlay && it !is org.osmdroid.views.overlay.TilesOverlay }
-                    }
                     overlays.add(rotationGestureOverlay)
                     // Hide OSM attribution bar (visible through transparent dock)
                     addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
@@ -466,8 +491,13 @@ fun ExperienceMapScreen(
                         val geoPoints = sortedPoints.map { GeoPoint(it.latitude, it.longitude) }
                         if (geoPoints.isNotEmpty()) {
                             try {
-                                val boundingBox = BoundingBox.fromGeoPoints(geoPoints)
-                                mapView.zoomToBoundingBox(boundingBox, true, 100)
+                                if (geoPoints.size == 1) {
+                                    mapView.controller.setZoom(16.0)
+                                    mapView.controller.setCenter(geoPoints.first())
+                                } else {
+                                    val boundingBox = BoundingBox.fromGeoPoints(geoPoints)
+                                    mapView.zoomToBoundingBox(boundingBox, true, 100)
+                                }
                             } catch (_: Exception) {}
                         }
                     },
@@ -479,6 +509,18 @@ fun ExperienceMapScreen(
                         contentDescription = "Ver Todo",
                     )
                 }
+            }
+        }
+
+        if (points.isEmpty()) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator(
+                    color = MaterialTheme.colorScheme.primary,
+                    strokeWidth = 3.dp
+                )
             }
         }
         }

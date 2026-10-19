@@ -88,85 +88,21 @@ class RouteRepository @Inject constructor(private val routeDao: RouteDao) {
                 val isZeroMovement = distanceMeters < 25.0
 
                 if (isAutoOrStop && isZeroMovement) {
-                    val prevRoute = routeDao.getPreviousCompletedRoute(routeId)
                     val currentPoint = points.lastOrNull() ?: points.firstOrNull()
-
-                    var shouldMergeWithPrevious = false
-                    if (prevRoute != null) {
-                        val prevIsStop = prevRoute.name.startsWith("Parada") || prevRoute.activityMode == "STOPPED" || prevRoute.distanceMeters < 25.0
-                        if (prevIsStop) {
-                            val prevPoint = routeDao.getLastPointForRoute(prevRoute.id)
-                            if (currentPoint != null && prevPoint != null) {
-                                val results = FloatArray(1)
-                                Location.distanceBetween(
-                                    currentPoint.latitude, currentPoint.longitude,
-                                    prevPoint.latitude, prevPoint.longitude,
-                                    results
-                                )
-                                if (results[0] < 40f) {
-                                    shouldMergeWithPrevious = true
-                                }
-                            } else {
-                                shouldMergeWithPrevious = true
-                            }
-                        }
-                    }
-
-                    if (shouldMergeWithPrevious && prevRoute != null) {
-                        // Consolidar: extender el tiempo de parada de la ruta anterior
-                        val prevTimeFormat = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(prevRoute.startTime))
-                        val consolidatedName = if (prevRoute.name.startsWith("Parada")) prevRoute.name else "Parada $prevTimeFormat"
-                        routeDao.updateRoute(
-                            prevRoute.copy(
-                                name = consolidatedName,
-                                endTime = now,
-                                activityMode = "STOPPED",
-                                distanceMeters = 0.0,
-                                maxSpeed = 0f,
-                                avgSpeed = 0f
-                            )
+                    if (currentPoint != null) {
+                        val durationMs = maxOf(0L, now - route.startTime)
+                        recordOrAccumulateStopFavorite(
+                            latitude = currentPoint.latitude,
+                            longitude = currentPoint.longitude,
+                            durationMs = durationMs,
+                            timestamp = now
                         )
-                        // Purgar la ruta duplicada actual
-                        routeDao.deleteRouteById(routeId)
-                        routeDao.deleteLocationPointsForRoute(routeId)
-                        Log.i("RouteRepository", "Parada en el mismo lugar consolidada con ruta previa ${prevRoute.id}. Duplicado $routeId descartado.")
-                        return@withContext true
-                    } else {
-                        // Es una parada nueva (primer registro sin movimiento en esta ubicación)
-                        val timeFormat = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(route.startTime))
-                        val stopName = "Parada $timeFormat"
-                        routeDao.updateRoute(
-                            route.copy(
-                                name = stopName,
-                                isActive = false,
-                                endTime = now,
-                                distanceMeters = 0.0,
-                                maxSpeed = 0f,
-                                avgSpeed = 0f,
-                                activityMode = "STOPPED"
-                            )
-                        )
-                        if (currentPoint != null) {
-                            val coordText = String.format(Locale.US, "GPS: %.5f, %.5f", currentPoint.latitude, currentPoint.longitude)
-                            val favId = routeDao.insertIfNew(
-                                SavedLocation(
-                                    name = stopName,
-                                    address = coordText,
-                                    latitude = currentPoint.latitude,
-                                    longitude = currentPoint.longitude,
-                                    timestamp = now,
-                                    comment = "⏱️ Punto de parada registrado (coloque aquí la dirección)",
-                                    author = "Automático",
-                                    color = "#FF6D00",
-                                    iconCategory = "AUTOMATIC"
-                                )
-                            )
-                            if (favId > 0L) {
-                                routeDao.addRouteFavoriteCrossRef(RouteFavoriteCrossRef(routeId = routeId, favoriteId = favId.toInt()))
-                            }
-                        }
-                        return@withContext true
                     }
+                    // Purgar la ruta efímera para que NO figure como una ruta en la lista de rutas
+                    routeDao.deleteRouteById(routeId)
+                    routeDao.deleteLocationPointsForRoute(routeId)
+                    Log.i("RouteRepository", "Punto fijo de parada registrado en Favoritos. Ruta efímera $routeId descartada del historial.")
+                    return@withContext true
                 }
 
                 val maxSpeed = if (points.isNotEmpty()) points.maxOf { it.speed } else 0f
@@ -371,4 +307,97 @@ class RouteRepository @Inject constructor(private val routeDao: RouteDao) {
 
     fun getSavedLocationByIdFlow(id: Int): Flow<SavedLocation?> = routeDao.getSavedLocationByIdFlow(id)
 
+    suspend fun recordOrAccumulateStopFavorite(
+        latitude: Double,
+        longitude: Double,
+        durationMs: Long,
+        timestamp: Long = System.currentTimeMillis(),
+        addressHint: String = ""
+    ): SavedLocation {
+        val allFavs = routeDao.getAllSavedLocations()
+        val proximityThresholdMeters = 50f
+
+        var matchedFav: SavedLocation? = null
+        var minDistance = Float.MAX_VALUE
+
+        for (fav in allFavs) {
+            val results = FloatArray(1)
+            Location.distanceBetween(latitude, longitude, fav.latitude, fav.longitude, results)
+            if (results[0] <= proximityThresholdMeters && results[0] < minDistance) {
+                minDistance = results[0]
+                matchedFav = fav
+            }
+        }
+
+        if (matchedFav != null) {
+            val previousDurationMs = extractDurationMsFromComment(matchedFav.comment)
+            val newTotalMs = previousDurationMs + durationMs
+            val formattedDuration = formatStopDuration(newTotalMs)
+
+            val cleanComment = matchedFav.comment
+                .replace(Regex("""⏱️[^\n\r]*"""), "")
+                .trim()
+
+            val updatedComment = if (cleanComment.isNotBlank()) {
+                "$cleanComment\n⏱️ Tiempo acumulado de parada: $formattedDuration"
+            } else {
+                "⏱️ Tiempo acumulado de parada: $formattedDuration"
+            }
+
+            val updatedFav = matchedFav.copy(
+                comment = updatedComment,
+                timestamp = timestamp
+            )
+            routeDao.updateSavedLocation(updatedFav)
+            Log.i("RouteRepository", "Favorito existente #${matchedFav.id} actualizado con tiempo de parada acumulado: $formattedDuration")
+            return updatedFav
+        } else {
+            val formattedDuration = formatStopDuration(durationMs)
+            val timeFormat = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(timestamp))
+            val defaultName = if (addressHint.isNotBlank()) addressHint else "Parada $timeFormat"
+            val defaultAddress = if (addressHint.isNotBlank()) addressHint else String.format(Locale.US, "GPS: %.5f, %.5f", latitude, longitude)
+
+            val newFav = SavedLocation(
+                name = defaultName,
+                address = defaultAddress,
+                latitude = latitude,
+                longitude = longitude,
+                timestamp = timestamp,
+                comment = "⏱️ Tiempo de parada: $formattedDuration",
+                author = "Automático",
+                color = "#FF6D00",
+                iconCategory = "AUTOMATIC"
+            )
+            val newId = routeDao.insertSavedLocation(newFav)
+            Log.i("RouteRepository", "Nuevo punto de parada registrado en Favoritos #$newId con duración $formattedDuration")
+            return newFav.copy(id = newId.toInt())
+        }
+    }
+
+    companion object {
+        fun formatStopDuration(durationMs: Long): String {
+            val totalSeconds = durationMs / 1000
+            val hours = totalSeconds / 3600
+            val minutes = (totalSeconds % 3600) / 60
+            val seconds = totalSeconds % 60
+            return when {
+                hours > 0 -> String.format(Locale.getDefault(), "%d h %02d min", hours, minutes)
+                minutes > 0 -> String.format(Locale.getDefault(), "%d min %02d seg", minutes, seconds)
+                else -> String.format(Locale.getDefault(), "%d seg", maxOf(1L, seconds))
+            }
+        }
+
+        fun extractDurationMsFromComment(comment: String): Long {
+            var totalMs = 0L
+            val hMatch = Regex("""(\d+)\s*h""").find(comment)
+            val mMatch = Regex("""(\d+)\s*min""").find(comment)
+            val sMatch = Regex("""(\d+)\s*seg""").find(comment)
+
+            hMatch?.groupValues?.getOrNull(1)?.toLongOrNull()?.let { totalMs += it * 3600 * 1000L }
+            mMatch?.groupValues?.getOrNull(1)?.toLongOrNull()?.let { totalMs += it * 60 * 1000L }
+            sMatch?.groupValues?.getOrNull(1)?.toLongOrNull()?.let { totalMs += it * 1000L }
+
+            return totalMs
+        }
+    }
 }

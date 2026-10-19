@@ -93,6 +93,7 @@ class LocationService : Service(), AutoTrackingManager.AutoTrackingListener, Pro
     }
 
     private var lastValidLocation: Location? = null
+    private var lastPersistedLocation: Location? = null
 
     private var timerJob: Job? = null
     private var startTimeMillis: Long = 0L
@@ -535,7 +536,11 @@ class LocationService : Service(), AutoTrackingManager.AutoTrackingListener, Pro
                 } else {
                     MAX_GPS_ACCURACY
                 }
-                if (accuracy <= dbAccuracyLimit) {
+                val isStationary = lastComputedSpeedMps < 0.28f || _currentActivityMode.value == ActivityMode.STOPPED
+                val shouldSkipDuplicateStopPoint = isStationary && lastPersistedLocation != null &&
+                        lastPersistedLocation!!.distanceTo(anchoredLocation) < 4f
+
+                if (accuracy <= dbAccuracyLimit && !shouldSkipDuplicateStopPoint) {
                     persistenceDelegate.addLocationPoint(
                         routeId = routeId,
                         latitude = anchoredLocation.latitude,
@@ -543,6 +548,7 @@ class LocationService : Service(), AutoTrackingManager.AutoTrackingListener, Pro
                         altitude = anchoredLocation.altitude,
                         speed = anchoredLocation.speed
                     )
+                    lastPersistedLocation = Location(anchoredLocation)
                 }
 
                 updateServiceNotification(routeId)
@@ -800,6 +806,7 @@ class LocationService : Service(), AutoTrackingManager.AutoTrackingListener, Pro
                 _isTracking.value = false
                 sessionManager.stopSession()
                 _currentRouteId.value = null
+                lastPersistedLocation = null
                 // 🛡️ DOBLE CANDADO ATÓMICO: Mantener última ubicación en el mapa pero con velocidad cero
                 _latestLocation.value = _latestLocation.value?.let { loc ->
                     Location(loc).apply { speed = 0f }

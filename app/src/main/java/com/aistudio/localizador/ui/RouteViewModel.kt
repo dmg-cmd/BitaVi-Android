@@ -363,7 +363,9 @@ class RouteViewModel @Inject constructor(
 
     // ─── Flows: Repository-based ──────────────────────────────────
 
-    val allRoutes: StateFlow<List<Route>> = repository.allRoutes.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val allRoutes: StateFlow<List<Route>> = repository.allRoutes.map { routes ->
+        routes.filter { !it.name.startsWith("Parada") && it.activityMode != "STOPPED" && (it.distanceMeters >= 25.0 || it.isActive) }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     @OptIn(ExperimentalCoroutinesApi::class)
     val activeRoutePoints: StateFlow<List<LocationPoint>> = activeRouteIdLive.flatMapLatest { id ->
@@ -431,6 +433,10 @@ class RouteViewModel @Inject constructor(
 
     fun prepareExperience(routeId: Int) {
         _selectedDetailRouteId.value = routeId
+        val currentPoints = selectedDetailPoints.value
+        if (currentPoints.isNotEmpty() && _selectedDetailRouteId.value == routeId) {
+            _experiencePoints.value = currentPoints
+        }
         viewModelScope.launch {
             val points = repository.getLocationPointsSync(routeId)
             _experiencePoints.value = points
@@ -445,8 +451,9 @@ class RouteViewModel @Inject constructor(
         groupFavoritesByLocationUseCase(list)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val allRoutesForGrouping: StateFlow<List<com.aistudio.localizador.data.model.Route>> = repository.allRoutes
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val allRoutesForGrouping: StateFlow<List<com.aistudio.localizador.data.model.Route>> = repository.allRoutes.map { routes ->
+        routes.filter { !it.name.startsWith("Parada") && it.activityMode != "STOPPED" && (it.distanceMeters >= 25.0 || it.isActive) }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val groupedRoutesState: StateFlow<List<DayGroupUiModel>> = allRoutesForGrouping.map { routes ->
         groupRoutesByDateUseCase(routes)

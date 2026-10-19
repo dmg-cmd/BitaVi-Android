@@ -85,7 +85,7 @@ fun TopBarLocalizador(
                     }
 
                     Text(
-                        text = "Infraestructura Suite — v3.2.5-RC1",
+                        text = "Infraestructura Suite — v3.2.8-RC1",
                         style = MaterialTheme.typography.bodySmall,
                         color = Color.White.copy(alpha = 0.65f),
                         modifier = Modifier.padding(top = 2.dp)

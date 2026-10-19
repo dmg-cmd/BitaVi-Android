@@ -45,10 +45,8 @@ class ShortStopMarkManager @Inject constructor(
             }
         } else {
             if (isShortStopDetected && timeStartedStopping > 0L) {
-                val rawDurationMs = timestamp - timeStartedStopping
-                val finalDurationMs = rawDurationMs + stopToleranceMs
-
-                persistShortStopAsFavorite(finalDurationMs)
+                val durationMs = maxOf(0L, timestamp - timeStartedStopping)
+                persistShortStopAsFavorite(durationMs)
             }
             resetEvaluation()
         }
@@ -68,29 +66,20 @@ class ShortStopMarkManager @Inject constructor(
     }
 
     private fun persistShortStopAsFavorite(durationMs: Long) {
-        val seconds = (durationMs / 1000) % 60
-        val minutes = (durationMs / (1000 * 60)) % 60
-        val durationLabel = "\u23F1\uFE0F Parada automatica de ${minutes} min ${seconds} seg"
-
-        val finalAddress = shortStopAddress.ifBlank {
-            String.format(Locale.US, "GPS: %.5f, %.5f", shortStopLat, shortStopLon)
-        }
-
         val lat = shortStopLat
         val lon = shortStopLon
+        val addressHint = shortStopAddress
 
         managerScope.launch {
             try {
-                repository.addSavedLocation(
-                    name = finalAddress,
-                    address = finalAddress,
+                repository.recordOrAccumulateStopFavorite(
                     latitude = lat,
                     longitude = lon,
-                    comment = durationLabel,
-                    author = "Autom\u00e1tico"
+                    durationMs = durationMs,
+                    addressHint = addressHint
                 )
             } catch (e: Exception) {
-                Log.e("BitaVi_ShortStop", """Fallo critico al persistir: $e""")
+                Log.e("BitaVi_ShortStop", "Fallo al persistir o acumular parada en favoritos: $e")
             }
         }
     }
