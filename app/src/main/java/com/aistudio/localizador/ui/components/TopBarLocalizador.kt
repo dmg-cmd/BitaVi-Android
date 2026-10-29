@@ -16,6 +16,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.LocationSearching
+import androidx.compose.material.icons.filled.Opacity
+import androidx.compose.material.icons.filled.Straighten
+import androidx.compose.material.icons.filled.Timer
+import androidx.compose.ui.unit.sp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -38,22 +42,28 @@ fun TopBarLocalizador(
     modoTrafico: String,
     velocidad: String,
     modifier: Modifier = Modifier,
-    colorIndicador: Color = Color(0xFFD32F2F)
+    colorIndicador: Color = Color(0xFFD32F2F),
+    headerAlpha: Float = 0.45f,
+    onAdjustAlphaClick: (() -> Unit)? = null,
+    altura: String = "-- m",
+    distanciaPrimerPunto: String = "--",
+    tiempoFuncionamiento: String = "--"
 ) {
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp) // 🔥 CUMPLIMIENTO UX: Cabecera simétrica sin espacio para botón lateral
+            .padding(horizontal = 16.dp, vertical = 6.dp)
             .clip(RoundedCornerShape(16.dp))
-            .background(Color(0xFF1C1B1F).copy(alpha = 0.65f))
-            .border(1.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(16.dp))
+            .background(Color(0xFF1C1B1F).copy(alpha = headerAlpha))
+            .border(1.dp, Color.White.copy(alpha = (headerAlpha * 0.35f).coerceIn(0.08f, 0.25f)), RoundedCornerShape(16.dp))
             .clickable { onLocalizadorClick() }
-            .padding(14.dp)
+            .padding(12.dp)
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
+            // ─── 1. FILA SUPERIOR: TÍTULO, VERSIÓN Y BOTONES AL EXTREMO DERECHO ARRIBA ───
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
+                verticalAlignment = Alignment.Top,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Column(modifier = Modifier.weight(1f)) {
@@ -68,7 +78,7 @@ fun TopBarLocalizador(
                             color = Color.White
                         )
 
-                        // 📍 CHIP INDICADOR RECALIBRADO (Gris clarito de alta legibilidad)
+                        // 📍 CHIP INDICADOR
                         Box(
                             modifier = Modifier
                                 .background(Color(0xFF9B5DE5).copy(alpha = 0.25f), RoundedCornerShape(6.dp))
@@ -85,63 +95,190 @@ fun TopBarLocalizador(
                     }
 
                     Text(
-                        text = "Infraestructura Suite — v3.2.8-RC1",
+                        text = "Infraestructura Suite — v3.2.17-RC1",
                         style = MaterialTheme.typography.bodySmall,
                         color = Color.White.copy(alpha = 0.65f),
-                        modifier = Modifier.padding(top = 2.dp)
+                        modifier = Modifier.padding(top = 1.dp)
                     )
+                }
 
-                    Spacer(modifier = Modifier.height(10.dp))
+                // 🔥 BOTONES EN EL EXTREMO DERECHO SUPERIOR
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.padding(start = 8.dp)
+                ) {
+                    if (onAdjustAlphaClick != null) {
+                        Box(
+                            modifier = Modifier
+                                .size(34.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color.White.copy(alpha = 0.15f))
+                                .clickable { onAdjustAlphaClick() },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Opacity,
+                                contentDescription = "Ajustar atenuador de fondo",
+                                tint = Color.White.copy(alpha = 0.9f),
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
 
-                    Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-                        Column {
-                            Text(
-                                text = "MODO DE TRÁFICO",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = Color.White.copy(alpha = 0.85f)
-                            )
-                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 2.dp)) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(10.dp)
-                                        .background(colorIndicador, RoundedCornerShape(50))
-                                        .border(1.dp, Color.White.copy(alpha = 0.8f), RoundedCornerShape(50))
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(modoTrafico, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = Color.White)
-                            }
-                        }
-                        Column {
-                            Text(
-                                text = "VELOCIDAD",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = Color.White.copy(alpha = 0.85f)
-                            )
-                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 2.dp)) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(10.dp)
-                                        .background(colorIndicador, RoundedCornerShape(50))
-                                        .border(1.dp, Color.White.copy(alpha = 0.8f), RoundedCornerShape(50))
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(velocidad, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = Color.White)
-                            }
-                        }
+                    Box(
+                        modifier = Modifier
+                            .size(34.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0xFF9B5DE5).copy(alpha = 0.25f))
+                            .clickable { onLocalizadorClick() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.LocationSearching,
+                            contentDescription = "Consultar Ubicación Actual",
+                            tint = Color(0xFF9B5DE5),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // ─── 2. FILA DE MÉTRICAS PRIMARIAS: MODO, VELOCIDAD Y ALTURA ───
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Modo de Tráfico
+                Column(modifier = Modifier.weight(1.1f)) {
+                    Text(
+                        text = "MODO DE TRÁFICO",
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                        color = Color.White.copy(alpha = 0.75f)
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 2.dp)) {
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .background(colorIndicador, RoundedCornerShape(50))
+                                .border(1.dp, Color.White.copy(alpha = 0.8f), RoundedCornerShape(50))
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = modoTrafico,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                            maxLines = 1
+                        )
                     }
                 }
 
-                Box(
-                    modifier = Modifier
-                        .size(42.dp)
-                        .background(Color(0xFF9B5DE5).copy(alpha = 0.15f), RoundedCornerShape(12.dp)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.LocationSearching,
-                        contentDescription = "Consultar Ubicación Actual",
-                        tint = Color(0xFF9B5DE5)
+                // Velocidad
+                Column(modifier = Modifier.weight(0.9f)) {
+                    Text(
+                        text = "VELOCIDAD",
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                        color = Color.White.copy(alpha = 0.75f)
                     )
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 2.dp)) {
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .background(colorIndicador, RoundedCornerShape(50))
+                                .border(1.dp, Color.White.copy(alpha = 0.8f), RoundedCornerShape(50))
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = velocidad,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                            maxLines = 1
+                        )
+                    }
+                }
+
+                // Altura
+                Column(modifier = Modifier.weight(0.8f)) {
+                    Text(
+                        text = "ALTURA",
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                        color = Color.White.copy(alpha = 0.75f)
+                    )
+                    Text(
+                        text = altura,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        modifier = Modifier.padding(top = 2.dp),
+                        maxLines = 1
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // ─── 3. FILA DE MÉTRICAS COMPLEMENTARIAS: DISTANCIA 1º PTO Y HORAS DE FUNCIONAMIENTO ───
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color.White.copy(alpha = 0.08f), RoundedCornerShape(8.dp))
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Distancia desde el primer punto
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Straighten,
+                        contentDescription = null,
+                        tint = Color(0xFF4DD0E1),
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Column {
+                        Text(
+                            text = "DISTANCIA 1º PTO",
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+                            color = Color.White.copy(alpha = 0.75f),
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = distanciaPrimerPunto,
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color.White
+                        )
+                    }
+                }
+
+                // Horas de funcionamiento
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Timer,
+                        contentDescription = null,
+                        tint = Color(0xFFFFB74D),
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Column {
+                        Text(
+                            text = "TIEMPO ACTIVO",
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+                            color = Color.White.copy(alpha = 0.75f),
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = tiempoFuncionamiento,
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color.White
+                        )
+                    }
                 }
             }
 
@@ -151,7 +288,7 @@ fun TopBarLocalizador(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(Color.Black.copy(alpha = 0.35f), RoundedCornerShape(8.dp))
+                    .background(Color.Black.copy(alpha = (headerAlpha * 0.5f).coerceIn(0.15f, 0.40f)), RoundedCornerShape(8.dp))
                     .padding(horizontal = 8.dp, vertical = 5.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically

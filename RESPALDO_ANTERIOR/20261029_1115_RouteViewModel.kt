@@ -1,0 +1,883 @@
+package com.aistudio.localizador.ui
+
+import dagger.hilt.android.lifecycle.HiltViewModel
+import javax.inject.Inject
+
+import android.location.Location
+import android.net.Uri
+import android.content.Context
+import android.content.Intent
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.aistudio.localizador.data.model.LocationPoint
+import com.aistudio.localizador.data.model.Route
+import com.aistudio.localizador.data.model.SavedLocation
+import com.aistudio.localizador.data.model.Waypoint
+import com.aistudio.localizador.data.repository.RouteRepository
+import com.aistudio.localizador.domain.usecase.AnalyzeRouteAiUseCase
+import com.aistudio.localizador.domain.usecase.ApiKeyExpiredException
+import com.aistudio.localizador.domain.usecase.CalculateRouteMetricsUseCase
+import com.aistudio.localizador.domain.usecase.WifiGeocodeFavoritesUseCase
+import com.aistudio.localizador.domain.usecase.ExtractPhotoLocationUseCase
+import com.aistudio.localizador.util.AppConstants
+import com.aistudio.localizador.domain.usecase.RouteExportUseCase
+import com.aistudio.localizador.domain.usecase.RouteColorUseCase
+import com.aistudio.localizador.domain.usecase.AddFavoriteFromTrackingUseCase
+import com.aistudio.localizador.domain.usecase.GroupFavoritesByLocationUseCase
+import com.aistudio.localizador.domain.usecase.GroupRoutesByDateUseCase
+import com.aistudio.localizador.domain.usecase.ShareExperienceUseCase
+import com.aistudio.localizador.domain.usecase.DayGroupUiModel
+import com.aistudio.localizador.domain.usecase.CountryFavoritesGroup
+import com.aistudio.localizador.location.ActivityMode
+import com.aistudio.localizador.location.LocationService
+import com.aistudio.localizador.location.manager.KineticProfile
+import com.aistudio.localizador.model.RouteMetricsResult
+import com.aistudio.localizador.ui.map.MapLayerOption
+import com.aistudio.localizador.ui.map.MapLayerType
+import com.aistudio.localizador.ui.map.MapTileSourceManager
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.osmdroid.util.GeoPoint
+import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.time.LocalDate
+
+import android.location.Geocoder
+import android.util.Log
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.flow.combine
+import kotlin.time.Duration.Companion.milliseconds
+
+sealed class AiAnalysisState {
+    object Idle : AiAnalysisState()
+    object Loading : AiAnalysisState()
+    data class Success(val report: String) : AiAnalysisState()
+    object MissingKey : AiAnalysisState()
+    object ExpiredKey : AiAnalysisState()
+    data class Error(val message: String) : AiAnalysisState()
+}
+
+sealed class DetailAction {
+    data object ShowSheet : DetailAction()
+    data class ShowEditDialog(val currentName: String) : DetailAction()
+    data object ShowDeleteDialog : DetailAction()
+    data object ShowHelpDialog : DetailAction()
+}
+
+@HiltViewModel
+class RouteViewModel @Inject constructor(
+
+    val repository: RouteRepository,
+    private val prefsManager: PreferencesManager,
+    private val geocoderUseCase: GeocoderUseCase,
+    private val photoManager: PhotoManager,
+    private val extractPhotoLocationUseCase: ExtractPhotoLocationUseCase,
+    private val analyzeRouteAiUseCase: AnalyzeRouteAiUseCase,
+    private val geminiAiUseCase: GeminiAiUseCase,
+    private val routeExportUseCase: RouteExportUseCase,
+    private val backupUseCase: BackupUseCase,
+    private val contactUseCase: ContactUseCase,
+    val routeColorUseCase: RouteColorUseCase,
+    private val addFavoriteFromTrackingUseCase: AddFavoriteFromTrackingUseCase,
+    private val shareUseCase: ShareUseCase,
+    private val groupFavoritesByLocationUseCase: GroupFavoritesByLocationUseCase,
+    private val groupRoutesByDateUseCase: GroupRoutesByDateUseCase,
+    private val locationServiceManager: LocationServiceManager,
+    private val shareExperienceUseCase: ShareExperienceUseCase,
+    private val calculateRouteMetricsUseCase: CalculateRouteMetricsUseCase,
+    val mapTileSourceManager: MapTileSourceManager,
+    private val wifiGeocodeFavoritesUseCase: WifiGeocodeFavoritesUseCase
+) : ViewModel() {
+
+    // ─── Capas de Mapa (osmdroid) ──────────────────────────────────
+    val currentMapLayer: StateFlow<MapLayerType> = mapTileSourceManager.currentLayer
+    fun setMapLayer(type: MapLayerType) = mapTileSourceManager.setLayer(type)
+    fun getAvailableMapLayers(): List<MapLayerOption> = mapTileSourceManager.getAvailableLayers()
+    fun getCurrentTileSource() = mapTileSourceManager.getCurrentTileSource()
+
+    private val _uiEvent = Channel<UiEvent>(Channel.BUFFERED)
+    val uiEvent = _uiEvent.receiveAsFlow()
+
+    private val _shareIntentTrigger = MutableSharedFlow<Intent>()
+    val shareIntentTrigger = _shareIntentTrigger.asSharedFlow()
+
+    // ─── UI State ─────────────────────────────────────────────────
+
+    var detailAction by mutableStateOf<DetailAction?>(null)
+
+    // ─── Selection State (History multi-select) ────────────────────
+    private val _selectedRouteIds = MutableStateFlow<Set<Int>>(emptySet())
+    val selectedRouteIds: StateFlow<Set<Int>> = _selectedRouteIds.asStateFlow()
+
+    fun toggleSelection(id: Int) {
+        _selectedRouteIds.value = if (_selectedRouteIds.value.contains(id))
+            _selectedRouteIds.value - id
+        else
+            _selectedRouteIds.value + id
+    }
+
+    fun clearSelection() {
+        _selectedRouteIds.value = emptySet()
+    }
+
+    // --- Collapsed Dates State (History date groups) ---
+    private val _collapsedDates = MutableStateFlow<Set<LocalDate>>(emptySet())
+    val collapsedDates: StateFlow<Set<LocalDate>> = _collapsedDates.asStateFlow()
+
+    fun toggleDateCollapse(date: LocalDate) {
+        _collapsedDates.value = if (_collapsedDates.value.contains(date))
+            _collapsedDates.value - date
+        else
+            _collapsedDates.value + date
+    }
+
+    fun collapseAllGroups() {
+        val allDates = groupedRoutesState.value.map { it.date }.toSet()
+        _collapsedDates.value = allDates
+    }
+
+    fun expandAllGroups() {
+        _collapsedDates.value = emptySet()
+    }
+
+    // --- Collapsed Favorites State ---
+    private val _collapsedFavoriteCountries = MutableStateFlow<Set<String>>(emptySet())
+    val collapsedFavoriteCountries: StateFlow<Set<String>> = _collapsedFavoriteCountries.asStateFlow()
+
+    private val _collapsedFavoriteCities = MutableStateFlow<Set<String>>(emptySet())
+    val collapsedFavoriteCities: StateFlow<Set<String>> = _collapsedFavoriteCities.asStateFlow()
+
+    fun toggleFavoriteCountryCollapse(country: String) {
+        _collapsedFavoriteCountries.value = if (_collapsedFavoriteCountries.value.contains(country))
+            _collapsedFavoriteCountries.value - country
+        else
+            _collapsedFavoriteCountries.value + country
+    }
+
+    fun toggleFavoriteCityCollapse(cityKey: String) {
+        _collapsedFavoriteCities.value = if (_collapsedFavoriteCities.value.contains(cityKey))
+            _collapsedFavoriteCities.value - cityKey
+        else
+            _collapsedFavoriteCities.value + cityKey
+    }
+
+    fun collapseAllFavorites() {
+        val groups = groupedFavorites.value
+        val allCountries = groups.map { it.countryName }.toSet()
+        val allCities = groups.flatMap { g -> g.cities.map { "${g.countryName}|${it.cityName}" } }.toSet()
+        _collapsedFavoriteCountries.value = allCountries
+        _collapsedFavoriteCities.value = allCities
+    }
+
+    fun expandAllFavorites() {
+        _collapsedFavoriteCountries.value = emptySet()
+        _collapsedFavoriteCities.value = emptySet()
+    }
+
+    var mapTargetLocation by mutableStateOf<GeoPoint?>(null)
+        private set
+    var isOfflineMode by mutableStateOf(false)
+        private set
+    var isBiometricEnabled by mutableStateOf(false)
+        private set
+    var groqApiKey by mutableStateOf<String?>(null)
+        private set
+    var geminiApiKey by mutableStateOf<String?>(null)
+        private set
+    private val _aiAnalysisState = MutableStateFlow<AiAnalysisState>(AiAnalysisState.Idle)
+    val aiAnalysisState: StateFlow<AiAnalysisState> = _aiAnalysisState.asStateFlow()
+    var favAnalysisState by mutableStateOf<AiAnalysisState>(AiAnalysisState.Idle)
+        private set
+    var isImporting by mutableStateOf(false)
+        private set
+    var currentAddress by mutableStateOf<String?>(null)
+        private set
+    var photoExtractedAddress by mutableStateOf<String?>(null)
+        private set
+    var selectedPointAddress by mutableStateOf<String?>(null)
+        private set
+    var updateIntervalSeconds by mutableStateOf(5f)
+    var updateDistanceMeters by mutableStateOf(2f)
+    var defaultLatitude by mutableStateOf(-34.6037)
+    var mapStrokeWidth by mutableStateOf(8f)
+    var headerAlpha by mutableStateOf(0.45f)
+        private set
+    private var wifiCallback: android.net.ConnectivityManager.NetworkCallback? = null
+        private set
+    var defaultLongitude by mutableStateOf(-58.3816)
+    var isAutoMode by mutableStateOf(false)
+        private set
+
+
+    private val _isNearMeEnabled = MutableStateFlow(false)
+    val isNearMeEnabled: StateFlow<Boolean> = _isNearMeEnabled.asStateFlow()
+
+    private val _savedLocationColorUpdateFlow = MutableSharedFlow<Pair<Int, String>>(extraBufferCapacity = 64)
+    private val _selectedDetailRouteId = MutableStateFlow<Int?>(null)
+
+    private val _selectedFavoriteId = MutableStateFlow<Int?>(null)
+    // ─── Init ─────────────────────────────────────────────────────
+
+    init {
+        isAutoMode = prefsManager.isAutoMode()
+        _isNearMeEnabled.value = prefsManager.isNearMeEnabled()
+        isBiometricEnabled = prefsManager.isBiometricEnabled()
+        defaultLatitude = prefsManager.getDefaultLatitude()
+        defaultLongitude = prefsManager.getDefaultLongitude()
+
+        mapStrokeWidth = prefsManager.getStrokeWidth()
+        headerAlpha = prefsManager.getHeaderAlpha()
+        @OptIn(FlowPreview::class)
+        viewModelScope.launch(Dispatchers.IO) {
+            _savedLocationColorUpdateFlow
+                .debounce(100.milliseconds)
+                .collectLatest { (id, color) -> repository.updateSavedLocationColor(id, color) }
+        }
+
+        viewModelScope.launch(Dispatchers.IO) {
+            cleanDuplicateFavorites()
+            if (wifiGeocodeFavoritesUseCase.isWifiConnected()) {
+                wifiGeocodeFavoritesUseCase.execute()
+            }
+        }
+
+        wifiCallback = wifiGeocodeFavoritesUseCase.registerWifiCallback {
+            viewModelScope.launch(Dispatchers.IO) {
+                wifiGeocodeFavoritesUseCase.execute()
+            }
+        }
+    }
+
+    fun setMapTarget(lat: Double, lon: Double) {
+        mapTargetLocation = GeoPoint(lat, lon)
+    }
+
+    fun clearMapTarget() { mapTargetLocation = null }
+
+    // ─── Toggles & Preferences ────────────────────────────────────
+
+    fun toggleOfflineMode() { isOfflineMode = !isOfflineMode }
+
+    fun toggleBiometric(enabled: Boolean) {
+        isBiometricEnabled = enabled
+        prefsManager.setBiometricEnabled(enabled)
+    }
+
+    fun toggleAutoMode() {
+        isAutoMode = !isAutoMode
+        prefsManager.setAutoMode(isAutoMode)
+        locationServiceManager.updateAutoMode(isAutoMode)
+    }
+
+
+    fun toggleNearMe() {
+        val newState = !_isNearMeEnabled.value
+        _isNearMeEnabled.value = newState
+        prefsManager.setNearMeEnabled(newState)
+        locationServiceManager.updateSettings()
+    }
+
+    fun updateDefaultLocation(lat: Double, lon: Double) {
+        defaultLatitude = lat; defaultLongitude = lon
+    }
+
+    fun updateDefaultLocationPersistently(lat: Double, lon: Double) {
+        updateDefaultLocation(lat, lon)
+        prefsManager.setDefaultLocation(lat, lon)
+    }
+
+    fun updateGroqApiKey(key: String) { groqApiKey = key }
+    fun updateGeminiApiKey(key: String) { geminiApiKey = key }
+
+
+    fun updateStrokeWidth(w: Float) {
+        mapStrokeWidth = w
+        viewModelScope.launch(Dispatchers.IO) { prefsManager.setStrokeWidth(w) }
+    }
+
+    fun updateHeaderAlpha(alpha: Float) {
+        val clamped = alpha.coerceIn(0.15f, 0.85f)
+        headerAlpha = clamped
+        viewModelScope.launch(Dispatchers.IO) { prefsManager.setHeaderAlpha(clamped) }
+    }
+    fun esTourVisto(key: String): Boolean = prefsManager.isTourSeen(key)
+    fun marcarTourVisto(key: String) { prefsManager.markTourSeen(key) }
+
+    fun generateSuggestedRouteName(onResult: (String) -> Unit) {
+        val datePart = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date())
+        onResult(datePart)
+    }
+
+    // ─── Location Service ─────────────────────────────────────────
+
+    fun startPassiveLocationService() = locationServiceManager.startPassiveService()
+
+    fun startTrackingRoute(name: String) {
+        viewModelScope.launch {
+            val routeId = repository.startNewRoute(name)
+            locationServiceManager.startTracking(
+                routeId, name,
+                (updateIntervalSeconds * 1000).toLong(),
+                updateDistanceMeters
+            )
+        }
+    }
+
+    fun stopTrackingRoute() = locationServiceManager.stopTracking()
+
+    // ─── Waypoints ────────────────────────────────────────────────
+
+    fun addWaypointToActiveRoute(name: String, description: String, photoPath: String? = null, author: String = "", latitude: Double? = null, longitude: Double? = null, color: String = "#00FF00") {
+        val routeId = LocationService.currentRouteId.value ?: return
+        viewModelScope.launch {
+            val finalLat = latitude ?: LocationService.latestLocation.value?.latitude
+            val finalLon = longitude ?: LocationService.latestLocation.value?.longitude
+            if (finalLat != null && finalLon != null) repository.addWaypoint(routeId, name, description, finalLat, finalLon, photoPath, author, color)
+        }
+    }
+
+
+
+    // ─── Routes CRUD ──────────────────────────────────────────────
+
+    fun deleteRoute(routeId: Int) { viewModelScope.launch { repository.deleteRoute(routeId) } }
+
+    fun deleteRoutes(routeIds: Set<Int>) { viewModelScope.launch { repository.deleteRoutes(routeIds.toList()) } }
+
+    fun renameRoute(routeId: Int, newName: String) {
+        viewModelScope.launch {
+            val route = repository.getRouteById(routeId)
+            if (route != null) repository.updateRoute(route.copy(name = newName))
+        }
+    }
+
+    fun clearAllAppData() { viewModelScope.launch { repository.deleteAllData() } }
+
+    fun selectRouteForDetail(routeId: Int) {
+        _selectedDetailRouteId.value = routeId
+        _tramoRange.value = null
+    }
+
+    fun prepareWaypointCreation(routeId: Int) {
+        _selectedDetailRouteId.value = routeId
+        _tramoRange.value = null
+    }
+
+    fun selectFavoriteForFocus(id: Int) { _selectedFavoriteId.value = id }
+
+    fun clearFavoriteFocus() { _selectedFavoriteId.value = null }
+
+    // ─── Flows: LocationService companion ─────────────────────────
+
+    val isTrackingLive: StateFlow<Boolean> = LocationService.isTracking
+    val activeRouteIdLive: StateFlow<Int?> = LocationService.currentRouteId
+    val latestLocationLive: StateFlow<Location?> = LocationService.latestLocation
+    val currentActivityMode: StateFlow<ActivityMode> = LocationService.currentActivityMode
+    val kineticProfile: StateFlow<KineticProfile> = LocationService.kineticProfile
+
+    // GPS accuracy derived from latest location
+    val gpsAccuracy: StateFlow<String> = LocationService.latestLocation
+        .map { location ->
+            if (location != null && location.hasAccuracy()) {
+                val acc = location.accuracy.toInt()
+                when {
+                    acc <= 5 -> "GPS: Excelente (±${acc}m)"
+                    acc <= 15 -> "GPS: Buena (±${acc}m)"
+                    acc <= 50 -> "GPS: Regular (±${acc}m)"
+                    else -> "GPS: Baja (±${acc}m)"
+                }
+            } else {
+                "GPS: Buscando señal..."
+            }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "GPS: Buscando señal...")
+
+    // ─── Flows: Repository-based ──────────────────────────────────
+
+    val allRoutes: StateFlow<List<Route>> = repository.allRoutes.map { routes ->
+        routes.filter { !it.name.startsWith("Parada") && (it.distanceMeters >= 25.0 || it.isActive) }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val activeRoutePoints: StateFlow<List<LocationPoint>> = activeRouteIdLive.flatMapLatest { id ->
+        if (id != null) repository.getLocationPointsFlow(id) else flowOf(emptyList())
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val activeRouteWaypoints: StateFlow<List<Waypoint>> = activeRouteIdLive.flatMapLatest { id ->
+        if (id != null) repository.getWaypointsFlow(id) else flowOf(emptyList())
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val selectedDetailRoute: StateFlow<Route?> = _selectedDetailRouteId.flatMapLatest { id ->
+        if (id != null) repository.getRouteByIdFlow(id) else flowOf(null)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val selectedDetailPoints: StateFlow<List<LocationPoint>> = _selectedDetailRouteId.flatMapLatest { id ->
+        if (id != null) repository.getLocationPointsFlow(id) else flowOf(emptyList())
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val selectedDetailWaypoints: StateFlow<List<Waypoint>> = _selectedDetailRouteId.flatMapLatest { id ->
+        if (id != null) repository.getWaypointsFlow(id) else flowOf(emptyList())
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val photoPathsForCurrentRoute: StateFlow<List<String>> = selectedDetailWaypoints
+        .map { waypoints ->
+            waypoints.mapNotNull { it.photoPath?.takeIf(String::isNotBlank) }
+        }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = emptyList()
+        )
+
+    // ─── Analytics: metrics for selected tramo (CR-29) ──────────────
+    private val _tramoRange = MutableStateFlow<Pair<Int, Int>?>(null)
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val tramoMetrics: StateFlow<RouteMetricsResult?> = _tramoRange
+        .flatMapLatest { range ->
+            val points = selectedDetailPoints.value
+            if (range == null || range.second - range.first < 1 || points.isEmpty() ||
+                range.first < 0 || range.second > points.lastIndex
+            ) {
+                flowOf(null)
+            } else {
+                flow {
+                    emit(calculateRouteMetricsUseCase.execute(points.slice(range.first..range.second)))
+                }.flowOn(Dispatchers.Default)
+            }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    fun updateTramoRange(start: Int, end: Int) {
+        if (start < 0 || end < start) return
+        _tramoRange.value = start to end
+    }
+
+    // ─── ExperienceMap: snapshot, no live feed ──────────────────────
+    private val _experiencePoints = MutableStateFlow<List<LocationPoint>>(emptyList())
+    val experiencePoints: StateFlow<List<LocationPoint>> = _experiencePoints.asStateFlow()
+
+    fun prepareExperience(routeId: Int) {
+        _selectedDetailRouteId.value = routeId
+        val currentPoints = selectedDetailPoints.value
+        if (currentPoints.isNotEmpty() && _selectedDetailRouteId.value == routeId) {
+            _experiencePoints.value = currentPoints
+        }
+        viewModelScope.launch {
+            val points = repository.getLocationPointsSync(routeId)
+            _experiencePoints.value = points
+        }
+    }
+
+    // ─── Saved Locations ──────────────────────────────────────────
+
+    val allSavedLocations: StateFlow<List<SavedLocation>> = repository.allSavedLocations.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val allFavorites: StateFlow<List<SavedLocation>> = allSavedLocations
+    val groupedFavorites: StateFlow<List<CountryFavoritesGroup>> = allSavedLocations.map { list ->
+        groupFavoritesByLocationUseCase(list)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val allRoutesForGrouping: StateFlow<List<com.aistudio.localizador.data.model.Route>> = repository.allRoutes.map { routes ->
+        routes.filter { !it.name.startsWith("Parada") && (it.distanceMeters >= 25.0 || it.isActive) }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val groupedRoutesState: StateFlow<List<DayGroupUiModel>> = allRoutesForGrouping.map { routes ->
+        groupRoutesByDateUseCase(routes)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val selectedFavorite: StateFlow<SavedLocation?> = _selectedFavoriteId.flatMapLatest { id ->
+        if (id != null) repository.getSavedLocationByIdFlow(id) else flowOf(null)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+    fun getFavoritesForRouteFlow(routeId: Int): Flow<List<SavedLocation>> = repository.getFavoritesForRouteFlow(routeId)
+
+
+    fun addFavoriteToRoute(routeId: Int, favoriteId: Int) { viewModelScope.launch { repository.addFavoriteToRoute(routeId, favoriteId) } }
+
+    fun removeFavoriteFromRoute(routeId: Int, favoriteId: Int) { viewModelScope.launch { repository.removeFavoriteFromRoute(routeId, favoriteId) } }
+
+
+    fun saveSpecificLocation(name: String, address: String, latitude: Double, longitude: Double, comment: String = "", author: String = "", photoPath: String? = null, phoneNumber: String = "", email: String = "", isContact: Boolean = false, color: String = "#FFD700", photoTimestamp: Long? = null) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val finalTimestamp = photoTimestamp ?: System.currentTimeMillis()
+            val finalComment = if (photoPath != null) {
+                val dateText = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
+                    .format(Date(finalTimestamp))
+                when {
+                    comment.isBlank() -> "📸 Capturada el $dateText"
+                    comment.contains("📸 Capturada el") -> comment
+                    else -> "$comment\n\n📸 Capturada el $dateText"
+                }
+            } else comment
+            val details = geocoderUseCase.fetchLocationDetails(latitude, longitude)
+            val country = details.second.ifBlank { "Desconocido" }
+            val city = details.third.ifBlank { "Desconocida" }
+            repository.addSavedLocation(name, address, latitude, longitude, comment = finalComment, author, photoPath, phoneNumber, email, isContact, country, city, color, timestamp = finalTimestamp)
+        }
+    }
+    fun updateSavedLocation(location: SavedLocation) { viewModelScope.launch(Dispatchers.IO) { repository.updateSavedLocation(location) } }
+
+    fun deleteSavedLocation(savedLocation: SavedLocation) { viewModelScope.launch { repository.deleteSavedLocation(savedLocation) } }
+
+    fun updateSavedLocationColorReactively(id: Int, color: String) {
+        _savedLocationColorUpdateFlow.tryEmit(Pair(id, color))
+    }
+
+    fun refreshLocationDetails(location: SavedLocation, onResult: (SavedLocation) -> Unit = {}) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val details = geocoderUseCase.fetchLocationDetails(location.latitude, location.longitude)
+            val country = details.second.ifBlank { "Desconocido" }
+            val city = details.third.ifBlank { "Desconocida" }
+            val freshBase = repository.allSavedLocations.first().firstOrNull { it.id == location.id } ?: location
+            val updated = freshBase.copy(address = details.first, country = country, city = city)
+            repository.updateSavedLocation(updated)
+            withContext(Dispatchers.Main) {
+                onResult(updated)
+            }
+        }
+    }
+
+    suspend fun cleanDuplicateFavorites() {
+        val allFavorites = repository.getAllSavedLocationsSync()
+        val seen = mutableSetOf<String>()
+        allFavorites.forEach { fav ->
+            val fingerprint = "${fav.name.trim().lowercase()}_${fav.latitude}_${fav.longitude}_${fav.photoPath.orEmpty()}"
+            if (seen.contains(fingerprint)) repository.deleteSavedLocation(fav) else seen.add(fingerprint)
+        }
+    }
+
+    // ─── Geocoding ────────────────────────────────────────────────
+
+    fun fetchCurrentAddress() {
+        val location = latestLocationLive.value ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            currentAddress = geocoderUseCase.fetchAddress(location.latitude, location.longitude)
+        }
+    }
+
+    fun clearCurrentAddress() { currentAddress = null; photoExtractedAddress = null }
+
+    fun fetchAddressForCoordinates(lat: Double, lon: Double) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val details = geocoderUseCase.fetchLocationDetails(lat, lon)
+            currentAddress = details.first
+            selectedPointAddress = details.first
+        }
+    }
+
+    fun fetchPhotoAddress(latitude: Double, longitude: Double) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val details = geocoderUseCase.fetchLocationDetails(latitude, longitude)
+                withContext(Dispatchers.Main) {
+                    photoExtractedAddress = details.first
+                    Log.d("BitaVi_EXIF", "Dirección extraída de la foto: ${details.first}")
+                }
+            } catch (e: Exception) {
+                Log.e("BitaVi_EXIF", "Error al geocodificar coordenadas EXIF", e)
+            }
+        }
+    }
+
+    fun fetchAddressForLocation(lat: Double, lon: Double) {
+        selectedPointAddress = "Buscando..."
+        viewModelScope.launch(Dispatchers.IO) {
+            selectedPointAddress = geocoderUseCase.fetchAddress(lat, lon)
+        }
+    }
+
+    fun clearSelectedPointAddress() { selectedPointAddress = null }
+
+    // ─── Photo ────────────────────────────────────────────────────
+
+    fun getPhotoLocation(uri: Uri): Pair<Double, Double>? = photoManager.getPhotoLocation(uri)
+
+    suspend fun extractLocationFromPhoto(uri: Uri): ExtractPhotoLocationUseCase.PhotoMetadata? {
+        return extractPhotoLocationUseCase.execute(uri)
+    }
+
+    fun createImageFile(): Uri? = photoManager.createImageFile()
+
+    suspend fun saveImageToInternalStorage(uri: Uri): Uri? = photoManager.saveImageToInternalStorage(uri)
+
+    // ─── AI Analysis ──────────────────────────────────────────────
+
+    fun analyzeRouteWithAI(routeId: Int) {
+        val key = groqApiKey
+        if (key.isNullOrBlank()) { _aiAnalysisState.value = AiAnalysisState.MissingKey; return }
+        viewModelScope.launch(Dispatchers.IO) {
+            _aiAnalysisState.value = AiAnalysisState.Loading
+            val result = analyzeRouteAiUseCase(key, routeId)
+            if (result.isSuccess) {
+                _aiAnalysisState.value = AiAnalysisState.Success(result.getOrThrow())
+            } else {
+                val error = result.exceptionOrNull()
+                if (error is ApiKeyExpiredException) {
+                    _aiAnalysisState.value = AiAnalysisState.ExpiredKey
+                } else {
+                    _aiAnalysisState.value = AiAnalysisState.Error(error?.message ?: "Error de conexión.")
+                }
+            }
+        }
+    }
+
+    fun updateApiKey(newKey: String) {
+        groqApiKey = newKey
+        _aiAnalysisState.value = AiAnalysisState.Idle
+    }
+
+    fun resetAiState() {
+        _aiAnalysisState.value = AiAnalysisState.Idle
+    }
+
+    fun analyzeFavoriteWithGemini(favoriteId: Int) {
+        val key = geminiApiKey
+        if (key.isNullOrBlank()) { favAnalysisState = AiAnalysisState.MissingKey; return }
+        viewModelScope.launch(Dispatchers.IO) {
+            favAnalysisState = AiAnalysisState.Loading
+            try {
+                val favorite = repository.getAllSavedLocationsSync().find { it.id == favoriteId }
+                if (favorite == null) { favAnalysisState = AiAnalysisState.Error("Sin datos."); return@launch }
+                val result = geminiAiUseCase.analyzeLocation(
+                    apiKey = key, name = favorite.name,
+                    lat = favorite.latitude, lon = favorite.longitude,
+                    comment = favorite.comment
+                )
+                favAnalysisState = AiAnalysisState.Success(result)
+            } catch (t: Throwable) {
+                t.printStackTrace()
+                favAnalysisState = AiAnalysisState.Error(t.message ?: "Error de conexión.")
+            }
+        }
+    }
+
+    fun resetFavAiState() {
+        favAnalysisState = AiAnalysisState.Idle
+    }
+
+    // ─── Export / Import ──────────────────────────────────────────
+
+    fun exportRoutesAsCSV(routeId: Int) {
+        viewModelScope.launch(Dispatchers.IO) {
+            routeExportUseCase.exportCsv(routeId)
+                .onSuccess { file ->
+                    val uri = routeExportUseCase.getUriForFile(file)
+                    val intent = routeExportUseCase.buildChooserIntent(
+                        routeExportUseCase.buildShareIntent(uri, "text/csv"),
+                        "Exportar CSV"
+                    )
+                    _shareIntentTrigger.emit(intent)
+                }
+                .onFailure { e ->
+                    _uiEvent.send(UiEvent.ShowSnackbar("Error al exportar CSV: " + e.message))
+                }
+        }
+    }
+
+    fun exportRoutesAsGPX(routeIds: Set<Int>) {
+        viewModelScope.launch(Dispatchers.IO) {
+            routeExportUseCase.exportGpx(routeIds)
+                .onSuccess { file ->
+                    val uri = routeExportUseCase.getUriForFile(file)
+                    val intent = routeExportUseCase.buildChooserIntent(
+                        routeExportUseCase.buildShareIntent(uri, "application/gpx+xml"),
+                        "Exportar GPX"
+                    )
+                    _shareIntentTrigger.emit(intent)
+                }
+                .onFailure { e ->
+                    _uiEvent.send(UiEvent.ShowSnackbar("Error al exportar GPX: " + e.message))
+                }
+        }
+    }
+
+    fun importGpxFile(uri: Uri) {
+        viewModelScope.launch(Dispatchers.IO) {
+            isImporting = true
+            routeExportUseCase.importGpx(uri)
+                .onSuccess { _uiEvent.send(UiEvent.ShowSnackbar("GPX importado correctamente")) }
+                .onFailure { e ->
+                    Log.e("RouteViewModel", "Error al importar GPX: ", e)
+                    _uiEvent.send(UiEvent.ShowSnackbar("Error al importar el archivo GPX"))
+                }
+                .also { isImporting = false }
+        }
+    }
+
+    fun exportarRutaZip(routeId: Int) {
+        viewModelScope.launch(Dispatchers.IO) {
+            routeExportUseCase.exportZip(routeId)
+                .onSuccess { file ->
+                    val uri = routeExportUseCase.getUriForFile(file)
+                    val intent = routeExportUseCase.buildChooserIntent(
+                        routeExportUseCase.buildShareIntent(uri, "application/zip"),
+                        "Exportar ruta"
+                    )
+                    _shareIntentTrigger.emit(intent)
+                }
+                .onFailure { e ->
+                    _uiEvent.send(UiEvent.ShowSnackbar("Error al exportar: " + e.message))
+                }
+        }
+    }
+
+    fun exportRoute(routeId: Int) {
+        viewModelScope.launch(Dispatchers.IO) {
+            routeExportUseCase.exportRouteAsZip(routeId)
+                .onSuccess { file ->
+                    val uri = routeExportUseCase.getUriForFile(file)
+                    val intent = routeExportUseCase.buildChooserIntent(
+                        routeExportUseCase.buildShareIntent(uri, AppConstants.Backup.MIME_TYPE),
+                        "Compartir ruta en..."
+                    )
+                    _shareIntentTrigger.emit(intent)
+                }
+                .onFailure { e ->
+                    _uiEvent.send(UiEvent.ShowSnackbar("Error al exportar: " + e.message))
+                }
+        }
+    }
+
+    fun shareExperience(context: Context, routeId: Int, photoPaths: List<String>) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val route = repository.getRouteById(routeId)
+            var pathsToShare = photoPaths
+            if (pathsToShare.isEmpty()) {
+                val waypoints = repository.getWaypointsSync(routeId)
+                pathsToShare = waypoints.mapNotNull { it.photoPath?.takeIf(String::isNotBlank) }
+            }
+            val chooserIntent = shareExperienceUseCase(context, route, pathsToShare)
+            _shareIntentTrigger.emit(chooserIntent)
+        }
+    }
+
+    fun saveRouteZipToUri(routeId: Int, uri: Uri) {
+        viewModelScope.launch(Dispatchers.IO) {
+            routeExportUseCase.saveZipToUri(routeId, uri)
+                .onSuccess { _uiEvent.send(UiEvent.ShowSnackbar("ZIP guardado correctamente")) }
+                .onFailure { e ->
+                    _uiEvent.send(UiEvent.ShowSnackbar("Error al guardar ZIP: " + e.message))
+                }
+        }
+    }
+
+    fun importarRutaZip(uri: Uri) {
+        viewModelScope.launch(Dispatchers.IO) {
+            isImporting = true
+            routeExportUseCase.importZip(uri)
+                .onSuccess { _uiEvent.send(UiEvent.ShowSnackbar("Ruta importada correctamente")) }
+                .onFailure { e ->
+                    Log.e("RouteViewModel", "Error al importar ZIP: ${e.message}", e)
+                    _uiEvent.send(UiEvent.ShowSnackbar("El archivo ZIP es invalido o esta corrupto"))
+                }
+                .also { isImporting = false }
+        }
+    }
+    // ─── Backup ───────────────────────────────────────────────────
+
+    suspend fun prepareBackupFile(): File? = backupUseCase.prepareBackup()
+
+    fun restoreFromBackup(uri: Uri) {
+        viewModelScope.launch(Dispatchers.IO) {
+            isImporting = true
+            try {
+                when (backupUseCase.detectRestoreType(uri)) {
+                    is BackupUseCase.RestoreDecision.ProcessZip -> {
+                        backupUseCase.restoreFromZip(uri)
+                    }
+                    is BackupUseCase.RestoreDecision.ProcessGpx -> {
+                        routeExportUseCase.importGpx(uri)
+                    }
+                    is BackupUseCase.RestoreDecision.Invalid -> { }
+                }
+            } catch (e: Exception) {
+                Log.e("RouteViewModel", "Error al restaurar respaldo: ${e.message}", e)
+                _uiEvent.send(UiEvent.ShowSnackbar("Fallo al restaurar la copia de seguridad"))
+            } finally { isImporting = false }
+        }
+    }
+
+    // ─── Contacts ─────────────────────────────────────────────────
+
+    fun getContactDetails(contactUri: Uri, onResult: (name: String, phone: String, email: String, address: String) -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val details = contactUseCase.getContactDetails(contactUri)
+                .onFailure { Log.e("BitaVi", "Fallo obteniendo contacto", it) }
+                .getOrDefault(ContactUseCase.ContactDetails("", "", "", ""))
+            withContext(Dispatchers.Main) { onResult(details.name, details.phone, details.email, details.address) }
+        }
+    }
+
+
+    fun shareLocation(location: SavedLocation) = shareUseCase.shareLocation(location)
+
+
+    // --- Quick Favorite from Tracking ---
+
+    fun addQuickFavoriteFromTracking(customName: String? = null) {
+        viewModelScope.launch {
+            val currentLocation = latestLocationLive.value
+            val activeRouteId = activeRouteIdLive.value
+
+            addFavoriteFromTrackingUseCase.execute(
+                currentLocation = currentLocation,
+                activeRouteId = activeRouteId,
+                customName = customName
+            ).onSuccess {
+                _uiEvent.send(UiEvent.ShowSnackbar("Punto de interes guardado en la ruta"))
+            }.onFailure { error ->
+                _uiEvent.send(UiEvent.ShowSnackbar("No se pudo guardar: ${error.message}"))
+            }
+        }
+    }
+
+    fun resolvePendingStopsOverWifi() {
+        viewModelScope.launch(Dispatchers.IO) {
+            wifiGeocodeFavoritesUseCase.execute()
+        }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        wifiGeocodeFavoritesUseCase.unregisterWifiCallback(wifiCallback)
+    }
+}
+
+
+
+
+
+
+

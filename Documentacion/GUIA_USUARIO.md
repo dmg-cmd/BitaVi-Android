@@ -1,85 +1,91 @@
-# 📱 Guía de Usuario - Localizador PRO
+# 📱 Guía de Usuario - BitaVi (Bitácora Táctica de Rutas)
 
-¡Bienvenido a **Localizador PRO**! Esta aplicación está diseñada para ser tu compañero definitivo en el seguimiento de rutas, gestión de lugares favoritos y análisis inteligente de tus viajes.
+¡Bienvenido a **BitaVi**! Tu aplicación táctica y profesional para el seguimiento geográfico, telemetría de campo, gestión estructurada de favoritos y análisis inteligente de expediciones.
 
 ---
 
-## 🗺️ 1. Mapa y Grabación de Rutas
+## 🗺️ 1. Mapa y Ventana Superior de Control
 
-La pantalla principal es tu centro de mando. Aquí puedes ver tu ubicación en tiempo real y gestionar tus recorridos.
+La pantalla principal es tu centro de operaciones. Cuenta con cartografía dinámica de alto rendimiento ([`osmdroid`](https://github.com/osmdroid/osmdroid)) y una **ventana de control superior táctica**.
 
-### Cómo grabar una ruta:
-1.  Pulsa el botón **"Grabar"** (icono de Play) en la esquina inferior derecha.
-2.  Dale un nombre a tu ruta (o usa el sugerido por la app).
-3.  Ajusta la **precisión** (intervalo de tiempo) si lo deseas.
-4.  Pulsa **"Iniciar"**. Verás una línea roja que dibuja tu camino y un panel con datos de velocidad, distancia y tiempo.
-5.  Para terminar, pulsa el botón **"Stop"** (cuadrado rojo).
+### Ventana Superior Táctica (Telemetría en Vivo):
+*   **Métricas Primarias:**
+    *   **Modo de Tráfico:** Detección en tiempo real con indicador semántico de color (*🛑 Detenido*, *🚶 Caminata*, *🚴 Bicicleta*, *🚗 Vehículo*, *✈️ Vuelo*).
+    *   **Velocidad:** Medición cinemática precisa en km/h.
+    *   **Altura:** Altitud sobre el nivel del mar en metros en vivo.
+*   **Métricas Complementarias:**
+    *   **Distancia 1º Punto:** Cálculo geodésico dinámico continuo respecto al punto de partida de la ruta activa.
+    *   **Tiempo Activo:** Horas y minutos de funcionamiento de la sesión de grabación.
+*   **Botones al Extremo Superior Derecho:**
+    *   **Atenuador de Fondo (`Icons.Default.Opacity`):** Abre el control de transparencia de la ventana superior. Permite regular desde 15% (ultra translúcido) hasta 85% (alto contraste) con preajustes rápidos (*Sutil 25%*, *Equilibrado 45%*, *Contraste 70%*).
+    *   **Consultar Ubicación (`Icons.Default.LocationSearching`):** Despliega la dirección física geocodificada en tiempo real de tu posición.
+
+### Cómo Grabar una Ruta:
+1.  Pulsa el botón flotante **"Grabar"** (icono `+`).
+2.  Ingresa el nombre de tu ruta o acepta el nombre sugerido automáticamente.
+3.  Ajusta el intervalo de tiempo/distancia si lo requieres y pulsa **"Iniciar"**.
+4.  La traza táctica se dibujará en el mapa con escala cromática según tu velocidad.
+5.  Para pausar o concluir, pulsa los controles flotantes laterales de grabación.
 
 ### Modos Especiales (en el Menú Lateral):
-*   **✈️ Modo Avión:** Ideal para vuelos comerciales. Permite registrar velocidades de hasta 1200 km/h sin que el filtro de ruido del GPS descarte los puntos.
-*   **⚡ Modo Automático:** La app detecta si te mueves. Empezará a grabar si recorres más de 25 metros y se pausará si detecta que estás quieto por más de 15 minutos.
-*   **📶 Mapas Offline:** Actívalo para usar solo los mapas guardados en la memoria del teléfono y ahorrar datos móviles.
-*   **📍 Avisos "Cerca de mí":** Actívalo para recibir notificaciones cuando pases a menos de 100m de uno de tus lugares favoritos.
+*   **✈️ Modo Vuelo Automático:** Detección aerodinámica automática al superar 150 km/h y 30 m de ascenso; registra sin interrupciones ni líneas discontinuas hasta 1200 km/h.
+*   **⚡ Modo Automático:** Inicia la grabación autónoma al detectar movimiento sostenido (>25 m) y pausa tras 15 minutos de reposo prolongado para preservar batería.
+*   **📶 Mapas Fuera de Línea:** Navega exclusivamente con la caché local de mapas sin consumir datos móviles.
+*   **📍 Avisos "Cerca de mí":** Recibe alertas sonoras/vibratorias al aproximarte a menos de 100 m de tus favoritos.
+*   **🎨 Grosor del Trazado y Atenuador:** Regula el ancho de la línea de ruta y la transparencia de la ventana superior desde los controles deslizantes de ajustes.
 
 ---
 
-## ⭐ 2. Lugares Favoritos (Marcadores)
+## ⭐ 2. Favoritos y Lugares Destacados
 
-Puedes guardar puntos específicos en el mapa para no olvidarlos nunca.
+Organiza tus sitios de interés agrupados por **País** y **Ciudad**, con soporte multimedia y vinculación a contactos.
 
-### Cómo guardar un lugar:
-*   **Opción A (Durante una ruta):** Pulsa el botón del marcador (+) para añadir un "Punto de Interés" a la ruta actual.
-*   **Opción B (Cualquier momento):** Mantén pulsado cualquier punto del mapa durante 2 segundos. Se abrirá un formulario para guardar ese lugar.
-
-### Personalización:
-*   **Fotos:** Puedes tomar una foto con la cámara o elegir una de la galería. La app detectará automáticamente la ubicación si la foto tiene coordenadas GPS.
-*   **Colores:** Elige un color para el icono de la estrella para organizar tus sitios (ej. Rojo para restaurantes, Azul para trabajo).
-*   **Contactos:** Marca un lugar como "Contacto" para añadir su teléfono y correo, permitiendo llamar o escribir directamente desde la app.
-
----
-
-## 📜 3. Historial y Detalles
-
-Todas tus rutas se guardan en la pestaña **"Historial"**.
-
-*   **Ver Detalles:** Toca cualquier ruta para ver el mapa estático, estadísticas completas y **gráficos profesionales** de altitud y velocidad.
-*   **Menú de Acciones `⋮`:** En la pantalla de detalle, las acciones están organizadas en un menú de tres puntos en la esquina superior derecha:
-    *   **Compartir Resumen:** Genera una imagen del mapa y un resumen de texto ideal para WhatsApp o redes sociales.
-    *   **Exportar:** Submenú con tres formatos: **GPX** (para Google Earth/Strava), **CSV** (para Excel/análisis técnico) y **ZIP** (respaldo completo con fotos).
-    *   **Eliminar ruta:** Borra permanentemente la ruta con todos sus puntos, waypoints y fotos. Muestra un diálogo de confirmación antes de eliminar.
-    *   **Ayuda:** Abre un diálogo informativo que explica cada acción disponible en la pantalla.
-*   **Acciones directas:** Los botones visibles de **Mapa de Experiencia**, **Favoritos** y **Editar nombre** se mantienen siempre a la vista para acceso rápido.
-*   **Editar:** Puedes renombrar tus rutas pulsando el icono del lápiz.
+### Acciones Rápidas en Favoritos:
+*   **Contraer Todo (`UnfoldLess`):** En la barra superior, pliega de un solo toque todos los países y ciudades para una vista compacta.
+*   **Expandir Todo (`UnfoldMore`):** Despliega simultáneamente todas las tarjetas y detalles completos.
+*   **Guardar Punto Actual (`AddLocation`):** Guarda tus coordenadas GPS activas con foto, notas, categoría y color personalizado.
+*   **Importar Contacto (`PersonAdd`):** Extrae nombre y dirección de tu agenda de contactos para crear un favorito instantáneo.
+*   **Visor Fotográfico:** Toca la miniatura de cualquier foto para abrirla a pantalla completa con soporte de zoom interactivo.
+*   **Acciones por Tarjeta:** Llama, envía correo, abre en mapa, enfoca con rumbo o edita directamente desde la tarjeta.
 
 ---
 
-## 🤖 4. Inteligencia Artificial (IA)
+## 📜 3. Historial ("Mis Recorridos")
 
-Localizador PRO integra **Llama 3.3** a través de Groq para analizar tus viajes.
+Tus recorridos se agrupan ordenados cronológicamente por día con resúmenes de distancia, tiempo y ritmo.
 
-*   **Análisis de Ruta:** En la pantalla de detalle, pulsa el botón de IA. La aplicación enviará tus datos de telemetría (de forma anónima) a la IA para generar un informe sobre tu ritmo, paradas y eficiencia del trayecto.
-*   **Configuración:** Necesitas una "API Key" de Groq (gratuita) que puedes configurar en el menú lateral. Por seguridad, esta clave se guarda cifrada y protegida por tu huella dactilar.
-
----
-
-## 🛡️ 5. Seguridad y Respaldos
-
-Tus datos son tuyos y están protegidos.
-
-*   **Protección Biométrica:** Activa esta opción en los ajustes para que la app pida tu huella o cara al acceder a funciones críticas o borrar datos.
-*   **Copia de Seguridad (Backup):** 
-    1.  Ve al menú lateral y pulsa **"Respaldo en Drive / Carpeta"**.
-    2.  Se creará un archivo ZIP con todas tus rutas, fotos y favoritos. Guárdalo en tu nube favorita.
-*   **Restaurar:** Si cambias de teléfono, usa **"Restaurar Respaldo"** y selecciona el archivo ZIP para recuperar todo exactamente como estaba.
+### Acciones Rápidas en Rutas:
+*   **Contraer y Expandir Todo:** En la cabecera "Mis Recorridos", repliega o despliega todas las fechas de la bitácora con un solo clic.
+*   **Selección Múltiple (Pulsación Larga):** Mantén presionada cualquier ruta para activar el modo de selección en bloque y exportar o eliminar varias rutas simultáneamente.
+*   **Importar Recorridos (`UploadFile`):** Carga archivos externos en formato **GPX** o paquetes completos **ZIP** de BitaVi directamente a tu base de datos.
+*   **Mapa de Experiencia 3D:** En la pantalla de detalle, reproduce el viaje con sincronización de altimetría, velocidad y panel flotante de fotos geolocalizadas.
+*   **Exportación Multiformato:** Descarga archivos **GPX** (Google Earth/Strava), **CSV** (Excel) o copias de seguridad íntegras en formato **ZIP**.
 
 ---
 
-## 💡 Consejos Útiles
+## 🤖 4. Inteligencia Artificial (Groq - Llama 3.3)
 
-*   **Precisión del GPS:** El círculo verde alrededor de tu posición indica el margen de error. Cuanto más pequeño, más preciso es el rastro. La app filtra automáticamente puntos con error superior a 20 metros.
-*   **Batería:** El seguimiento GPS consume batería. Si vas a hacer una ruta larga, te recomendamos llevar una batería externa o usar un intervalo de tiempo mayor (ej. cada 10-15 segundos).
-*   **Cerca de mí:** Si activas los avisos "Cerca de mí" en los ajustes, el móvil te avisará con una notificación cuando pases cerca de uno de tus lugares favoritos.
-*   **Ayuda integrada:** En la pantalla de detalle de cada ruta, abre el menú `⋮` y pulsa "Ayuda de la pantalla" para ver la explicación de cada acción disponible.
+BitaVi integra modelos de lenguaje avanzados para auditar tu rendimiento:
+*   **Diagnóstico Táctico:** Analiza esfuerzo físico, velocidad media, picos de aceleración y perfil de desniveles de tus rutas.
+*   **Seguridad de Claves:** Tu API Key de Groq se resguarda bajo cifrado de hardware mediante Android Keystore con protección biométrica.
 
 ---
-*Versión de la Guía: 1.1 (Junio 2026)*
+
+## 🛡️ 5. Seguridad y Copias de Seguridad
+
+*   **Protección Biométrica:** Exige autenticación por huella digital o reconocimiento facial para acceder a configuraciones confidenciales o borrar datos.
+*   **Respaldo Completo ZIP:** Empaqueta en un único archivo comprimido todas tus rutas, waypoints, favoritos y álbum fotográfico para almacenarlo en Google Drive o tu PC.
+*   **Restauración Dinámica:** Recupera toda tu información en un nuevo dispositivo seleccionando el archivo ZIP previamente generado.
+
+---
+
+## ⚡ 6. Catálogo de Teclas y Atajos Rápidos
+
+Puedes consultar la guía interactiva en cualquier momento pulsando el botón **Ayuda** en la barra de navegación inferior:
+*   **1 Toque:** Contraer/Expandir grupos, abrir fotos en pantalla completa, desplegar dirección en cabecera.
+*   **Pulsación Larga en Mapa:** Crear un Waypoint o guardar un favorito en esa coordenada exacta.
+*   **Pulsación Larga en Ruta:** Activar la selección múltiple en el historial.
+*   **Botón de Opacidad:** Ajustar la transparencia de la ventana de control superior en tiempo real.
+
+---
+*BitaVi — Versión 3.2.17-RC1 (Octubre 2026)*

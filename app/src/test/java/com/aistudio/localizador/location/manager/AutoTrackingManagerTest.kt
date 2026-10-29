@@ -117,4 +117,19 @@ class AutoTrackingManagerTest {
 
         verify(exactly = 1) { listener.onMovementSustainedTriggered(any()) }
     }
+
+    @Test
+    fun `when location accuracy is within tolerant threshold point is buffered in prerecording`() {
+        val loc = mockk<Location>(relaxed = true)
+        every { loc.latitude } returns -34.6037
+        every { loc.longitude } returns -58.3816
+        every { loc.accuracy } returns 35f
+        every { loc.speed } returns 0f
+        every { loc.altitude } returns 10.0
+        every { loc.time } returns System.currentTimeMillis()
+
+        manager.processMovementSustained(loc, 0f, true, false, sessionManager)
+
+        verify(atLeast = 1) { sessionManager.handlePreRecording(any()) }
+    }
 }

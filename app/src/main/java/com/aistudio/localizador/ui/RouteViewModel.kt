@@ -20,6 +20,7 @@ import com.aistudio.localizador.data.repository.RouteRepository
 import com.aistudio.localizador.domain.usecase.AnalyzeRouteAiUseCase
 import com.aistudio.localizador.domain.usecase.ApiKeyExpiredException
 import com.aistudio.localizador.domain.usecase.CalculateRouteMetricsUseCase
+import com.aistudio.localizador.domain.usecase.WifiGeocodeFavoritesUseCase
 import com.aistudio.localizador.domain.usecase.ExtractPhotoLocationUseCase
 import com.aistudio.localizador.util.AppConstants
 import com.aistudio.localizador.domain.usecase.RouteExportUseCase
@@ -110,7 +111,8 @@ class RouteViewModel @Inject constructor(
     private val locationServiceManager: LocationServiceManager,
     private val shareExperienceUseCase: ShareExperienceUseCase,
     private val calculateRouteMetricsUseCase: CalculateRouteMetricsUseCase,
-    val mapTileSourceManager: MapTileSourceManager
+    val mapTileSourceManager: MapTileSourceManager,
+    private val wifiGeocodeFavoritesUseCase: WifiGeocodeFavoritesUseCase
 ) : ViewModel() {
 
     // ─── Capas de Mapa (osmdroid) ──────────────────────────────────
@@ -164,6 +166,40 @@ class RouteViewModel @Inject constructor(
         _collapsedDates.value = emptySet()
     }
 
+    // --- Collapsed Favorites State ---
+    private val _collapsedFavoriteCountries = MutableStateFlow<Set<String>>(emptySet())
+    val collapsedFavoriteCountries: StateFlow<Set<String>> = _collapsedFavoriteCountries.asStateFlow()
+
+    private val _collapsedFavoriteCities = MutableStateFlow<Set<String>>(emptySet())
+    val collapsedFavoriteCities: StateFlow<Set<String>> = _collapsedFavoriteCities.asStateFlow()
+
+    fun toggleFavoriteCountryCollapse(country: String) {
+        _collapsedFavoriteCountries.value = if (_collapsedFavoriteCountries.value.contains(country))
+            _collapsedFavoriteCountries.value - country
+        else
+            _collapsedFavoriteCountries.value + country
+    }
+
+    fun toggleFavoriteCityCollapse(cityKey: String) {
+        _collapsedFavoriteCities.value = if (_collapsedFavoriteCities.value.contains(cityKey))
+            _collapsedFavoriteCities.value - cityKey
+        else
+            _collapsedFavoriteCities.value + cityKey
+    }
+
+    fun collapseAllFavorites() {
+        val groups = groupedFavorites.value
+        val allCountries = groups.map { it.countryName }.toSet()
+        val allCities = groups.flatMap { g -> g.cities.map { "${g.countryName}|${it.cityName}" } }.toSet()
+        _collapsedFavoriteCountries.value = allCountries
+        _collapsedFavoriteCities.value = allCities
+    }
+
+    fun expandAllFavorites() {
+        _collapsedFavoriteCountries.value = emptySet()
+        _collapsedFavoriteCities.value = emptySet()
+    }
+
     var mapTargetLocation by mutableStateOf<GeoPoint?>(null)
         private set
     var isOfflineMode by mutableStateOf(false)
@@ -190,6 +226,9 @@ class RouteViewModel @Inject constructor(
     var updateDistanceMeters by mutableStateOf(2f)
     var defaultLatitude by mutableStateOf(-34.6037)
     var mapStrokeWidth by mutableStateOf(8f)
+    var headerAlpha by mutableStateOf(0.45f)
+        private set
+    private var wifiCallback: android.net.ConnectivityManager.NetworkCallback? = null
         private set
     var defaultLongitude by mutableStateOf(-58.3816)
     var isAutoMode by mutableStateOf(false)
@@ -213,6 +252,7 @@ class RouteViewModel @Inject constructor(
         defaultLongitude = prefsManager.getDefaultLongitude()
 
         mapStrokeWidth = prefsManager.getStrokeWidth()
+        headerAlpha = prefsManager.getHeaderAlpha()
         @OptIn(FlowPreview::class)
         viewModelScope.launch(Dispatchers.IO) {
             _savedLocationColorUpdateFlow
@@ -220,7 +260,18 @@ class RouteViewModel @Inject constructor(
                 .collectLatest { (id, color) -> repository.updateSavedLocationColor(id, color) }
         }
 
-        viewModelScope.launch(Dispatchers.IO) { cleanDuplicateFavorites() }
+        viewModelScope.launch(Dispatchers.IO) {
+            cleanDuplicateFavorites()
+            if (wifiGeocodeFavoritesUseCase.isWifiConnected()) {
+                wifiGeocodeFavoritesUseCase.execute()
+            }
+        }
+
+        wifiCallback = wifiGeocodeFavoritesUseCase.registerWifiCallback {
+            viewModelScope.launch(Dispatchers.IO) {
+                wifiGeocodeFavoritesUseCase.execute()
+            }
+        }
     }
 
     fun setMapTarget(lat: Double, lon: Double) {
@@ -268,6 +319,12 @@ class RouteViewModel @Inject constructor(
     fun updateStrokeWidth(w: Float) {
         mapStrokeWidth = w
         viewModelScope.launch(Dispatchers.IO) { prefsManager.setStrokeWidth(w) }
+    }
+
+    fun updateHeaderAlpha(alpha: Float) {
+        val clamped = alpha.coerceIn(0.15f, 0.85f)
+        headerAlpha = clamped
+        viewModelScope.launch(Dispatchers.IO) { prefsManager.setHeaderAlpha(clamped) }
     }
     fun esTourVisto(key: String): Boolean = prefsManager.isTourSeen(key)
     fun marcarTourVisto(key: String) { prefsManager.markTourSeen(key) }
@@ -341,6 +398,48 @@ class RouteViewModel @Inject constructor(
     val isTrackingLive: StateFlow<Boolean> = LocationService.isTracking
     val activeRouteIdLive: StateFlow<Int?> = LocationService.currentRouteId
     val latestLocationLive: StateFlow<Location?> = LocationService.latestLocation
+    val elapsedTimeSecondsLive: StateFlow<Long> = LocationService.elapsedTimeSeconds
+    val currentDistanceMetersLive: StateFlow<Double> = LocationService.currentDistanceMeters
+
+    val distanceFromFirstPointMeters: StateFlow<Double?> = combine(
+        LocationService.currentRouteId,
+        LocationService.latestLocation
+    ) { routeId, currentLoc ->
+        if (routeId != null && currentLoc != null) {
+            val points = repository.getLocationPointsSync(routeId)
+            if (points.isNotEmpty()) {
+                val first = points.first()
+                val result = FloatArray(1)
+                Location.distanceBetween(first.latitude, first.longitude, currentLoc.latitude, currentLoc.longitude, result)
+                result[0].toDouble()
+            } else {
+                null
+            }
+        } else {
+            null
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    fun formatDistanceMeters(distanceMeters: Double?): String {
+        if (distanceMeters == null || distanceMeters <= 0.0) return "--"
+        return if (distanceMeters >= 1000.0) {
+            String.format(java.util.Locale.US, "%.2f km", distanceMeters / 1000.0)
+        } else {
+            "${distanceMeters.toInt()} m"
+        }
+    }
+
+    fun formatElapsedTimeHours(seconds: Long): String {
+        if (seconds <= 0L) return "--"
+        val hours = seconds / 3600
+        val minutes = (seconds % 3600) / 60
+        val secs = seconds % 60
+        return if (hours > 0) {
+            "${hours}h ${minutes}m"
+        } else {
+            "${minutes}m ${secs}s"
+        }
+    }
     val currentActivityMode: StateFlow<ActivityMode> = LocationService.currentActivityMode
     val kineticProfile: StateFlow<KineticProfile> = LocationService.kineticProfile
 
@@ -350,10 +449,10 @@ class RouteViewModel @Inject constructor(
             if (location != null && location.hasAccuracy()) {
                 val acc = location.accuracy.toInt()
                 when {
-                    acc <= 5 -> "GPS: Excelente (±m)"
-                    acc <= 15 -> "GPS: Buena (±m)"
-                    acc <= 50 -> "GPS: Regular (±m)"
-                    else -> "GPS: Baja (±m)"
+                    acc <= 5 -> "GPS: Excelente (±${acc}m)"
+                    acc <= 15 -> "GPS: Buena (±${acc}m)"
+                    acc <= 50 -> "GPS: Regular (±${acc}m)"
+                    else -> "GPS: Baja (±${acc}m)"
                 }
             } else {
                 "GPS: Buscando señal..."
@@ -364,7 +463,7 @@ class RouteViewModel @Inject constructor(
     // ─── Flows: Repository-based ──────────────────────────────────
 
     val allRoutes: StateFlow<List<Route>> = repository.allRoutes.map { routes ->
-        routes.filter { !it.name.startsWith("Parada") && it.activityMode != "STOPPED" && (it.distanceMeters >= 25.0 || it.isActive) }
+        routes.filter { !it.name.startsWith("Parada") && (it.distanceMeters >= 25.0 || it.isActive) }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -452,7 +551,7 @@ class RouteViewModel @Inject constructor(
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val allRoutesForGrouping: StateFlow<List<com.aistudio.localizador.data.model.Route>> = repository.allRoutes.map { routes ->
-        routes.filter { !it.name.startsWith("Parada") && it.activityMode != "STOPPED" && (it.distanceMeters >= 25.0 || it.isActive) }
+        routes.filter { !it.name.startsWith("Parada") && (it.distanceMeters >= 25.0 || it.isActive) }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val groupedRoutesState: StateFlow<List<DayGroupUiModel>> = allRoutesForGrouping.map { routes ->
@@ -516,7 +615,7 @@ class RouteViewModel @Inject constructor(
         val allFavorites = repository.getAllSavedLocationsSync()
         val seen = mutableSetOf<String>()
         allFavorites.forEach { fav ->
-            val fingerprint = "__"
+            val fingerprint = "${fav.name.trim().lowercase()}_${fav.latitude}_${fav.longitude}_${fav.photoPath.orEmpty()}"
             if (seen.contains(fingerprint)) repository.deleteSavedLocation(fav) else seen.add(fingerprint)
         }
     }
@@ -742,7 +841,7 @@ class RouteViewModel @Inject constructor(
             routeExportUseCase.importZip(uri)
                 .onSuccess { _uiEvent.send(UiEvent.ShowSnackbar("Ruta importada correctamente")) }
                 .onFailure { e ->
-                    Log.e("RouteViewModel", "Error al importar ZIP: ", e)
+                    Log.e("RouteViewModel", "Error al importar ZIP: ${e.message}", e)
                     _uiEvent.send(UiEvent.ShowSnackbar("El archivo ZIP es invalido o esta corrupto"))
                 }
                 .also { isImporting = false }
@@ -766,7 +865,7 @@ class RouteViewModel @Inject constructor(
                     is BackupUseCase.RestoreDecision.Invalid -> { }
                 }
             } catch (e: Exception) {
-                Log.e("RouteViewModel", "Error al restaurar respaldo: ", e)
+                Log.e("RouteViewModel", "Error al restaurar respaldo: ${e.message}", e)
                 _uiEvent.send(UiEvent.ShowSnackbar("Fallo al restaurar la copia de seguridad"))
             } finally { isImporting = false }
         }
@@ -804,6 +903,17 @@ class RouteViewModel @Inject constructor(
                 _uiEvent.send(UiEvent.ShowSnackbar("No se pudo guardar: ${error.message}"))
             }
         }
+    }
+
+    fun resolvePendingStopsOverWifi() {
+        viewModelScope.launch(Dispatchers.IO) {
+            wifiGeocodeFavoritesUseCase.execute()
+        }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        wifiGeocodeFavoritesUseCase.unregisterWifiCallback(wifiCallback)
     }
 }
 

@@ -1,3 +1,55 @@
+## Telemetría Completa en Ventana Superior y Reubicación de Botones (2026-10-29 11:19) — v3.2.17-RC1
+
+### ¿Qué cambió para el usuario?
+- **Botones al extremo superior derecho:** Los botones de transparencia de fondo (atenuador) y de consultar ubicación actual ahora se ubican en la esquina superior derecha de la ventana, manteniendo el título a la izquierda y dejando todo el espacio inferior para los datos de viaje.
+- **Nuevos datos en la ventana superior:**
+  - **Altura:** Muestra en tiempo real tu altitud GPS en metros (ej. `125 m`).
+  - **Distancia 1º Punto:** Indica la distancia en metros o kilómetros desde el punto donde se comenzó a grabar la ruta activa.
+  - **Tiempo Activo (Horas de funcionamiento):** Cronómetro en vivo de duración de la ruta en formato legible (*Xh Ym* o *Xm Ys*).
+- **Diseño táctico simétrico:** Se mantienen el Modo de Tráfico y la Velocidad, distribuidos armoniosamente junto a los nuevos indicadores.
+
+## Ventana Superior Más Translúcida y Atenuador de Fondo (2026-10-29 11:05) — v3.2.16-RC1
+
+### ¿Qué cambió para el usuario?
+- **Fondo de cabecera más transparente:** La ventana de control superior ahora es mucho más translúcida por defecto (45% de opacidad en vez de 65%), lo que permite apreciar el mapa y el trazado con mayor claridad por debajo sin perder legibilidad en los datos de velocidad y modo de tráfico.
+- **Atenuador de fondo opcional:**
+  - **Acceso directo en la cabecera:** Se incorporó un botón con icono de gota/opacidad al lado del botón de ubicación. Al tocarlo, se abre una ventana donde puedes deslizar la transparencia desde 15% (ultra transparente) hasta 85% (alto contraste) viendo los cambios en tiempo real.
+  - **Botones rápidos de preajuste:** *Sutil (25%)*, *Equilibrado (45%)* y *Contraste (70%)*.
+  - **Ajuste en menú lateral:** También se encuentra disponible en el menú lateral (Ajustes) junto al selector de grosor del trazado.
+  - **Persistencia automática:** El nivel de transparencia que elijas se guarda automáticamente y se mantiene al reiniciar la app.
+
+## Nueva Guía de Ayuda Interactiva y Teclas Rápidas (2026-10-29 10:48) — v3.2.15-RC1
+
+### ¿Qué cambió para el usuario?
+- **Sección destacada de Teclas Rápidas:** Al pulsar sobre "Ayuda" en la barra inferior o en el menú lateral, la primera pestaña muestra todos los atajos táctiles y gestos rápidos de la aplicación:
+  - **Contraer y Expandir Todo:** Explicación del funcionamiento de los nuevos botones en Favoritos y Rutas para plegar y desplegar grupos completos en un solo toque.
+  - **Pulsación larga en mapa:** Cómo fijar waypoints inmediatos o guardar lugares directamente tocando y manteniendo presionado sobre el mapa.
+  - **Pulsación larga en rutas:** Instrucciones para activar el modo de selección múltiple y realizar borrados o exportaciones masivas.
+  - **Tocar foto:** Acceso al visor fotográfico a pantalla completa.
+  - **Tocar cabecera:** Resumen rápido de telemetría y estado de sensores.
+- **Navegación por categorías:** Los temas ahora están clasificados en chips horizontales rápidos: *Teclas Rápidas*, *Mapa y GPS*, *Favoritos y Rutas*, *IA y Respaldo* y *Todos*.
+
+## Botones Contraer y Expandir Todo en Favoritos y Rutas (2026-10-29 10:22) — v3.2.14-RC1
+
+### ¿Qué cambió para el usuario?
+- **Control total de visualización en Favoritos y Rutas:** Ahora tanto en la pantalla de "Favoritos y Destacados" como en "Mis Recorridos" se encuentran disponibles dos botones en la barra superior:
+  - **Contraer todo (flechas hacia adentro):** Pliega todos los países y ciudades en Favoritos, o todas las fechas en Rutas, permitiendo una vista compacta y rápida de los encabezados.
+  - **Expandir todo (flechas hacia afuera):** Despliega todas las secciones y lugares guardados de un solo toque sin tener que abrir cada tarjeta manualmente.
+
+## Transición Continua a Modo Vuelo y Visibilidad de Rutas Completadas (2026-10-27 21:20) — v3.2.13-RC1
+
+### ¿Qué cambió para el usuario?
+- **Grabación y visibilidad de rutas que terminan detenidas:** Ahora, cualquier recorrido que se detenga automáticamente o manualmente en casa o destino final aparecerá en la lista de 'Mis Recorridos'. Anteriormente, si el usuario permanecía quieto al detenerse la ruta, el sistema la marcaba como `STOPPED` y el filtro la ocultaba de la pantalla.
+- **Seguimiento fluido durante el despegue y ascenso en avión:** Se corrigió el problema por el cual durante el despegue de un avión la traza dejaba de marcar hasta que alcanzaba gran velocidad y altitud, generando una línea recta discontinua desde la pista. Ahora, en cuanto el avión supera los 150 km/h y comienza a ganar altitud (>= 30 metros), la aplicación activa de inmediato el Modo Vuelo y continúa registrando el ascenso sin saltos ni interrupciones.
+
+## Corrección del Arranque de Vuelta en Modo Automático (2026-10-27 20:05) — v3.2.12-RC1
+
+### ¿Qué cambió para el usuario?
+- **Grabación garantizada del viaje de regreso:** Al utilizar el Modo Automático (`auto_mode`), cuando el usuario realiza un recorrido de ida, permanece detenido en el destino y luego emprende el regreso a casa por el mismo camino, la aplicación ahora inicia y registra fielmente la ruta de vuelta en 'Mis Recorridos'.
+- **Solución a la omisión del regreso:** Anteriormente, cuando el buffer de pre-grabación se encontraba vacío al momento de salir del reposo o interiores, el sistema abortaba silenciosamente la creación de la ruta automática de retorno. Ahora la ruta se inicializa inmediatamente con la coordenada GPS activa.
+- **Pre-grabación cinemática tolerante:** Se permite que el búfer de telemetría pasivo capture puntos con precisión de hasta 40 metros (en vez de 20m), asegurando que los arranques desde interiores o bolsillos tengan datos de respaldo.
+- **Geocercas de reposo precisas:** La geocerca pasiva de vigilancia solo se ancla cuando el usuario está efectivamente detenido, evitando falsos anclajes durante el movimiento de vuelta.
+
 ## Saneamiento y Purga de Respaldos Caducados (2026-10-16 00:58)
 
 ### ¿Qué cambió en el proyecto?

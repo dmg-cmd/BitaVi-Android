@@ -32,7 +32,7 @@ class AutoTrackingManager @Inject constructor() {
         val now = System.currentTimeMillis()
 
         val anchoredAccuracy = location.accuracy
-        if (anchoredAccuracy < AppConstants.Location.MAX_GPS_ACCURACY_METERS) {
+        if (anchoredAccuracy <= AppConstants.Location.TOLERANT_GPS_ACCURACY_METERS) {
             val bp = TrackingSessionManager.BufferPoint(
                 latitude = location.latitude,
                 longitude = location.longitude,

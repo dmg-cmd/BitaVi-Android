@@ -32,4 +32,7 @@ class PreferencesManager(context: Context) {
     }
     fun setStrokeWidth(w: Float) { prefs.edit { putFloat("map_stroke_width", w) } }
     fun getStrokeWidth(): Float = prefs.getFloat("map_stroke_width", 8f)
+
+    fun setHeaderAlpha(alpha: Float) { prefs.edit { putFloat("top_bar_alpha", alpha) } }
+    fun getHeaderAlpha(): Float = prefs.getFloat("top_bar_alpha", 0.45f)
 }

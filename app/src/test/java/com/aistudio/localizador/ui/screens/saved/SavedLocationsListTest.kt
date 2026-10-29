@@ -75,4 +75,50 @@ class SavedLocationsListTest {
         composeTestRule.waitForIdle()
         composeTestRule.onNodeWithText("Obelisco").assertDoesNotExist()
     }
+
+    @Test
+    fun cuandoPaisEstaColapsadoExternamenteOcultaSusLugares() {
+        composeTestRule.setContent {
+            LocalizadorTheme {
+                SavedLocationsList(
+                    groupedFavorites = listOf(sampleGroup),
+                    collapsedCountries = setOf("Argentina"),
+                    collapsedCities = emptySet(),
+                    onToggleCountry = {},
+                    onToggleCity = {},
+                    onShowOnMap = {},
+                    onShare = {},
+                    onEdit = {},
+                    onDelete = {},
+                    onFocus = {}
+                )
+            }
+        }
+        composeTestRule.onNodeWithText("Argentina").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Buenos Aires").assertDoesNotExist()
+        composeTestRule.onNodeWithText("Obelisco").assertDoesNotExist()
+    }
+
+    @Test
+    fun cuandoCiudadEstaColapsadaExternamenteOcultaSusLugares() {
+        composeTestRule.setContent {
+            LocalizadorTheme {
+                SavedLocationsList(
+                    groupedFavorites = listOf(sampleGroup),
+                    collapsedCountries = emptySet(),
+                    collapsedCities = setOf("Argentina|Buenos Aires"),
+                    onToggleCountry = {},
+                    onToggleCity = {},
+                    onShowOnMap = {},
+                    onShare = {},
+                    onEdit = {},
+                    onDelete = {},
+                    onFocus = {}
+                )
+            }
+        }
+        composeTestRule.onNodeWithText("Argentina").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Buenos Aires").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Obelisco").assertDoesNotExist()
+    }
 }

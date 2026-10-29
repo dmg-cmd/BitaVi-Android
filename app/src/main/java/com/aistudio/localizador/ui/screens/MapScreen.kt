@@ -28,6 +28,24 @@ import com.aistudio.localizador.ui.screens.map.MapFloatingControls
 import com.aistudio.localizador.ui.screens.map.MapSaveLocationDialog
 import com.aistudio.localizador.ui.screens.map.MapTopBar
 import com.aistudio.localizador.ui.screens.map.StartRouteDialog
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Opacity
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Slider
+import androidx.compose.material3.Text
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.aistudio.localizador.ui.screens.map.WaypointDialog
 import kotlinx.coroutines.delay
 import org.osmdroid.util.GeoPoint
@@ -57,6 +75,7 @@ fun MapScreen(
     var showSaveLocationDialog by remember { mutableStateOf(false) }
     var showLayersDialog by remember { mutableStateOf(false) }
     var showAddressBox by remember { mutableStateOf(false) }
+    var showAlphaDialog by remember { mutableStateOf(false) }
     var newRouteName by remember { mutableStateOf("") }
     var clickedGeoPoint by remember { mutableStateOf<GeoPoint?>(null) }
     var showTourMapa by remember { mutableStateOf(!viewModel.esTourVisto("actividad")) }
@@ -170,12 +189,23 @@ fun MapScreen(
             }
         )
 
+        val elapsedTimeSeconds by viewModel.elapsedTimeSecondsLive.collectAsState()
+        val distanceFromFirstPoint by viewModel.distanceFromFirstPointMeters.collectAsState()
+        val alturaText = if (latestLocation != null && latestLocation!!.hasAltitude()) "${latestLocation!!.altitude.toInt()} m" else "-- m"
+        val distanciaText = viewModel.formatDistanceMeters(distanceFromFirstPoint)
+        val tiempoText = viewModel.formatElapsedTimeHours(elapsedTimeSeconds)
+
         MapTopBar(
             activityMode = activityMode,
             kineticProfile = kineticProfile,
             latestLocation = latestLocation,
             showAddressBox = showAddressBox,
             currentAddress = viewModel.currentAddress,
+            headerAlpha = viewModel.headerAlpha,
+            onAdjustAlphaClick = { showAlphaDialog = true },
+            altura = alturaText,
+            distanciaPrimerPunto = distanciaText,
+            tiempoFuncionamiento = tiempoText,
             onLocalizadorClick = {
                 if (!showAddressBox) {
                     viewModel.fetchCurrentAddress()
@@ -259,6 +289,90 @@ fun MapScreen(
             availableLayers = viewModel.getAvailableMapLayers(),
             onLayerSelected = { viewModel.setMapLayer(it) },
             onDismiss = { showLayersDialog = false }
+        )
+    }
+
+    if (showAlphaDialog) {
+        AlertDialog(
+            onDismissRequest = { showAlphaDialog = false },
+            icon = {
+                Icon(
+                    imageVector = Icons.Default.Opacity,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(32.dp)
+                )
+            },
+            title = {
+                Text(
+                    text = "Atenuador de Ventana Superior",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        text = "Regula la transparencia del fondo de la ventana de control para visualizar el mapa subyacente con la atenuación deseada:",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Opacidad actual:",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = "${(viewModel.headerAlpha * 100).toInt()}%",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Black,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+
+                    Slider(
+                        value = viewModel.headerAlpha,
+                        onValueChange = { viewModel.updateHeaderAlpha(it) },
+                        valueRange = 0.15f..0.85f,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceEvenly
+                    ) {
+                        FilterChip(
+                            selected = viewModel.headerAlpha <= 0.28f,
+                            onClick = { viewModel.updateHeaderAlpha(0.25f) },
+                            label = { Text("Sutil (25%)", fontSize = 11.sp) }
+                        )
+                        FilterChip(
+                            selected = viewModel.headerAlpha in 0.29f..0.55f,
+                            onClick = { viewModel.updateHeaderAlpha(0.45f) },
+                            label = { Text("Equilibrado (45%)", fontSize = 11.sp) }
+                        )
+                        FilterChip(
+                            selected = viewModel.headerAlpha > 0.55f,
+                            onClick = { viewModel.updateHeaderAlpha(0.70f) },
+                            label = { Text("Contraste (70%)", fontSize = 11.sp) }
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = { showAlphaDialog = false }) {
+                    Text("Listo")
+                }
+            }
         )
     }
 }

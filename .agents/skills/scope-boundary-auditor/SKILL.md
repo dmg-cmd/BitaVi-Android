@@ -1,3 +1,8 @@
+---
+name: scope-boundary-auditor
+description: Auditor de contención de alcance y fronteras modulares. Verifica que cada modificación se restrinja únicamente a los archivos estrictamente involucrados, evitando efectos colaterales (blast radius).
+---
+
 # Skill: scope-boundary-auditor
 
 ## Propósito y Rol

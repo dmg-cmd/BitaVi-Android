@@ -37,10 +37,14 @@ fun SavedLocationsList(
     onEdit: (SavedLocation) -> Unit,
     onDelete: (SavedLocation) -> Unit,
     onFocus: (SavedLocation) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    collapsedCountries: Set<String> = emptySet(),
+    collapsedCities: Set<String> = emptySet(),
+    onToggleCountry: ((String) -> Unit)? = null,
+    onToggleCity: ((String) -> Unit)? = null
 ) {
-    val expandedCountries = remember { mutableStateMapOf<String, Boolean>() }
-    val expandedCities = remember { mutableStateMapOf<String, Boolean>() }
+    val localExpandedCountries = remember { mutableStateMapOf<String, Boolean>() }
+    val localExpandedCities = remember { mutableStateMapOf<String, Boolean>() }
 
     LazyColumn(
         modifier = modifier.fillMaxSize(),
@@ -50,12 +54,22 @@ fun SavedLocationsList(
         groupedFavorites.forEach { group ->
             val country = group.countryName
             item(key = country) {
-                val isCountryExpanded = expandedCountries[country] ?: true
+                val isCountryExpanded = if (onToggleCountry != null) {
+                    !collapsedCountries.contains(country)
+                } else {
+                    localExpandedCountries[country] ?: true
+                }
                 Column {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { expandedCountries[country] = !isCountryExpanded }
+                            .clickable {
+                                if (onToggleCountry != null) {
+                                    onToggleCountry(country)
+                                } else {
+                                    localExpandedCountries[country] = !isCountryExpanded
+                                }
+                            }
                             .padding(vertical = 4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -77,11 +91,21 @@ fun SavedLocationsList(
                             group.cities.forEach { cityGroup ->
                                 val city = cityGroup.cityName
                                 val cityKey = "${country}|${city}"
-                                val isCityExpanded = expandedCities[cityKey] ?: true
+                                val isCityExpanded = if (onToggleCity != null) {
+                                    !collapsedCities.contains(cityKey)
+                                } else {
+                                    localExpandedCities[cityKey] ?: true
+                                }
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .clickable { expandedCities[cityKey] = !isCityExpanded }
+                                        .clickable {
+                                            if (onToggleCity != null) {
+                                                onToggleCity(cityKey)
+                                            } else {
+                                                localExpandedCities[cityKey] = !isCityExpanded
+                                            }
+                                        }
                                         .padding(start = 24.dp, top = 4.dp, bottom = 4.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {

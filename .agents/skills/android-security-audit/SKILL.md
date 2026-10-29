@@ -1,3 +1,8 @@
+---
+name: android-security-audit
+description: Auditoría de seguridad para Android, directivas de cumplimiento obligatorio de arquitectura (Clean & MVVM), seguridad de hilos y estándares de calidad de código.
+---
+
 # 🛰️ ANTIGRAVITY ENGINE: REGLAS DE CUMPLIMIENTO OBLIGATORIO v3.2.0
 
 Este documento define las directivas primarias de comportamiento, arquitectura y calidad de código para el desarrollo de la Suite de Telemetría Premium ("Proyecto Localizador") en el Pixel 9 Pro XL. El sistema tiene prohibido violar o ignorar estas reglas bajo cualquier circunstancia.

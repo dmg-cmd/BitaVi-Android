@@ -143,15 +143,34 @@ fun HistoryScreen(
                     tonalElevation = 1.dp
                 ) {
                     Row(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 18.dp),
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
                             text = "Mis Recorridos",
                             style = MaterialTheme.typography.headlineMedium,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.weight(1f)
                         )
+                        IconButton(
+                            onClick = { viewModel.collapseAllGroups() }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.UnfoldLess,
+                                contentDescription = "Contraer todo",
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                        IconButton(
+                            onClick = { viewModel.expandAllGroups() }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.UnfoldMore,
+                                contentDescription = "Expandir todo",
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
                     }
                 }
 

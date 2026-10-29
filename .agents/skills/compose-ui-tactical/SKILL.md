@@ -1,3 +1,8 @@
+---
+name: compose-ui-tactical
+description: Especialista en Jetpack Compose, codificación PANTALLA.BARRA.BOTON (ESQUEMA_PANTALLAS.md), constantes semánticas de color (Color.kt) y ergonomía táctica (32.sp para métricas principales).
+---
+
 # 🎨 Agente y Skill: Diseñador UI/UX Compose Táctico (compose-ui-tactical)
 
 Este agente se especializa en la ergonomía visual, Jetpack Compose y la consistencia táctica de la interfaz.

@@ -1,41 +1,51 @@
-# Localizador Pro - Tracker GPS Inteligente & IA  
+# BitaVi — Bitácora Táctica de Rutas & IA (v3.2.17)
 
-Localizador Pro es una aplicación avanzada de seguimiento geográfico para Android. Combina precisión técnica, automatización basada en movimiento y análisis de telemetría mediante Inteligencia Artificial (Llama 3.3).
+**BitaVi** es una suite profesional de seguimiento geográfico, telemetría táctica de campo y análisis de rutas mediante Inteligencia Artificial (Llama 3.3). Desarrollada con estándares de arquitectura limpia en Jetpack Compose para Android.
 
 ---
+
 ### 📖 Documentación para el Usuario
-Si eres un usuario de la aplicación, consulta nuestra **[Guía de Usuario Detallada](GUIA_USUARIO.md)** para aprender a usar todas las funciones.
+Para aprender a utilizar todas las funciones, atajos y modos tácticos, consulta la **[Guía de Usuario Detallada](GUIA_USUARIO.md)**.
+
 ---
 
-## 🚀 Características Principales  
-### 🛰️ Seguimiento y Navegación  
-•Modo Automático Inteligente: Vigilancia en segundo plano que inicia la grabación al detectar desplazamientos reales (>25m) y pausa tras 15 min de inactividad, filtrando el ruido del GPS.  
-•Mapas de Alto Rendimiento: Integración con osmdroid y OpenStreetMap con sistema de caché persistente de 500MB para uso eficiente de datos.  
-•Modo Avión: Algoritmo optimizado para registrar trayectos en vuelos comerciales de hasta 1200 km/h.  
-### 🧠 Inteligencia Artificial (IA)  
-•Análisis Técnico con Groq: Generación de informes de telemetría profesional (velocidades medias, picos, regularidad de ritmo) utilizando modelos Llama 3.3 a través de la API de Groq.  
-•Diario Multimedia: Vinculación de fotografías con coordenadas exactas mediante extracción de metadatos EXIF.  
-### 🛡️ Seguridad de Grado Bancario  
-•Hardware-Backed Encryption: Las API Keys se almacenan en el Android Keystore utilizando cifrado simétrico AES-GCM-NoPadding.  
-•Autenticación Biométrica: Acceso protegido a configuraciones críticas y descifrado de llaves mediante Huella Digital o Reconocimiento Facial (CryptoObject).  
-•Almacenamiento Privado: Uso de EncryptedSharedPreferences y bases de datos Room con migraciones seguras.  
-### 📂 Gestión de Datos y Social  
-•Copia de Seguridad Pro: Sistema de respaldo en archivos ZIP que incluye fotos locales y base de datos, con motor de restauración dinámico compatible con versiones anteriores.  
-•Integración con Contactos: Exportación de favoritos directamente a la agenda de Android y acciones rápidas para llamadas o correos desde la app.  
-•Avisos "Cerca de mí": Notificaciones de proximidad al pasar a menos de 100m de puntos marcados.  
-### 🛠️ Stack Tecnológico  
-•Lenguaje: Kotlin 2.4.0 (K2 Compiler)  
-•UI: Jetpack Compose (BOM 2026.06.00) con Material Design 3  
-•Arquitectura: MVVM con StateFlow y Coroutines  
-•Base de Datos: Room Persistence Library (V7)  
-•Red: Retrofit 2 + OkHttp (Integración Groq API)  
-•Mapas: osmdroid (OpenStreetMap)  
-•Seguridad: Jetpack Security (Crypto) & Biometric Library  
-•Gráficos: MPAndroidChart (Perfiles de altitud y velocidad)  
-## ⚙️ Configuración del Entorno  
-Para ejecutar este proyecto localmente, asegúrate de tener:  
-1.Android Studio (Versión Ladybug o superior).  
-2.SDK 36 instalado.  
-3.Un archivo .env en la raíz con la siguiente clave:  
-TOML  
-GROQ_API_KEY=tu_clave_aquí  
+## 🚀 Características Principales
+
+### 🛰️ Seguimiento y Telemetría en Tiempo Real
+*   **Ventana de Control Superior Táctica:** Presenta en vivo el Modo de Tráfico (*Caminata*, *Bicicleta*, *Vehículo*, *Vuelo*), Velocidad cinemática, Altitud GPS en metros, Distancia geodésica acumulada respecto al primer punto y Horas de funcionamiento de la sesión activa.
+*   **Atenuador de Fondo Configurable:** Regulación dinámica y persistente de la transparencia de la ventana superior (de 15% a 85%) con preajustes de acceso directo.
+*   **Modo Automático Inteligente:** Detección de desplazamientos sostenidos (>25 m) con inicio autónomo de grabación y pausa tras 15 minutos en reposo.
+*   **Modo Vuelo Continuo:** Algoritmo aeronáutico automático para registrar trayectos comerciales hasta 1200 km/h sin saltos de señal.
+*   **Mapas de Alto Rendimiento:** Integración con `osmdroid` (OpenStreetMap), fotografía satelital de alta resolución (ArcGIS) y cartografía topográfica con caché persistente offline.
+
+### ⭐ Favoritos y Recorridos Estructurados
+*   **Contraer y Expandir Todo:** Controles tácticos de un solo toque en Favoritos y Rutas para plegar y desplegar carpetas, países y fechas completas.
+*   **Organización Geográfica:** Clasificación automática de favoritos por País y Ciudad con visor fotográfico en alta definición.
+*   **Selección Múltiple en Historial:** Pulsación prolongada para exportar o depurar múltiples rutas por lote.
+*   **Importación y Exportación:** Soporte estándar para archivos **GPX**, **CSV** (Excel) y paquetes completos **ZIP** de BitaVi.
+
+### 🧠 Inteligencia Artificial (Llama 3.3)
+*   **Análisis Táctico Groq:** Diagnóstico exhaustivo de rendimiento físico, velocidades, aceleraciones y perfil de elevación mediante IA.
+*   **Geocodificación WiFi Automática:** Resolución de direcciones pendientes en segundo plano al conectarse a redes Wi-Fi.
+
+### 🛡️ Seguridad y Cifrado
+*   **Android Keystore:** Llaves criptográficas protegidas por hardware con cifrado AES-GCM.
+*   **Protección Biométrica:** Verificación por huella dactilar o reconocimiento facial para acceso a configuraciones críticas y purgas de datos.
+*   **Copias de Seguridad Cifradas:** Respaldos ZIP completos de bases de datos Room y fotografías para almacenamiento local o en la nube.
+
+---
+
+## 🛠️ Stack Tecnológico
+*   **Lenguaje:** Kotlin 2.4.0 (K2 Compiler)
+*   **UI:** Jetpack Compose con Material Design 3
+*   **Arquitectura:** Clean Architecture + MVVM + StateFlow + Kotlin Coroutines + Hilt DI
+*   **Persistencia:** Room Database con migraciones automatizadas y EncryptedSharedPreferences
+*   **Red:** Retrofit 2 + OkHttp + API Groq (Llama 3.3) + Nominatim OpenStreetMap
+*   **Mapas:** osmdroid 6.1.18
+
+---
+
+## ⚙️ Configuración y Compilación
+1. Android Studio Ladybug o superior con JVM Toolchain 17.
+2. Android SDK 35 (mínimo SDK 24).
+3. Clave API de Groq configurada mediante variables de entorno o desde el menú de la aplicación.

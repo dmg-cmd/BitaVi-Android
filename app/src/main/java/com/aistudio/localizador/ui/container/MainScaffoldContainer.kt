@@ -377,6 +377,19 @@ fun MainScaffoldContainer(
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
                 )
 
+                // Atenuador de la ventana superior
+                Text(
+                    text = "Atenuador de ventana superior: ${(viewModel.headerAlpha * 100).toInt()}%",
+                    modifier = Modifier.padding(start = 16.dp, top = 8.dp, bottom = 4.dp),
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Slider(
+                    value = viewModel.headerAlpha,
+                    onValueChange = { viewModel.updateHeaderAlpha(it) },
+                    valueRange = 0.15f..0.85f,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                )
+
                 HorizontalDivider()
                 NavigationDrawerItem(
                     label = { Text("Respaldo en Drive / Carpeta") },

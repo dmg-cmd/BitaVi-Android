@@ -1,3 +1,8 @@
+---
+name: telemetry-gps-specialist
+description: Especialista en LocationService.kt, filtrado cinemático, despachos en Dispatchers.IO y optimización de memoria para capas y marcadores de osmdroid (Anti-OOM).
+---
+
 # 🛰️ Agente y Skill: Especialista en Telemetría y GPS (telemetry-gps-specialist)
 
 Este agente supervisa el núcleo cinemático, la captura continua de ubicación y el rendimiento de mapas.

@@ -108,6 +108,18 @@ class RouteRepository @Inject constructor(private val routeDao: RouteDao) {
                 val maxSpeed = if (points.isNotEmpty()) points.maxOf { it.speed } else 0f
                 val avgSpeed = if (points.isNotEmpty()) points.map { it.speed }.average().toFloat() else 0f
 
+                val dominantMode = if (activityMode == "STOPPED" && points.isNotEmpty()) {
+                    val avgKmh = points.map { it.speed }.average() * 3.6
+                    when {
+                        avgKmh > 20.0 -> "DRIVING"
+                        avgKmh > 7.0 -> "BIKING"
+                        avgKmh >= 1.5 -> "WALKING"
+                        else -> activityMode
+                    }
+                } else {
+                    activityMode
+                }
+
                 routeDao.updateRoute(
                     route.copy(
                         isActive = false,
@@ -115,7 +127,7 @@ class RouteRepository @Inject constructor(private val routeDao: RouteDao) {
                         distanceMeters = distanceMeters,
                         maxSpeed = maxSpeed,
                         avgSpeed = avgSpeed,
-                        activityMode = activityMode
+                        activityMode = dominantMode
                     )
                 )
                 true

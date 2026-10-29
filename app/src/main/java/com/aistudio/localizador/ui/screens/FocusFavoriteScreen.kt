@@ -55,6 +55,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.FileProvider
 import androidx.core.content.ContextCompat
+import androidx.core.graphics.toColorInt
 import coil.compose.AsyncImage
 import com.aistudio.localizador.ui.RouteViewModel
 import com.aistudio.localizador.ui.components.FullScreenPhotoDialog
@@ -108,16 +109,40 @@ fun FocusFavoriteScreen(
                             zoomController.setVisibility(CustomZoomButtonsController.Visibility.NEVER)
                             controller.setZoom(16.5)
                             controller.setCenter(GeoPoint(fav.latitude, fav.longitude))
+                            val colorInt = runCatching { fav.color.toColorInt() }.getOrDefault(android.graphics.Color.RED)
+                            val starIcon = ContextCompat.getDrawable(context, android.R.drawable.btn_star_big_on)?.mutate()?.apply {
+                                setTint(colorInt)
+                            }
                             overlays.add(Marker(this).apply {
                                 position = GeoPoint(fav.latitude, fav.longitude)
                                 title = fav.name
                                 setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
-                                icon = ContextCompat.getDrawable(context, android.R.drawable.btn_star_big_on)
+                                icon = starIcon
                             })
                         }
                     },
-                    update = {
-                        it.controller.animateTo(GeoPoint(fav.latitude, fav.longitude))
+                    update = { mv ->
+                        val targetPoint = GeoPoint(fav.latitude, fav.longitude)
+                        mv.controller.animateTo(targetPoint)
+                        val colorInt = runCatching { fav.color.toColorInt() }.getOrDefault(android.graphics.Color.RED)
+                        val starIcon = ContextCompat.getDrawable(context, android.R.drawable.btn_star_big_on)?.mutate()?.apply {
+                            setTint(colorInt)
+                        }
+                        val existingMarker = mv.overlays.filterIsInstance<Marker>().firstOrNull()
+                        if (existingMarker != null) {
+                            existingMarker.position = targetPoint
+                            existingMarker.title = fav.name
+                            existingMarker.icon = starIcon
+                            existingMarker.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+                        } else {
+                            mv.overlays.add(Marker(mv).apply {
+                                position = targetPoint
+                                title = fav.name
+                                setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+                                icon = starIcon
+                            })
+                        }
+                        mv.invalidate()
                     }
                 )
 

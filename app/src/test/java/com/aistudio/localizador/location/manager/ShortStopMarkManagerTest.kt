@@ -45,7 +45,7 @@ class ShortStopMarkManagerTest {
         manager.processCinematicInput(mockLocation, speedKmh = 0.0f, timestamp = 1000L, shortStopDelay, stopTolerance)
         manager.processCinematicInput(mockLocation, speedKmh = 0.0f, timestamp = 50000L, shortStopDelay, stopTolerance)
 
-        coVerify(exactly = 0) { repository.addSavedLocation(any(), any(), any(), any(), any(), any()) }
+        coVerify(exactly = 0) { repository.recordOrAccumulateStopFavorite(any(), any(), any(), any(), any()) }
     }
 
     @Test
@@ -64,14 +64,12 @@ class ShortStopMarkManagerTest {
 
         scheduler.advanceUntilIdle()
         coVerify(exactly = 1) {
-            repository.addSavedLocation(
-                name = any(),
-                address = any(),
+            repository.recordOrAccumulateStopFavorite(
                 latitude = 40.4167,
                 longitude = -3.7037,
-                comment = any(),
-                author = "Automático",
-                timestamp = any()
+                durationMs = any(),
+                timestamp = any(),
+                addressHint = any()
             )
         }
     }
@@ -89,7 +87,7 @@ class ShortStopMarkManagerTest {
         manager.processCinematicInput(mockLocation, speedKmh = 5.0f, timestamp = 50000L, shortStopDelay, stopTolerance)
 
         scheduler.advanceUntilIdle()
-        coVerify(exactly = 0) { repository.addSavedLocation(any(), any(), any(), any(), any(), any()) }
+        coVerify(exactly = 0) { repository.recordOrAccumulateStopFavorite(any(), any(), any(), any(), any()) }
     }
 
     @Test
@@ -109,6 +107,6 @@ class ShortStopMarkManagerTest {
         manager.processCinematicInput(mockLocation, speedKmh = 5.0f, timestamp = 140000L, shortStopDelay, stopTolerance)
 
         scheduler.advanceUntilIdle()
-        coVerify(exactly = 0) { repository.addSavedLocation(any(), any(), any(), any(), any(), any()) }
+        coVerify(exactly = 0) { repository.recordOrAccumulateStopFavorite(any(), any(), any(), any(), any()) }
     }
 }

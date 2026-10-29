@@ -21,6 +21,8 @@ class CinematicFilterManager(
     private var refLatitude: Double? = null
     private var refLongitude: Double? = null
     private var refTimestamp: Long? = null
+    private var refAltitude: Double? = null
+    private var consecutiveOverspeedCount: Int = 0
 
     private var lowSpeedStartTimestamp: Long? = null
     private var isAutoStopTriggered: Boolean = false
@@ -30,14 +32,18 @@ class CinematicFilterManager(
         refLatitude = null
         refLongitude = null
         refTimestamp = null
+        refAltitude = null
+        consecutiveOverspeedCount = 0
         lowSpeedStartTimestamp = null
         isAutoStopTriggered = false
     }
 
-    fun seedReferencePoint(lat: Double, lon: Double, timestamp: Long) {
+    fun seedReferencePoint(lat: Double, lon: Double, timestamp: Long, altitudeMeters: Double = 0.0) {
         refLatitude = lat
         refLongitude = lon
         refTimestamp = timestamp
+        refAltitude = altitudeMeters
+        consecutiveOverspeedCount = 0
         lowSpeedStartTimestamp = null
         isAutoStopTriggered = false
     }
@@ -51,7 +57,7 @@ class CinematicFilterManager(
         altitudeMeters: Double = 0.0
     ): Boolean {
         val lastLat = refLatitude ?: return run {
-            seedReferencePoint(lat, lon, timestamp)
+            seedReferencePoint(lat, lon, timestamp, altitudeMeters)
             true
         }
         val lastLon = refLongitude ?: return true
@@ -64,8 +70,11 @@ class CinematicFilterManager(
         val calculatedSpeed = distanceMeters / timeDeltaSeconds
 
         // Transición de perfil cinemático con histéresis (Modo Vuelo Automático)
-        if (calculatedSpeed > AppConstants.Location.FLIGHT_TRIGGER_SPEED_MPS &&
-            altitudeMeters > AppConstants.Location.FLIGHT_MIN_ALTITUDE_METERS) {
+        // Se detecta despegue si supera 150 km/h (41.67 m/s) con altitud aérea activa (>= 30m o > 100m)
+        val isAscendingFlight = calculatedSpeed > AppConstants.Location.FLIGHT_TRIGGER_SPEED_MPS &&
+                (altitudeMeters > AppConstants.Location.FLIGHT_MIN_ALTITUDE_METERS || altitudeMeters >= 30.0)
+
+        if (isAscendingFlight) {
             currentProfile = KineticProfile.FLIGHT
         } else if (calculatedSpeed < AppConstants.Location.FLIGHT_HYSTERESIS_SPEED_MPS &&
                    altitudeMeters < AppConstants.Location.FLIGHT_MIN_ALTITUDE_METERS) {
@@ -78,7 +87,25 @@ class CinematicFilterManager(
             maxAllowedSpeedMps
         }
 
-        if (calculatedSpeed > limitSpeed) return false
+        if (calculatedSpeed > limitSpeed) {
+            consecutiveOverspeedCount++
+            // Desbloqueo cinemático: si en despegue el GPS tuvo una lectura previa anclada a la pista
+            // y las lecturas sucesivas son a velocidad aeronáutica con altitud positiva,
+            // conmutamos a FLIGHT y re-anclamos la referencia para no generar una línea recta discontinua
+            if (consecutiveOverspeedCount >= 2 && calculatedSpeed <= AppConstants.Location.FLIGHT_MAX_SPEED_MPS &&
+                (altitudeMeters >= 30.0 || speed > AppConstants.Location.FLIGHT_TRIGGER_SPEED_MPS)) {
+                currentProfile = KineticProfile.FLIGHT
+                consecutiveOverspeedCount = 0
+                refLatitude = lat
+                refLongitude = lon
+                refTimestamp = timestamp
+                refAltitude = altitudeMeters
+                return true
+            }
+            return false
+        }
+
+        consecutiveOverspeedCount = 0
 
         // Auto-stop terrestre (3 min): se suprime por completo en perfil FLIGHT
         if (currentProfile == KineticProfile.TERRESTRIAL) {
@@ -98,6 +125,7 @@ class CinematicFilterManager(
         refLatitude = lat
         refLongitude = lon
         refTimestamp = timestamp
+        refAltitude = altitudeMeters
 
         return true
     }

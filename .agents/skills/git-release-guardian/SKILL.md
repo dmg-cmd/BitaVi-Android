@@ -1,3 +1,8 @@
+---
+name: git-release-guardian
+description: Especialista en seguridad de repositorios Git/GitHub, prevención estricta de fugas de secretos (.env, keystores, API keys, bases de datos locales), commits atómicos, publicación segura y generación de Releases semánticos en GitHub.
+---
+
 # 🔐 Agente y Skill: Guardián de Git y Publicación de Releases (git-release-guardian)
 
 Este agente es el custodio de la seguridad en el repositorio Git, previniendo la fuga de credenciales a GitHub y gestionando el ciclo completo de commits, tags y Releases oficiales.

@@ -1,3 +1,8 @@
+---
+name: groq-route-analyst
+description: Especialista en integración analítica con Groq (Llama 3.3), prompts estructurados, validación de JSON de telemetría y estrategias offline.
+---
+
 # 🧠 Agente y Skill: Especialista en IA de Rutas (groq-route-analyst)
 
 Este agente supervisa la integración analítica con Groq (Llama 3.3) para generación de resúmenes de telemetría y diagnósticos de marcha.

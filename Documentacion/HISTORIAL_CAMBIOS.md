@@ -1,3 +1,116 @@
+## [2026-10-29 11:19] Telemetría Avanzada en Ventana Superior y Botones al Extremo Superior Derecho (v3.2.17-RC1)
+
+### Logro
+Se reorganiza la cabecera táctica (`TopBarLocalizador.kt`) situando los botones de atenuador y ubicación en el extremo superior derecho, e integrando tres nuevas métricas de campo en vivo: **Altura** (altitud sobre el nivel del mar), **Distancia desde el primer punto** (desplazamiento respecto al inicio de la ruta) y **Horas de funcionamiento** (tiempo transcurrido de la sesión activa).
+
+### Detalles Técnicos
+- **`LocationService.kt`:** Exposición reactiva mediante `StateFlow` de `elapsedTimeSeconds` y `currentDistanceMeters`.
+- **`RouteViewModel.kt`:** Flujo `distanceFromFirstPointMeters` calculado dinámicamente con `Location.distanceBetween` y métodos de formato táctico `formatDistanceMeters` y `formatElapsedTimeHours`.
+- **`TopBarLocalizador.kt` & `MapTopBar.kt`:**
+  - Fila 1: Título y chip de ubicación a la izquierda; botones de atenuador (`Opacity`) y ubicación (`LocationSearching`) alineados al extremo derecho arriba.
+  - Fila 2: Métricas primarias equilibradas (*MODO DE TRÁFICO*, *VELOCIDAD*, *ALTURA*).
+  - Fila 3: Contenedor semitransparente con *DISTANCIA 1º PTO* y *TIEMPO ACTIVO*.
+- **Sincronización de Versión:** Ascenso a `v3.2.17-RC1` (`versionCode = 17`, `versionName = "3.2.17"`) en `app/build.gradle.kts`, `TopBarLocalizador.kt` y `BrandWatermark.kt`.
+- **Despliegue Físico:** Instalado exitosamente vía ADB Wi-Fi en Google Pixel 9 Pro XL (`172.16.2.37:45439`).
+
+### Verificación
+- Pruebas unitarias: `BUILD SUCCESSFUL` (40 tareas).
+- Compilación: `assembleDebug` `BUILD SUCCESSFUL` en 51s.
+
+## [2026-10-29 11:05] Transparencia y Atenuador de Fondo en Ventana Superior (v3.2.16-RC1)
+
+### Logro
+Se optimiza la ventana de control superior (`TopBarLocalizador.kt`) reduciendo su opacidad fija original (de 65% a 45% por defecto) e incorporando un **atenuador de fondo opcional interactivo y persistente** regulable tanto desde la propia cabecera como desde el menú lateral de ajustes.
+
+### Detalles Técnicos
+- **`PreferencesManager.kt`:** Nuevas funciones `setHeaderAlpha` y `getHeaderAlpha` con valor por defecto `0.45f`.
+- **`RouteViewModel.kt`:** Estado reactivo `headerAlpha` y método `updateHeaderAlpha(alpha: Float)` con clamp de seguridad (`0.15f..0.85f`) y persistencia asíncrona.
+- **`TopBarLocalizador.kt` & `MapTopBar.kt`:** Fondo, bordes y barras de velocidad dinámicamente adaptados al `headerAlpha`. Se agregó botón de acceso directo al atenuador (`Icons.Default.Opacity`) junto al icono de ubicación.
+- **`MapScreen.kt` & `MainScaffoldContainer.kt`:** Diálogo flotante con deslizador continuo en vivo y chips de preajuste (*Sutil 25%*, *Equilibrado 45%*, *Contraste 70%*), más slider en el menú lateral.
+- **Sincronización de Versión:** Ascenso a `v3.2.16-RC1` (`versionCode = 16`, `versionName = "3.2.16"`) en `app/build.gradle.kts`, `TopBarLocalizador.kt` y `BrandWatermark.kt`.
+- **Despliegue Físico:** Instalado exitosamente vía ADB Wi-Fi en Google Pixel 9 Pro XL (`172.16.2.37:45439`).
+
+### Verificación
+- Pruebas unitarias: `BUILD SUCCESSFUL` (40 tareas).
+- Compilación: `assembleDebug` `BUILD SUCCESSFUL` en 51s.
+
+## [2026-10-29 10:48] Actualización Integral de Ayuda y Teclas Rápidas (v3.2.15-RC1)
+
+### Logro
+Se rediseña por completo el centro de **Ayuda y Funcionamiento** (`HelpDialog.kt`), incorporando una vista categorizada con chips interactivos y priorizando la nueva sección de **⚡ Teclas Rápidas** y atajos tácticos de campo solicitada por el usuario.
+
+### Detalles Técnicos
+- **`HelpDialog.kt`:**
+  - Se estructuró un sistema de categorías navegables (`SHORTCUTS`, `MAP`, `FAVORITES_ROUTES`, `AI_BACKUP`, `ALL`) mediante `FilterChip` horizontales.
+  - Se incluyeron insignias tácticas contextuales para atajos: `1 TOQUE`, `PULSACIÓN LARGA`, `CABECERA`, `BOTÓN FLOTANTE`, `SENSOR INTELIGENTE`.
+  - Se añadieron explicaciones de los nuevos controles de contraer/expandir todo, pulsación larga en mapa para Waypoints, pulsación larga para selección múltiple en historial, visor de fotos a pantalla completa, selector de capas de mapa, modo vuelo ininterrumpido y análisis de telemetría con Groq.
+- **Sincronización de Versión:**
+  - Ascenso a `v3.2.15-RC1` (`versionCode = 15`, `versionName = "3.2.15"`) en `app/build.gradle.kts`, `TopBarLocalizador.kt` y `BrandWatermark.kt`.
+- **Despliegue Físico:**
+  - Instalación exitosa vía ADB Wi-Fi en Google Pixel 9 Pro XL (`172.16.2.37:45439`).
+
+### Verificación
+- Pruebas unitarias: `BUILD SUCCESSFUL` (40 tareas).
+- Compilación: `assembleDebug` `BUILD SUCCESSFUL` en 48s.
+
+## [2026-10-29 10:22] Botones Contraer y Expandir Todo en Favoritos y Rutas (v3.2.14-RC1)
+
+### Logro
+Se incorporan botones explícitos de **Contraer todo** y **Expandir todo** en las cabeceras tanto de la pantalla de **Favoritos y Destacados** (`SavedLocationsScreen`) como de la de **Mis Recorridos** (`HistoryScreen`), mejorando la navegación en colecciones con múltiples grupos y ubicaciones.
+
+### Detalles Técnicos
+- **`RouteViewModel.kt`:**
+  - Se agregaron los estados reactivos `collapsedFavoriteCountries` y `collapsedFavoriteCities` (`StateFlow<Set<String>>`).
+  - Se implementaron las funciones `toggleFavoriteCountryCollapse`, `toggleFavoriteCityCollapse`, `collapseAllFavorites()` y `expandAllFavorites()`.
+- **`SavedLocationsScreen.kt` & `SavedLocationsList.kt`:**
+  - Se incluyeron en `TopAppBar.actions` los `IconButton` con `Icons.Default.UnfoldLess` ("Contraer todo") y `Icons.Default.UnfoldMore` ("Expandir todo") cuando existen elementos guardados.
+  - `SavedLocationsList` se parametrizó para reflejar el estado colapsado externo manteniendo retrocompatibilidad con llamadas sin estado gestionado.
+- **`HistoryScreen.kt`:**
+  - En la cabecera "Mis Recorridos", se integraron los botones de "Contraer todo" (`collapseAllGroups`) y "Expandir todo" (`expandAllGroups`) con los mismos iconos estándar de Material 3.
+- **Pruebas Automatizadas:**
+  - Se ampliaron las pruebas de regresión en `SavedLocationsListTest.kt` cubriendo colapsos externos a nivel de país y ciudad.
+- **Sincronización de Versión:**
+  - Ascenso a `v3.2.14-RC1` (`versionCode = 14`, `versionName = "3.2.14"`) en `app/build.gradle.kts`, `TopBarLocalizador.kt` y `BrandWatermark.kt`.
+
+### Verificación
+- Compilación y ejecución de tests unitarios: `BUILD SUCCESSFUL` (40 tareas, 0 fallos).
+- Compilación de artefacto: `assembleDebug` `BUILD SUCCESSFUL`.
+
+## [2026-10-27 21:20] Reparación de Transición a Modo Vuelo en Despegue y Persistencia de Rutas con Parada Final (v3.2.13-RC1)
+
+### Logro
+Se resuelven dos fallas críticas reportadas por el usuario:
+1. **Pérdida/ocultamiento de la ruta de vuelta al llegar al destino:** Al finalizar una ruta con el usuario detenido, la ruta se guardaba con `activityMode = "STOPPED"` y era filtrada por el ViewModel (`it.activityMode != "STOPPED"`), desapareciendo de 'Mis Recorridos'.
+2. **Corte y salto en línea recta durante el ascenso de avión:** En el despegue, la velocidad superaba el límite terrestre pero la altitud aún no alcanzaba 100 metros o los puntos eran descartados sin actualizar la referencia cinemática, congelando la posición en la pista hasta varios miles de metros después.
+
+### Detalles Técnicos
+- **`RouteViewModel.kt` (`allRoutes`, `allRoutesForGrouping`):** Se eliminó el filtro excluyente `it.activityMode != "STOPPED"`. Ahora cualquier ruta genuina con `distanceMeters >= 25.0` o `isActive` se muestra en la lista independientemente de si el usuario finalizó detenido.
+- **`RouteRepository.kt` (`stopActiveRoute`):** Se implementó inferencia de modo dominante (`dominantMode`): si una ruta con desplazamiento se detiene en reposo, se evalúa la velocidad media de los puntos y se consolida como `DRIVING`, `BIKING` o `WALKING` en vez de quedar como `"STOPPED"`.
+- **`CinematicFilterManager.kt`:**
+  - Detección de despegue inmediato: si la velocidad supera 150 km/h con altitud de vuelo activa (`>= 30m`), conmuta de inmediato a `FLIGHT`.
+  - Desbloqueo cinemático (Anti-Deadlock): ante lecturas consecutivas de velocidad aeronáutica con altitud positiva, re-ancla la semilla de referencia y conmuta a `FLIGHT`, impidiendo que el GPS quede atrapado en la pista y genere líneas rectas discontinuas.
+- **`LocationService.kt`:** En Fase 1 de precisión, se admiten hasta 80m (`FLIGHT_MAX_ACCURACY_METERS`) si la velocidad o altitud del sensor indican despegue/ascenso.
+- **Pruebas Unitarias:** Se incorporaron tests de despegue con ascenso vertical y desbloqueo cinemático en `CinematicFilterManagerTest.kt` (119 tests exitosos).
+- **Sincronización de Versión:** Ascenso a `v3.2.13-RC1` (`versionCode = 13`, `versionName = "3.2.13"`) en `app/build.gradle.kts`, `TopBarLocalizador.kt` y `BrandWatermark.kt`.
+
+### Verificación
+- Compilación y ejecución limpia de pruebas con Gradle: `BUILD SUCCESSFUL` (40 tareas, 0 errores).
+
+## [2026-10-27 20:05] Corrección del Arranque de Vuelta en Modo Automático y Pre-Grabación Tolerante (v3.2.12-RC1)
+
+### Logro
+Se soluciona la falla crítica en el Modo Automático (`auto_mode`) por la cual al realizar un recorrido de ida y vuelta sobre el mismo camino, la ruta de regreso no se iniciaba ni se guardaba en el historial ('Mis Recorridos'), quedando registrada únicamente la ida.
+
+### Detalles Técnicos
+- **`LocationService.kt` (`triggerAutomaticTracking`):** Se eliminó la guarda bloqueante `if (bufferSnapshot.isEmpty()) return`, que cancelaba silenciosamente el inicio de la nueva ruta cuando el buffer de pre-grabación estaba vacío al salir del reposo. Ahora invoca de inmediato `onHistoryProcessed(emptyList())`, garantizando que `startAutoNewRoute` se cree y arranque utilizando la ubicación GPS actual.
+- **`AutoTrackingManager.kt` (`processMovementSustained`):** Se amplió el filtro de admisión de puntos al buffer de pre-grabación de `MAX_GPS_ACCURACY_METERS` (20m) a `TOLERANT_GPS_ACCURACY_METERS` (40m), permitiendo almacenar telemetría en reposo e interiores moderados antes de iniciar la marcha.
+- **`LocationService.kt` (`processNewLocation`):** Se condicionó el rearme de la geocerca de salida pasiva al estado estacionario (`isStationary`), evitando que se anclen geocercas erróneas sobre la marcha durante el retorno.
+- **`AutoTrackingManagerTest.kt`:** Se incorporó prueba unitaria que verifica la pre-grabación de puntos dentro del rango de precisión tolerante (35m).
+- **Sincronización de Versión:** Ascenso a `v3.2.12-RC1` (`versionCode = 12`, `versionName = "3.2.12"`) en `app/build.gradle.kts`, `TopBarLocalizador.kt` y `BrandWatermark.kt`.
+
+### Verificación
+- Compilación y ejecución limpia de pruebas con Gradle: `BUILD SUCCESSFUL` (40 tareas, 0 errores).
+
 ## [2026-10-16 00:58] Saneamiento y purga de respaldos caducados en RESPALDO_ANTERIOR/
 
 ### Logro
@@ -1080,12 +1193,14 @@ Corregido el fallo por el cual el Intent de compartir en Pantalla 5 (ExperienceM
 
 ### Archivos Modificados
 - **ShareExperienceUseCase.kt** — Mapeo híbrido de URIs:
-  - when discriminador: rutas que inician con content:// o ile:// se parsean directamente con Uri.parse() envuelto en unCatching.
+  - when discriminador: rutas que inician con content:// o ile:// se parsean directamente con Uri.parse() envuelto en 
+unCatching.
   - Rutas locales físicas (sin esquema) mantienen el flujo File(path).exists() + FileProvider.getUriForFile.
   - Telemetría actualizada: "Ruta:" en lugar de "Nombre:".
 - **RouteViewModel.kt** — Sincronización directa desde Room:
   - Eliminada guardia temporal withTimeoutOrNull + photoPathsForCurrentRoute.first {}.
-  - Reemplazada por consulta directa epository.getWaypointsSync(routeId) cuando photoPaths está vacío.
+  - Reemplazada por consulta directa 
+epository.getWaypointsSync(routeId) cuando photoPaths está vacío.
   - Eliminados imports obsoletos: kotlinx.coroutines.flow.first, kotlinx.coroutines.withTimeoutOrNull.
 
 ### Archivos No Modificados

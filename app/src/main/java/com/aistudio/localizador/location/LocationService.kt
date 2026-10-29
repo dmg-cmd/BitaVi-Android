@@ -181,9 +181,11 @@ class LocationService : Service(), AutoTrackingManager.AutoTrackingListener, Pro
         private val _latestLocation = MutableStateFlow<Location?>(null)
         val latestLocation = _latestLocation.asStateFlow()
 
-        private var _elapsedTimeSeconds = 0L
+        private val _elapsedTimeSeconds = MutableStateFlow(0L)
+        val elapsedTimeSeconds = _elapsedTimeSeconds.asStateFlow()
 
-        private var _currentDistanceMeters = 0.0
+        private val _currentDistanceMeters = MutableStateFlow(0.0)
+        val currentDistanceMeters = _currentDistanceMeters.asStateFlow()
 
         private val _currentActivityMode = MutableStateFlow(ActivityMode.STOPPED)
         val currentActivityMode = _currentActivityMode.asStateFlow()
@@ -372,7 +374,7 @@ class LocationService : Service(), AutoTrackingManager.AutoTrackingListener, Pro
             // Si la ruta ya existía, recuperamos su distancia histórica para continuar acumulando
             val existingRoute = persistenceDelegate.getRouteById(routeId)
             sessionManager.setInitialDistance(existingRoute?.distanceMeters ?: 0.0)
-            _currentDistanceMeters = sessionManager.getTotalDistance()
+            _currentDistanceMeters.value = sessionManager.getTotalDistance()
 
             // Consultar las coordenadas previas para tener continuidad si es una reanudación
             val previousPoints = persistenceDelegate.getPreviousPoints(routeId)
@@ -413,7 +415,9 @@ class LocationService : Service(), AutoTrackingManager.AutoTrackingListener, Pro
         // Fase 1: Precisión mínima - umbral dinámico según perfil cinemático (Vuelo: 80m)
         val kineticProfile = filterPipeline.getCurrentProfile()
         _kineticProfile.value = kineticProfile
-        val maxInitialAccuracy = if (kineticProfile == KineticProfile.FLIGHT) {
+        val isAeronauticTransition = (location.hasSpeed() && location.speed > AppConstants.Location.FLIGHT_TRIGGER_SPEED_MPS) ||
+                (location.hasAltitude() && location.altitude > AppConstants.Location.FLIGHT_MIN_ALTITUDE_METERS)
+        val maxInitialAccuracy = if (kineticProfile == KineticProfile.FLIGHT || isAeronauticTransition) {
             AppConstants.Location.FLIGHT_MAX_ACCURACY_METERS
         } else {
             AppConstants.Location.MAX_POCKET_ACCURACY_METERS
@@ -492,7 +496,8 @@ class LocationService : Service(), AutoTrackingManager.AutoTrackingListener, Pro
             // En modo pasivo, mantener lastValidLocation actualizado para poder calcular la velocidad del próximo punto
             if (anchoredLocation.accuracy <= TOLERANT_ACCURACY) {
                 lastValidLocation = anchoredLocation
-                if (!departureWatcherManager.isCurrentlyWatching() && anchoredLocation.accuracy <= AppConstants.Location.TOLERANT_GPS_ACCURACY_METERS) {
+                val isStationary = lastComputedSpeedMps < 0.28f || _currentActivityMode.value == ActivityMode.STOPPED
+                if (!departureWatcherManager.isCurrentlyWatching() && isStationary && anchoredLocation.accuracy <= AppConstants.Location.TOLERANT_GPS_ACCURACY_METERS) {
                     departureWatcherManager.startWatchingDeparture(anchoredLocation.latitude, anchoredLocation.longitude)
                 }
             }
@@ -518,7 +523,7 @@ class LocationService : Service(), AutoTrackingManager.AutoTrackingListener, Pro
 
                     if (distanceStep > 0) {
                         sessionManager.addDistanceFromStep(distanceStep.toDouble())
-                        _currentDistanceMeters = sessionManager.getTotalDistance()
+                        _currentDistanceMeters.value = sessionManager.getTotalDistance()
 
                         val currentRoute = persistenceDelegate.getRouteById(routeId)
                         if (currentRoute != null) {
@@ -596,18 +601,18 @@ class LocationService : Service(), AutoTrackingManager.AutoTrackingListener, Pro
             val route = persistenceDelegate.getRouteById(routeId) ?: return@launch
             val km = sessionManager.getTotalDistance() / 1000.0
             val formattedDistance = String.format(Locale.US, "%.2f km", km)
-            val formattedTime = formatElapsedTime(_elapsedTimeSeconds)
+            val formattedTime = formatElapsedTime(_elapsedTimeSeconds.value)
             notificationDelegate.notifyTracking(route.name, "Distancia: $formattedDistance | Tiempo: $formattedTime")
         }
     }
     private fun startTimer() {
         timerJob?.cancel()
-        startTimeMillis = System.currentTimeMillis() - (_elapsedTimeSeconds * 1000L)
+        startTimeMillis = System.currentTimeMillis() - (_elapsedTimeSeconds.value * 1000L)
         timerJob = serviceScope.launch {
             while (isActive) {
                 val now = System.currentTimeMillis()
                 val elapsed = (now - startTimeMillis) / 1000L
-                _elapsedTimeSeconds = elapsed
+                _elapsedTimeSeconds.value = elapsed
 
                 // COMPROBACIÓN 1: Inactividad (15 minutos) - SOLO SI EL USUARIO QUIERE AUTO-MODE
                 val isAutoModeActive = sharedPrefs.getBoolean("auto_mode", false)
@@ -694,7 +699,11 @@ class LocationService : Service(), AutoTrackingManager.AutoTrackingListener, Pro
         bufferSnapshot: List<TrackingSessionManager.BufferPoint>,
         onHistoryProcessed: (List<TrackingSessionManager.BufferPoint>) -> Unit
     ) {
-        if (bufferSnapshot.isEmpty()) return
+        if (bufferSnapshot.isEmpty()) {
+            Log.i(TAG, "Buffer de pre-grabación vacío. Iniciando ruta automática de inmediato con coordenada actual.")
+            onHistoryProcessed(emptyList())
+            return
+        }
 
         serviceScope.launch(Dispatchers.IO) {
             val cleanPipeline = GpsFilterPipeline(
@@ -762,8 +771,8 @@ class LocationService : Service(), AutoTrackingManager.AutoTrackingListener, Pro
 
             withContext(Dispatchers.Main) {
                 // Limpiar contadores pero mantener el servicio vivo
-                _elapsedTimeSeconds = 0L
-                        _currentDistanceMeters = sessionManager.getTotalDistance()
+                _elapsedTimeSeconds.value = 0L
+                        _currentDistanceMeters.value = sessionManager.getTotalDistance()
                 lastValidLocation = null
                 // Reiniciar seguimiento con el nuevo ID
                 _isTracking.value = false // Forzar reinicio en startTracking
@@ -812,8 +821,8 @@ class LocationService : Service(), AutoTrackingManager.AutoTrackingListener, Pro
                     Location(loc).apply { speed = 0f }
                 }
                 filterPipeline.reset()
-                _elapsedTimeSeconds = 0L
-                _currentDistanceMeters = 0.0
+                _elapsedTimeSeconds.value = 0L
+                _currentDistanceMeters.value = 0.0
 
                 // Purgar alertas y restablecer el modo síncronamente
                 isSignalLost = false

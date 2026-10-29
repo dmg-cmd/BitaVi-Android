@@ -13,6 +13,7 @@ import com.aistudio.localizador.ui.LocationServiceManager
 import com.aistudio.localizador.ui.PhotoManager
 import com.aistudio.localizador.ui.PreferencesManager
 import com.aistudio.localizador.domain.usecase.PurgeOrphanPhotosUseCase
+import com.aistudio.localizador.domain.usecase.WifiGeocodeFavoritesUseCase
 import com.aistudio.localizador.domain.usecase.RouteExportUseCase
 import com.aistudio.localizador.ui.ShareUseCase
 import dagger.Module
@@ -105,4 +106,12 @@ object AppModule {
     @Provides
     @Singleton
     fun provideCalculateRouteMetricsUseCase(): CalculateRouteMetricsUseCase = CalculateRouteMetricsUseCase()
+
+    @Provides
+    @Singleton
+    fun provideWifiGeocodeFavoritesUseCase(
+        @ApplicationContext context: Context,
+        repository: RouteRepository,
+        geocoderUseCase: GeocoderUseCase
+    ): WifiGeocodeFavoritesUseCase = WifiGeocodeFavoritesUseCase(context, repository, geocoderUseCase)
 }

@@ -1,3 +1,8 @@
+---
+name: doc-custodian
+description: Guardián de bitácoras, respaldos en RESPALDO_ANTERIOR/, actualización de HISTORIAL_CAMBIOS.md, DOCUMENTACION.md y generación de informes en Documentacion/Walkthroughs/.
+---
+
 # 📚 Agente y Skill: Guardián de Documentación (doc-custodian)
 
 Este agente es el custodio de la memoria histórica, el registro de cambios y los respaldos del Proyecto Localizador.

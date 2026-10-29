@@ -7,6 +7,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddLocation
 import androidx.compose.material.icons.filled.PersonAdd
+import androidx.compose.material.icons.filled.UnfoldLess
+import androidx.compose.material.icons.filled.UnfoldMore
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -44,6 +47,8 @@ fun SavedLocationsScreen(
 ) {
     val locations by viewModel.allSavedLocations.collectAsState()
     val groupedFavorites by viewModel.groupedFavorites.collectAsState()
+    val collapsedCountries by viewModel.collapsedFavoriteCountries.collectAsState()
+    val collapsedCities by viewModel.collapsedFavoriteCities.collectAsState()
 
     var showAddDialog by remember { mutableStateOf(false) }
     var addFromContact by remember { mutableStateOf(false) }
@@ -61,6 +66,28 @@ fun SavedLocationsScreen(
                         text = "Favoritos y Destacados",
                         style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
                     )
+                },
+                actions = {
+                    if (locations.isNotEmpty()) {
+                        IconButton(
+                            onClick = { viewModel.collapseAllFavorites() }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.UnfoldLess,
+                                contentDescription = "Contraer todo",
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                        IconButton(
+                            onClick = { viewModel.expandAllFavorites() }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.UnfoldMore,
+                                contentDescription = "Expandir todo",
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface,
@@ -100,6 +127,10 @@ fun SavedLocationsScreen(
             } else {
                 SavedLocationsList(
                     groupedFavorites = groupedFavorites,
+                    collapsedCountries = collapsedCountries,
+                    collapsedCities = collapsedCities,
+                    onToggleCountry = { viewModel.toggleFavoriteCountryCollapse(it) },
+                    onToggleCity = { viewModel.toggleFavoriteCityCollapse(it) },
                     onShowOnMap = { location ->
                         android.util.Log.d("Navegacion", "Yendo a: ${location.name} en ${location.latitude}, ${location.longitude}")
                         viewModel.setMapTarget(location.latitude, location.longitude)

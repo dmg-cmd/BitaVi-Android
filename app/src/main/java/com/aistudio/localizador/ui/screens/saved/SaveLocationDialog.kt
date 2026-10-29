@@ -302,9 +302,14 @@ fun SaveLocationDialog(
                         val point = GeoPoint(lat, lon)
                         mapView.controller.animateTo(point)
                         mapView.overlays.clear()
+                        val colorInt = runCatching { selectedColor.toColorInt() }.getOrDefault(android.graphics.Color.RED)
+                        val starIcon = ContextCompat.getDrawable(mapView.context, android.R.drawable.btn_star_big_on)?.mutate()?.apply {
+                            setTint(colorInt)
+                        }
                         mapView.overlays.add(Marker(mapView).apply {
                             position = point
                             setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+                            icon = starIcon
                         })
                         mapView.invalidate()
                     })

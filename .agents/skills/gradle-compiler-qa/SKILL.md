@@ -1,3 +1,8 @@
+---
+name: gradle-compiler-qa
+description: Auditor de compilación real con Gradle, política de "Cero Advertencias", depuración de imports no usados y pruebas automatizadas.
+---
+
 # 🛠️ Agente y Skill: Auditor de Compilación y QA (gradle-compiler-qa)
 
 Este agente se encarga de la estabilidad técnica, compilación limpia y pruebas automatizadas en Android.

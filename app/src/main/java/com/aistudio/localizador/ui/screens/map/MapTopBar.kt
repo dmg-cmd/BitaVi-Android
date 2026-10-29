@@ -38,7 +38,12 @@ fun BoxScope.MapTopBar(
     currentAddress: String?,
     onLocalizadorClick: () -> Unit,
     onAddressClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    headerAlpha: Float = 0.45f,
+    onAdjustAlphaClick: (() -> Unit)? = null,
+    altura: String = "-- m",
+    distanciaPrimerPunto: String = "--",
+    tiempoFuncionamiento: String = "--"
 ) {
     Column(
         modifier = modifier
@@ -70,7 +75,12 @@ fun BoxScope.MapTopBar(
             onLocalizadorClick = onLocalizadorClick,
             modoTrafico = modoTraficoText,
             velocidad = "${String.format(LocalConfiguration.current.locales[0], "%.1f", speedKmh)} km/h",
-            colorIndicador = colorActual
+            colorIndicador = colorActual,
+            headerAlpha = headerAlpha,
+            onAdjustAlphaClick = onAdjustAlphaClick,
+            altura = altura,
+            distanciaPrimerPunto = distanciaPrimerPunto,
+            tiempoFuncionamiento = tiempoFuncionamiento
         )
 
         if (showAddressBox && currentAddress != null) {
@@ -79,7 +89,8 @@ fun BoxScope.MapTopBar(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp)
-                    .clickable { onAddressClick() }
+                    .clickable { onAddressClick() },
+                overrideColor = Color(0xFF1C1B1F).copy(alpha = headerAlpha)
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.Place, null, tint = Color.White, modifier = Modifier.size(16.dp))
